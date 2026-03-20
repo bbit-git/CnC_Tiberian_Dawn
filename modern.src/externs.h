@@ -180,7 +180,7 @@ extern char const *	SystemStrings;
 **	Miscellaneous globals.
 */
 extern HousesType				Whom;
-extern _VQAConfig				AnimControl;
+extern VQAConfig				AnimControl;
 extern long						SpareTicks;
 extern int						MonoPage;
 extern unsigned char *		OriginalPalette;

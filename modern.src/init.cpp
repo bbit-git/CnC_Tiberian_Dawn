@@ -1925,7 +1925,7 @@ void Anim_Init(void)
 	AnimControl.FrameRate = -1;
 	AnimControl.DrawRate = -1;
 
-	AnimControl.DrawerCallback = VQ_Call_Back;
+	AnimControl.DrawerCallback = reinterpret_cast<void*>(VQ_Call_Back);
 	AnimControl.ImageWidth = 320;
 	AnimControl.ImageHeight = 200;
 	AnimControl.Vmode = 0;
@@ -1946,8 +1946,8 @@ void Anim_Init(void)
 	//AnimControl.Volume = 0x00FF;
 	//AnimControl.AudioRate = 22050;
 //	if (NewConfig.Speed) AnimControl.AudioRate = 11025;
-	AnimControl.SoundObject = SoundObject;	//Get_Sound_Object();
-	AnimControl.PrimaryBufferPtr = PrimaryBufferPtr;	//Get_Primart_Buffer();
+	//AnimControl.SoundObject = SoundObject;	//Get_Sound_Object();
+	//AnimControl.PrimaryBufferPtr = PrimaryBufferPtr;	//Get_Primart_Buffer();
 	//if (!Debug_Quiet && Get_Digi_Handle() != -1) {
 		//AnimControl.OptionFlags |= VQAOPTF_AUDIO;
 	//}

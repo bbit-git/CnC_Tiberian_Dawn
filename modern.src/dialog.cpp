@@ -126,7 +126,12 @@ void Draw_Box(int x, int y, int w, int h, BoxStyleEnum up, bool filled)
 
 	if (filled) {
 		if (style.Filler == CC_GREEN_BKGD){
-			CC_Texture_Fill (MixFileClass::Retrieve("BTEXTURE.SHP"), InMainLoop, x, y, w, h);
+			void* btex = const_cast<void*>(MixFileClass::Retrieve("BTEXTURE.SHP"));
+			if (btex) {
+				CC_Texture_Fill (btex, InMainLoop, x, y, w, h);
+			} else {
+				LogicPage->Fill_Rect( x, y, x+w, y+h, CC_GREEN_BKGD);
+			}
 		}else{
 			LogicPage->Fill_Rect( x, y, x+w, y+h, style.Filler);
 		}

@@ -66,7 +66,9 @@
 
 /* Suppress 32-bit pointer arithmetic warnings — shape buffer code will be
    rewritten for 64-bit when the renderer is connected to SDL3 */
+#ifndef __cplusplus
 #pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
+#endif
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"
 #include	<stdlib.h>
 #include	<stdio.h>

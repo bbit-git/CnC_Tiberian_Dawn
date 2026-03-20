@@ -817,10 +817,10 @@ void Read_MultiPlayer_Settings (void)
 		}
 
 		WWGetPrivateProfileString ("SyncBug","Coord","0",buf,80,buffer);
-		sscanf(buf,"%x",&TrapCoord);
+		sscanf(buf,"%lx",(unsigned long*)&TrapCoord);
 
 		WWGetPrivateProfileString ("SyncBug","this","0",buf,80,buffer);
-		sscanf(buf,"%x",&TrapThis);
+		{ uintptr_t tmp; sscanf(buf,"%lx",(unsigned long*)&tmp); TrapThis = (void*)tmp; }
 
 		WWGetPrivateProfileString ("SyncBug","Cell","0",buf,80,buffer);
 		cell = atoi(buf);
@@ -851,8 +851,8 @@ void Write_MultiPlayer_Settings (void)
 	char * buffer;			// INI staging buffer pointer.
 	CCFileClass file;
 	int i;
-	char entrytext[4];
-	char buf[128];							// buffer for parsing INI entry
+	char entrytext[16];
+	char buf[512];							// buffer for parsing INI entry
 
 	/*------------------------------------------------------------------------
 	Get a working pointer to the INI staging buffer. Make sure that the buffer
@@ -924,7 +924,7 @@ void Write_MultiPlayer_Settings (void)
 	Format: Entry=Name,PhoneNum,Port,IRQ,Baud,InitString
 	------------------------------------------------------------------------*/
 	for (i = (PhoneBook.Count() - 1); i >= 0; i--) {
-		sprintf(buf,"%s|%s|%x|%d|%d|%d|%d|%d|%s|%d|%d|%s",
+		snprintf(buf,sizeof(buf),"%s|%s|%x|%d|%d|%d|%d|%d|%s|%d|%d|%s",
 			PhoneBook[i]->Name,
 			PhoneBook[i]->Number,
 			PhoneBook[i]->Settings.Port,
@@ -970,7 +970,7 @@ void Read_Scenario_Descriptions (void)
 	char *buffer;							// INI staging buffer pointer.
 	CCFileClass file;
 	int i;
-	char fname[20];
+	char fname[520];
 
 	/*------------------------------------------------------------------------
 	Clear the scenario description lists
@@ -985,7 +985,7 @@ void Read_Scenario_Descriptions (void)
 	for (i = 0; i < 100; i++) {
 		Set_Scenario_Name(ScenarioName, i, SCEN_PLAYER_MPLAYER,
 			SCEN_DIR_EAST, SCEN_VAR_A);
-		sprintf(fname,"%s.INI",ScenarioName);
+		snprintf(fname,sizeof(fname),"%s.INI",ScenarioName);
 		file.Set_Name (fname);
 
 		if (file.Is_Available()) {
@@ -1010,7 +1010,7 @@ void Read_Scenario_Descriptions (void)
 		.....................................................................*/
 		Set_Scenario_Name(ScenarioName, MPlayerFilenum[i], SCEN_PLAYER_MPLAYER,
 			SCEN_DIR_EAST, SCEN_VAR_A);
-		sprintf(fname,"%s.INI",ScenarioName);
+		snprintf(fname,sizeof(fname),"%s.INI",ScenarioName);
 		file.Set_Name (fname);
 		file.Read(buffer, _ShapeBufferSize-1);
 		file.Close();
