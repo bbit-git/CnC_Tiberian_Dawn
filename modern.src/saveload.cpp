@@ -763,7 +763,7 @@ void Code_All_Pointers(void)
 	**	Currently-selected objects.
 	*/
 	for (i = 0; i < CurrentObject.Count(); i++) {
-		CurrentObject[i] = (ObjectClass *)CurrentObject[i]->As_Target();
+		CurrentObject[i] = (ObjectClass *)(intptr_t)CurrentObject[i]->As_Target();
 	}
 
 	/*

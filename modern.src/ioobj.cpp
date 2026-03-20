@@ -134,6 +134,7 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "function.h"
+#include <cstdint>
 
 /*
  * Save/load serialization encodes pointers as small integers for file storage.
@@ -206,7 +207,7 @@ void TeamTypeClass::Code_Pointers(void)
 	-------------------------- Code the Class array --------------------------
 	*/
 	for (int i = 0; i < ClassCount; i++) {
-		Class[i] = (TechnoTypeClass *)TechnoType_To_Target(Class[i]);
+		Class[i] = (TechnoTypeClass *)(uintptr_t)TechnoType_To_Target(Class[i]);
 	}
 }
 
@@ -305,14 +306,14 @@ void TeamClass::Code_Pointers(void)
 	-------------------- Code Class & House for this team --------------------
 	*/
 	cls = Class;
-	((TeamTypeClass *&)Class) = (TeamTypeClass *)cls->As_Target();
+	((TeamTypeClass *&)Class) = (TeamTypeClass *)(uintptr_t)cls->As_Target();
 	((HouseClass *&)House) = (HouseClass *)House->Class->House;
 
 	/*
 	--------------------------- Code the 'Member' ----------------------------
 	*/
 	if (Member) {
-		Member = (FootClass *)Member->As_Target();
+		Member = (FootClass *)(uintptr_t)Member->As_Target();
 	}
 }
 
@@ -442,7 +443,7 @@ bool TriggerClass::Save(FileClass & file)
 void TriggerClass::Code_Pointers(void)
 {
 	if (Team) {
-		Team = (TeamTypeClass *)Team->As_Target();
+		Team = (TeamTypeClass *)(uintptr_t)Team->As_Target();
 	}
 }
 
@@ -646,7 +647,7 @@ void AnimClass::Code_Pointers(void)
 	----------------------------- Code 'Object' ------------------------------
 	*/
 	if (Object) {
-		Object = (ObjectClass *)Object->As_Target();
+		Object = (ObjectClass *)(uintptr_t)Object->As_Target();
 	}
 
 	/*
@@ -768,7 +769,7 @@ void BuildingClass::Code_Pointers(void)
 	it's converted back
 	------------------------------------------------------------------------*/
 	if (Factory) {
-		Factory = (FactoryClass *)(Factories.ID(Factory) + 1);
+		Factory = (FactoryClass *)(uintptr_t)(Factories.ID(Factory) + 1);
 	}
 
 	/*
@@ -886,7 +887,7 @@ void BulletClass::Code_Pointers(void)
 	----------------------------- Code 'Payback' -----------------------------
 	*/
 	if (Payback)
-		Payback = (TechnoClass *)Payback->As_Target();
+		Payback = (TechnoClass *)(uintptr_t)Payback->As_Target();
 
 	/*
 	---------------------------- Chain to parent -----------------------------
@@ -1602,7 +1603,7 @@ bool FactoryClass::Save(FileClass & file)
 void FactoryClass::Code_Pointers(void)
 {
 	if (Object) {
-		Object = (TechnoClass *)Object->As_Target();
+		Object = (TechnoClass *)(uintptr_t)Object->As_Target();
 	}
 
 	((HouseClass *&)House) = (HouseClass *)House->Class->House;
@@ -1751,7 +1752,7 @@ void LayerClass::Code_Pointers(void)
 
 	for (int i = 0; i < Count(); i++) {
 		obj = (*this)[i];
-		(*this)[i] = (ObjectClass *)(obj->As_Target());
+		(*this)[i] = (ObjectClass *)(uintptr_t)(obj->As_Target());
 	}
 }
 
@@ -2241,10 +2242,10 @@ void DriveClass::Decode_Pointers(void)
 void FootClass::Code_Pointers(void)
 {
 	if (Team)
-		Team = (TeamClass *)Team->As_Target();
+		Team = (TeamClass *)(uintptr_t)Team->As_Target();
 
 	if (Member) {
-		Member = (FootClass *)Member->As_Target();
+		Member = (FootClass *)(uintptr_t)Member->As_Target();
 	}
 
 	TechnoClass::Code_Pointers();
@@ -2311,7 +2312,7 @@ void RadioClass::Code_Pointers(void)
 	------------------------------ Code 'Radio' ------------------------------
 	*/
 	if (Radio) {
-		Radio = (RadioClass *)Radio->As_Target();
+		Radio = (RadioClass *)(uintptr_t)Radio->As_Target();
 	}
 
 	MissionClass::Code_Pointers();
@@ -2495,7 +2496,7 @@ void CargoClass::Code_Pointers(void)
 	---------------------------- Code 'CargoHold' ----------------------------
 	*/
 	if (CargoHold) {
-		CargoHold = (FootClass *)CargoHold->As_Target();
+		CargoHold = (FootClass *)(uintptr_t)CargoHold->As_Target();
 	}
 }
 
@@ -2603,11 +2604,11 @@ void MissionClass::Decode_Pointers(void)
 void ObjectClass::Code_Pointers(void)
 {
 	if (Next) {
-		Next = (ObjectClass *)Next->As_Target();
+		Next = (ObjectClass *)(uintptr_t)Next->As_Target();
 	}
 
 	if (Trigger) {
-		Trigger = (TriggerClass *)Trigger->As_Target();
+		Trigger = (TriggerClass *)(uintptr_t)Trigger->As_Target();
 	}
 }
 
@@ -2633,12 +2634,12 @@ void ObjectClass::Code_Pointers(void)
 void ObjectClass::Decode_Pointers(void)
 {
 	if (Next) {
-		Next = As_Object((TARGET)Next);
+		Next = As_Object((TARGET)(uintptr_t)Next);
 		Check_Ptr((void *)Next,__FILE__,__LINE__);
 	}
 
 	if (Trigger) {
-		Trigger = As_Trigger((TARGET)Trigger);
+		Trigger = As_Trigger((TARGET)(uintptr_t)Trigger);
 		Check_Ptr((void *)Trigger,__FILE__,__LINE__);
 	}
 }

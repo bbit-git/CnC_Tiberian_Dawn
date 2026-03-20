@@ -257,11 +257,11 @@ void Send_Statistics_Packet(void)
 		/*
 		** Scenario
 		*/
-		char fname[128];
+		char fname[520];
 		char namebuffer[40];
 		char *abuffer = (char *)_ShapeBuffer;
 		memset(abuffer, '\0', _ShapeBufferSize);
-		sprintf(fname,"%s.INI",ScenarioName);
+		snprintf(fname,sizeof(fname),"%s.INI",ScenarioName);
 		CCFileClass fileo;
 		fileo.Set_Name (fname);
 		fileo.Read(abuffer, _ShapeBufferSize-1);
@@ -642,7 +642,7 @@ void Send_Statistics_Packet(void)
 	** Tidy up
 	*/
 	CCDebugString ("C&C95 - About to delete packet memory.\n");
-	delete [] packet;
+	delete [] (char*)packet;
 
 	GameStatisticsPacketSent = true;
 	CCDebugString ("C&C95 - Returning from Send_Statistics_Packet.\n");

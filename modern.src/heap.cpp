@@ -278,7 +278,7 @@ void FixedHeapClass::Clear(void)
 	**	Free the old buffer (if present).
 	*/
 	if (Buffer && IsAllocated) {
-		delete[] Buffer;
+		delete[] (char*)Buffer;
 	}
 	Buffer = 0;
 	IsAllocated = false;

@@ -132,7 +132,7 @@ MixFileClass::~MixFileClass(void)
 		free((char *)Filename);
 	}
 	if (Data) {
-		delete [] Data;
+		delete [] (char*)Data;
 	}
 	if (Buffer) {
 		delete [] Buffer;
@@ -191,7 +191,7 @@ MixFileClass::MixFileClass(char const *filename)
 		file.Read(&fileheader, sizeof(fileheader));
 		Count = fileheader.count;
 		DataSize = fileheader.size;
-		fprintf(stderr, "MIX: %s — count=%d, size=%ld\n", filename, Count, DataSize);
+		fprintf(stderr, "MIX: %s — count=%d, size=%ld [%s]\n", filename, Count, DataSize, file.File_Name());
 
 		/*
 		**	Load up the offset control array. This could be located in
@@ -383,7 +383,7 @@ bool MixFileClass::Cache(void)
 void MixFileClass::Free(void)
 {
 	if (Data) {
-		delete [] Data;
+		delete [] (char*)Data;
 		Data = 0;
 	}
 }

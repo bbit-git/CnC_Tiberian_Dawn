@@ -311,23 +311,21 @@ int ThemeClass::Play_Song(ThemeType theme)
 {
 	if (ScoresPresent && SampleType && !Debug_Quiet && Options.ScoreVolume) {
 		Stop();
+
+		/*
+		** Check if the requested theme is available. If not, pick another.
+		** This handles legacy data that doesn't have remastered-only themes.
+		*/
+		if (theme >= THEME_FIRST && !Is_Allowed(theme)) {
+			theme = Next_Song(THEME_PICK_ANOTHER);
+			if (theme < THEME_FIRST || !Is_Allowed(theme)) {
+				return(Current);
+			}
+		}
+
 		Score = theme;
 		if (theme >= THEME_FIRST) {
-
-#ifdef DEMO
-			if (_themes[theme].Scenario != 99) {
-				CCFileClass file(Theme_File_Name(theme));
-				if (file.Is_Available()) {
-					Current = File_Stream_Sample_Vol(Theme_File_Name(theme), 0xFF, true);
-				} else {
-					Current = -1;
-				}
-			} else {
-				Current = -1;
-			}
-#else
 			Current = File_Stream_Sample_Vol(Theme_File_Name(theme), 0xFF, true);
-#endif
 		}
 	}
 	return(Current);
