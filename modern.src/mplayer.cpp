@@ -329,6 +329,8 @@ GameType Select_MPlayer_Game (void)
 			buttons[curbutton]->Turn_Off();
 			buttons[curbutton]->Flag_To_Redraw();
 			curbutton = selection - BUTTON_MODEMSERIAL;
+			if (!ipx_avail && curbutton >= number_of_buttons)
+				curbutton = number_of_buttons - 1;
 			buttons[curbutton]->Turn_On();
 //			buttons[curbutton]->Flag_To_Redraw();
 			buttons[curbutton]->IsPressed = true;
