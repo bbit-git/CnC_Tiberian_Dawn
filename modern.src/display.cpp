@@ -640,6 +640,10 @@ void DisplayClass::Set_View_Dimensions(int x, int y, int width, int height)
 	}
 	TacLeptonWidth = Pixel_To_Lepton(width);
 	TacLeptonHeight = Pixel_To_Lepton(height);
+	/* Ensure both dimensions cover the full screen regardless of swap */
+	int maxdim = (TacLeptonWidth > TacLeptonHeight) ? TacLeptonWidth : TacLeptonHeight;
+	TacLeptonWidth = maxdim;
+	TacLeptonHeight = maxdim;
 
 	/*
 	**	Adjust the tactical cell if it is now in an invalid position
