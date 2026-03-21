@@ -819,7 +819,7 @@ void Read_MultiPlayer_Settings (void)
 		}
 
 		WWGetPrivateProfileString ("SyncBug","Coord","0",buf,80,buffer);
-		sscanf(buf,"%lx",(unsigned long*)&TrapCoord);
+		{ unsigned int tmp; sscanf(buf,"%x",&tmp); TrapCoord = (COORDINATE)tmp; } /* LP64: was %lx into uint32_t */
 
 		WWGetPrivateProfileString ("SyncBug","this","0",buf,80,buffer);
 		{ uintptr_t tmp; sscanf(buf,"%lx",(unsigned long*)&tmp); TrapThis = (void*)tmp; }

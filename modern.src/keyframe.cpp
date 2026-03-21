@@ -86,11 +86,16 @@ int 	TotalSlotsUsed=0;
 int		TheaterSlotsUsed = THEATER_SLOT_START;
 
 
+/* LP64: shape_data stores an offset (not a pointer) into BigShapeBuffer/TheaterShapeBuffer.
+** Must be fixed size to match ILP32 layout (12 bytes total) since this struct is
+** stored inline in the shape buffer and offset calculations depend on its size. */
+#pragma pack(push, 1)
 typedef struct tShapeHeaderType{
 	unsigned draw_flags;
-	char		*shape_data;
-	int		shape_buffer;		//1 if shape is in theater buffer
+	int32_t  shape_data;      /* LP64: was char* — offset from buffer start, not a pointer */
+	int      shape_buffer;    /* 1 if shape is in theater buffer */
 } ShapeHeaderType;
+#pragma pack(pop)
 
 static int Length;
 
@@ -99,7 +104,8 @@ void *Get_Shape_Header_Data(void *ptr)
 	if (UseBigShapeBuffer){
 
 		ShapeHeaderType *header = (ShapeHeaderType*) ptr;
-		return ((void*)  (header->shape_data + (long)(header->shape_buffer ? TheaterShapeBufferStart : BigShapeBufferStart) ) );
+		char *base = header->shape_buffer ? TheaterShapeBufferStart : BigShapeBufferStart;
+		return ((void*)(base + header->shape_data)); /* LP64: shape_data is int32_t offset */
 
 	}else{
 		return (ptr);
@@ -322,7 +328,7 @@ unsigned long Build_Frame(void const *dataptr, unsigned short framenumber, void 
 			** Allocate and clear the memory for the shape info
 			*/
 			KeyFrameSlots[keyfr->y]= new char *[keyfr->frames];
-			memset (KeyFrameSlots[keyfr->y] , 0 , keyfr->frames*4);
+			memset (KeyFrameSlots[keyfr->y] , 0 , keyfr->frames * sizeof(char*)); /* LP64: was *4, must use sizeof(char*) for 8-byte pointers */
 		}
 
 		/*
@@ -455,7 +461,7 @@ unsigned long Build_Frame(void const *dataptr, unsigned short framenumber, void 
 
 			memcpy (temp_shape_ptr , buffptr , length);
 			((ShapeHeaderType *)TheaterShapeBufferPtr)->draw_flags = -1;						//Flag that headers need to be generated
-			((ShapeHeaderType *)TheaterShapeBufferPtr)->shape_data = temp_shape_ptr - (uintptr_t)TheaterShapeBufferStart;		//pointer to old raw shape data
+			((ShapeHeaderType *)TheaterShapeBufferPtr)->shape_data = (int32_t)(temp_shape_ptr - TheaterShapeBufferStart);		/* LP64: offset from buffer start */
 			((ShapeHeaderType *)TheaterShapeBufferPtr)->shape_buffer = 1;	//Theater buffer
 			*(KeyFrameSlots[keyfr->y]+framenumber) = TheaterShapeBufferPtr - (uintptr_t)TheaterShapeBufferStart;
 			TheaterShapeBufferPtr = (char*)(length + (uintptr_t)temp_shape_ptr);
@@ -481,7 +487,7 @@ unsigned long Build_Frame(void const *dataptr, unsigned short framenumber, void 
 			}
 			memcpy (temp_shape_ptr , buffptr , length);
 			((ShapeHeaderType *)BigShapeBufferPtr)->draw_flags = -1;						//Flag that headers need to be generated
-			((ShapeHeaderType *)BigShapeBufferPtr)->shape_data = temp_shape_ptr - (uintptr_t)BigShapeBufferStart;		//pointer to old raw shape data
+			((ShapeHeaderType *)BigShapeBufferPtr)->shape_data = (int32_t)(temp_shape_ptr - BigShapeBufferStart);		/* LP64: offset from buffer start */
 			((ShapeHeaderType *)BigShapeBufferPtr)->shape_buffer = 0;	//Normal Big Shape Buffer
 			*(KeyFrameSlots[keyfr->y]+framenumber) = BigShapeBufferPtr - (uintptr_t)BigShapeBufferStart;
 			BigShapeBufferPtr = (char*)(length + (uintptr_t)temp_shape_ptr);
