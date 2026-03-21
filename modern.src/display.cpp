@@ -1642,9 +1642,18 @@ bool DisplayClass::Map_Cell(CELL cell, HouseClass * house)
 #define	EDGE_ZONE	(CELL_LEPTON_W*2)
 bool DisplayClass::Coord_To_Pixel(COORDINATE coord, int &x, int &y)
 {
+	static int _trace = 0;
 	if (coord) {
 		int xtac = Pixel_To_Lepton(Lepton_To_Pixel(Coord_X(TacticalCoord)));
 		int xoff = Pixel_To_Lepton(Lepton_To_Pixel(Coord_X(coord)));
+		if (_trace < 3) {
+			DBG("C2P: TacCoord=%08x coord=%08x Coord_X(tac)=%d Coord_Y(tac)=%d Coord_X(c)=%d Coord_Y(c)=%d",
+				TacticalCoord, coord, Coord_X(TacticalCoord), Coord_Y(TacticalCoord),
+				Coord_X(coord), Coord_Y(coord));
+			DBG("C2P: TacLepW=%d TacLepH=%d TacPixX=%d TacPixY=%d",
+				(int)TacLeptonWidth, (int)TacLeptonHeight, TacPixelX, TacPixelY);
+			_trace++;
+		}
 
 		xoff = (xoff+EDGE_ZONE) - xtac;
 		if ((unsigned)xoff <= TacLeptonWidth + EDGE_ZONE*2) {
