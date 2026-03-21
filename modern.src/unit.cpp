@@ -379,7 +379,7 @@ COORDINATE UnitClass::Sort_Y(void) const
 void UnitClass::AI(void)
 {
 	Validate();
-	DBG("UnitClass::AI %s Coord=%x Mission=%d", Class->IniName, Coord, (int)Mission);
+	//DBG("UnitClass::AI %s Coord=%x Mission=%d", Class->IniName, Coord, (int)Mission);
 
 	/*
 	**	Act on new orders if the unit is at a good position to do so.
@@ -388,9 +388,9 @@ void UnitClass::AI(void)
 		Commence();
 	}
 
-	DBG("UnitClass::AI TarComClass::AI");
+	//DBG("UnitClass::AI TarComClass::AI");
 	TarComClass::AI();
-	DBG("UnitClass::AI TarCom done, checking map");
+	//DBG("UnitClass::AI TarCom done, checking map");
 
 	/*
 	**	Delete this unit if it finds itself off the edge of the map and it is in

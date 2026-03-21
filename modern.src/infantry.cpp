@@ -994,28 +994,28 @@ void InfantryClass::Assign_Target(TARGET target)
 void InfantryClass::AI(void)
 {
 	Validate();
-	DBG("InfantryClass::AI %s Coord=%x", Class->IniName, Coord);
+	//DBG("InfantryClass::AI %s Coord=%x", Class->IniName, Coord);
 	FootClass::AI();
-	DBG("InfantryClass::AI FootClass done");
+	//DBG("InfantryClass::AI FootClass done");
 
 	if (IsUnloading) Mark(MARK_CHANGE);
 
 	if (IsFiring && !Fetch_Rate()) {
 		IsFiring = false;
 	}
-	DBG("InfantryClass::AI checking map");
+	//DBG("InfantryClass::AI checking map");
 
 	if (!Team && Mission == MISSION_GUARD && !Map.In_Radar(Coord_Cell(Coord))) {
 		Stun();
 		delete this;
 		return;
 	}
-	DBG("InfantryClass::AI Commence");
+	//DBG("InfantryClass::AI Commence");
 
 	if (!IsDriving && (Doing == DO_NOTHING || MasterDoControls[Doing].Interrupt)) {
 		Commence();
 	}
-	DBG("InfantryClass::AI fear/fire/anim section");
+	//DBG("InfantryClass::AI fear/fire/anim section");
 
 	/*
 	**	After a time, the infantry will gain courage.
@@ -1171,7 +1171,7 @@ void InfantryClass::AI(void)
 		}
 	}
 
-	DBG("InfantryClass::AI anim Doing=%d", (int)Doing);
+	//DBG("InfantryClass::AI anim Doing=%d", (int)Doing);
 	if (Doing == DO_NOTHING || Fetch_Stage() >= Class->DoControls[Doing].Count) {
 		switch (Doing) {
 			default:
@@ -1229,18 +1229,18 @@ void InfantryClass::AI(void)
 	/*
 	**	Perform movement operations at this time.
 	*/
-	DBG("InfantryClass::AI move IsFiring=%d IsDriving=%d Mission=%d NavCom=%d", IsFiring, IsDriving, (int)Mission, (int)NavCom);
+	//DBG("InfantryClass::AI move IsFiring=%d IsDriving=%d Mission=%d NavCom=%d", IsFiring, IsDriving, (int)Mission, (int)NavCom);
 	if (!IsFiring /*&& !IsBoxing*/) {
 		if (!IsDriving) {
-			DBG("InfantryClass::AI !IsDriving guard check");
+			//DBG("InfantryClass::AI !IsDriving guard check");
 
 			if (Mission == MISSION_GUARD && MissionQueue == MISSION_NONE && Target_Legal(NavCom)) {
 				Assign_Destination(TARGET_NONE);
 			}
 
-			DBG("InfantryClass::AI navcom=%d Path[0]=%d Center=%x", (int)NavCom, (int)Path[0], Center_Coord());
+			//DBG("InfantryClass::AI navcom=%d Path[0]=%d Center=%x", (int)NavCom, (int)Path[0], Center_Coord());
 			if (Target_Legal(NavCom) && Strength && Mission != MISSION_GUARD) {
-				DBG("InfantryClass::AI entering path section");
+				//DBG("InfantryClass::AI entering path section");
 
 				/*
 				**	Determine if the next cell in the list is available
@@ -1248,15 +1248,15 @@ void InfantryClass::AI(void)
 				**	again.
 				*/
 				if (Path[0] != FACING_NONE) {
-					DBG("InfantryClass::AI Can_Enter_Cell check");
+					//DBG("InfantryClass::AI Can_Enter_Cell check");
 					if (Can_Enter_Cell(Adjacent_Cell(Coord_Cell(Center_Coord()), Path[0])) != MOVE_OK) {
 						Path[0] = FACING_NONE;
 					}
 				}
 
-				DBG("InfantryClass::AI distance check");
+				//DBG("InfantryClass::AI distance check");
 				int d = Lepton_To_Cell(Distance(NavCom));
-				DBG("InfantryClass::AI d=%d Path[0]=%d", d, (int)Path[0]);
+				//DBG("InfantryClass::AI d=%d Path[0]=%d", d, (int)Path[0]);
 				if (d < CONQUER_PATH_MAX) {
 					Path[d] = FACING_NONE;
 				}
@@ -1264,7 +1264,7 @@ void InfantryClass::AI(void)
 				/*
 				**	Find a path to follow if one isn't already calculated.
 				*/
-				DBG("InfantryClass::AI path find check");
+				//DBG("InfantryClass::AI path find check");
 				if (Path[0] == FACING_NONE) {
 
 					/*
@@ -1400,7 +1400,7 @@ void InfantryClass::AI(void)
 		}
 		IsNewNavCom = false;
 	}
-	DBG("InfantryClass::AI done");
+	//DBG("InfantryClass::AI done");
 }
 
 

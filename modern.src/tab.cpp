@@ -86,7 +86,7 @@ TabClass::TabClass(void)
  *=============================================================================================*/
 void TabClass::Draw_It(bool complete)
 {
-	DBG("TabClass::Draw_It");
+	//DBG("TabClass::Draw_It");
 
 	SidebarClass::Draw_It(complete);
 
@@ -208,7 +208,7 @@ void TabClass::AI(KeyNumType &input, int x, int y)
 
 	Credits.AI();
 
-	DBG("TabClass::AI → SidebarClass::AI");
+	//DBG("TabClass::AI → SidebarClass::AI");
 	SidebarClass::AI(input, x, y);
 }
 
