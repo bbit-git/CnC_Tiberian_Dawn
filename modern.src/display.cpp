@@ -659,6 +659,8 @@ void DisplayClass::Set_View_Dimensions(int x, int y, int width, int height)
 	WindowList[WINDOW_TACTICAL][WINDOWY] = y;
 	WindowList[WINDOW_TACTICAL][WINDOWWIDTH] = width >> 3;
 	WindowList[WINDOW_TACTICAL][WINDOWHEIGHT] = height;
+	DBG("Set_View_Dimensions: x=%d y=%d w=%d h=%d SeenBuff=%dx%d",
+		x, y, width, height, SeenBuff.Get_Width(), SeenBuff.Get_Height());
 	if (Window == WINDOW_TACTICAL) {
 		Change_Window(0);
 		Change_Window(Window);

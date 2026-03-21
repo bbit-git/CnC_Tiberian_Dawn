@@ -164,10 +164,7 @@ void Main_Game(int argc, char *argv[])
 		ScenarioInit = 0;		// Kludge.
 		DBG("Main_Game: Select_Game returned true, switching to 320x200");
 
-		/* Switch to native 320x200 for gameplay rendering */
-		extern void TD_SDL_Switch_Resolution(int, int);
-		TD_SDL_Switch_Resolution(320, 200);
-		Options.Adjust_Variables_For_Resolution();
+		/* 320x200 native — no resolution switch needed */
 
 		fade = true;
 
@@ -314,12 +311,7 @@ void Main_Game(int argc, char *argv[])
 		//Stop_Profiler();
 		InMainLoop = false;
 
-		/* Switch back to 640x400 for menu rendering */
-		{
-			extern void TD_SDL_Switch_Resolution(int, int);
-			TD_SDL_Switch_Resolution(640, 400);
-			Options.Adjust_Variables_For_Resolution();
-		}
+		/* 320x200 native — no resolution switch needed */
 
 		if (!GameStatisticsPacketSent && PacketLater){
 			Send_Statistics_Packet();
@@ -1570,6 +1562,7 @@ bool Main_Loop()
 	** layer in the same way, and any processing done that's based on
 	** the order of this layer will sync on different machines.
 	*/
+	DBG("Main_Loop: Sort");
 	Map.Layer[LAYER_GROUND].Sort();
 
 	DBG("Main_Loop: Logic.AI");
@@ -1598,9 +1591,9 @@ bool Main_Loop()
 	/*
 	**	Process all commands that are ready to be processed.
 	*/
+	DBG("Main_Loop: Queue_AI");
 	Queue_AI();
-
-// Heap_Dump_Check( "After Queue_AI" );
+	DBG("Main_Loop: Queue_AI done");
 
 	/*
 	**	Keep track of elapsed time in the game.
