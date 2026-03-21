@@ -1028,7 +1028,7 @@ void DisplayClass::AI(KeyNumType & input, int x, int y)
 			Mouse_Left_Release(-1, Get_Mouse_X(), Get_Mouse_Y(), NULL, ACTION_NONE);
 	}
 
-	DBG("DisplayClass::AI → MapClass::AI");
+	//DBG("DisplayClass::AI → MapClass::AI");
 	MapClass::AI(input, x, y);
 }
 
@@ -1646,7 +1646,7 @@ bool DisplayClass::Coord_To_Pixel(COORDINATE coord, int &x, int &y)
 	if (coord) {
 		int xtac = Pixel_To_Lepton(Lepton_To_Pixel(Coord_X(TacticalCoord)));
 		int xoff = Pixel_To_Lepton(Lepton_To_Pixel(Coord_X(coord)));
-		if (_trace < 3) {
+		if (_trace < 1) {
 			DBG("C2P: TacCoord=%08x coord=%08x Coord_X(tac)=%d Coord_Y(tac)=%d Coord_X(c)=%d Coord_Y(c)=%d",
 				TacticalCoord, coord, Coord_X(TacticalCoord), Coord_Y(TacticalCoord),
 				Coord_X(coord), Coord_Y(coord));
@@ -1784,9 +1784,9 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
 {
 	int	x,y;			// Working cell index values.
 
-	DBG("DisplayClass::Draw_It forced=%d IsToRedraw=%d", forced, IsToRedraw);
+	//DBG("DisplayClass::Draw_It forced=%d IsToRedraw=%d", forced, IsToRedraw);
 	MapClass::Draw_It(forced);
-	DBG("DisplayClass::Draw_It MapClass done");
+	//DBG("DisplayClass::Draw_It MapClass done");
 
 	if (IsToRedraw || forced) {
 		IsToRedraw = false;
@@ -1795,7 +1795,7 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
 		**	In rubber band mode, mark all cells under the "rubber band" to be
 		**	redrawn.
 		*/
-		DBG("DisplayClass::Draw_It Refresh_Band");
+		//DBG("DisplayClass::Draw_It Refresh_Band");
 		Refresh_Band();
 
 		/*
@@ -2040,9 +2040,9 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
 		**	flagged to be redrawn.
 		*/
 		//Redraw_Icons(CELL_BLIT_ONLY);
-		DBG("DisplayClass::Draw_It Redraw_Icons");
+		//DBG("DisplayClass::Draw_It Redraw_Icons");
 		Redraw_Icons(0);
-		DBG("DisplayClass::Draw_It Redraw_Icons done");
+		//DBG("DisplayClass::Draw_It Redraw_Icons done");
 
 		/*
 		**	Once the icons are drawn, duplicate the bottom line of the screen into the phantom
@@ -2059,16 +2059,16 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
 				for (int index = 0; index < Layer[layer].Count(); index++) {
 					ObjectClass* obj = Layer[layer][index];
 					if (!obj) continue;
-					DBG("Render L%d[%d] %s c=%x", (int)layer, index, obj->Class_Of().IniName, obj->Render_Coord());
+					//DBG("Render L%d[%d] %s c=%x", (int)layer, index, obj->Class_Of().IniName, obj->Render_Coord());
 					obj->Render(forced);
 				}
 			}
-			DBG("DisplayClass::Draw_It objects done, shadow");
+			//DBG("DisplayClass::Draw_It objects done, shadow");
 
-			Redraw_Shadow();
+			if (!Debug_Unshroud) Redraw_Shadow();
 		}
 
-		Redraw_Shadow_Rects();
+		if (!Debug_Unshroud) Redraw_Shadow_Rects();
 
 		HidPage.Unlock();
 
@@ -2231,7 +2231,7 @@ void DisplayClass::Redraw_Shadow(void)
  *=============================================================================================*/
 void DisplayClass::Redraw_Shadow_Rects(void)
 {
-	if (IsShadowPresent) {
+	if (IsShadowPresent && !Debug_Unshroud) {
 		for (int y = -Coord_YLepton(TacticalCoord); y <= TacLeptonHeight; y += CELL_LEPTON_H) {
 			for (int x = -Coord_XLepton(TacticalCoord); x <= TacLeptonWidth; x += CELL_LEPTON_W) {
 				COORDINATE coord = Coord_Add(TacticalCoord, XY_Coord(x, y));
@@ -3473,6 +3473,10 @@ void DisplayClass::Set_Tactical_Position(COORDINATE coord)
 	int xx = Coord_X(coord) - Cell_To_Lepton(MapCellX);
 	int yy = Coord_Y(coord) - Cell_To_Lepton(MapCellY);
 
+	DBG("Set_Tactical: xx=%d yy=%d TacW=%d TacH=%d MapW=%d MapH=%d MapX=%d MapY=%d",
+		xx, yy, (int)TacLeptonWidth, (int)TacLeptonHeight,
+		Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight),
+		MapCellX, MapCellY);
 	Confine_Rect(&xx, &yy, TacLeptonWidth, TacLeptonHeight, Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight));
 	coord = XY_Coord(xx + Cell_To_Lepton(MapCellX), yy + Cell_To_Lepton(MapCellY));
 

@@ -171,7 +171,7 @@ void PowerClass::One_Time(void)
  *=============================================================================================*/
 void PowerClass::Draw_It(bool complete)
 {
-	DBG("PowerClass::Draw_It");
+	//DBG("PowerClass::Draw_It");
 	static int _modtable[]={
 		0, -1, 0, 1, 0, -1, -2, -1, 0, 1, 2, 1 ,0
 	};
@@ -352,7 +352,7 @@ void PowerClass::AI(KeyNumType &input, int x, int y)
 			Flag_To_Redraw(false);
 		}
 	}
-	DBG("PowerClass::AI → RadarClass::AI");
+	//DBG("PowerClass::AI → RadarClass::AI");
 	RadarClass::AI(input, x, y);
 }
 

@@ -434,14 +434,14 @@ COORDINATE As_Coord(TARGET target)
 		**	for the center coordinate. Return the center coordinate as the target's coordinate.
 		*/
 		ObjectClass * obj = As_Object(target);
-		DBG("As_Coord: target=%d kind=%d val=%d obj=%p", (int)target, (int)Target_Kind(target), (int)Target_Value(target), (void*)obj);
+		//DBG("As_Coord: target=%d kind=%d val=%d obj=%p", (int)target, (int)Target_Kind(target), (int)Target_Value(target), (void*)obj);
 		if (obj) {
 
 			if (IsBadReadPtr ((void*)obj, sizeof (ObjectClass) ) || !obj->IsActive){
 				return(0x00000000L);
 			}
 
-			DBG("As_Coord: calling Target_Coord on obj=%p", (void*)obj);
+			//DBG("As_Coord: calling Target_Coord on obj=%p", (void*)obj);
 			return(obj->Target_Coord());
 		}
 	}

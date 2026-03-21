@@ -704,7 +704,7 @@ bool SidebarClass::Scroll(bool up, int column)
  *=============================================================================================*/
 void SidebarClass::Draw_It(bool complete)
 {
-	DBG("SidebarClass::Draw_It");
+	//DBG("SidebarClass::Draw_It");
 	PowerClass::Draw_It(complete);
 
 	if (IsSidebarActive && (IsToRedraw || complete) && !Debug_Map) {
@@ -891,7 +891,7 @@ void SidebarClass::AI(KeyNumType & input, int x, int y)
 		Upgrade.Turn_Off();
 	}
 
-	DBG("SidebarClass::AI → PowerClass::AI");
+	//DBG("SidebarClass::AI → PowerClass::AI");
 	PowerClass::AI(input, x, y);
 }
 

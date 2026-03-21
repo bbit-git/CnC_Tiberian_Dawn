@@ -302,9 +302,9 @@ void GScreenClass::Input(KeyNumType & key, int & x, int & y)
 			key = Keyboard::Get();
 		}
 	}
-	DBG("Input: AI key=%d x=%d y=%d", (int)key, x, y);
+	//DBG("Input: AI key=%d x=%d y=%d", (int)key, x, y);
 	AI(key, x, y);
-	DBG("Input: AI done");
+	//DBG("Input: AI done");
 
 }
 
@@ -406,12 +406,12 @@ void GScreenClass::Render(void)
 		//	SeenBuff.To_Buffer(0, 0, 320, 200, ShadowPage);
 		//	Show_Mouse();
 		//}
-		DBG("Render: Draw_It");
+		//DBG("Render: Draw_It");
 		Draw_It(IsToRedraw);
-		DBG("Render: Draw_It done");
+		//DBG("Render: Draw_It done");
 
 		if (Buttons) Buttons->Draw_All(false);
-		DBG("Render: Buttons done");
+		//DBG("Render: Buttons done");
 
 #ifdef SCENARIO_EDITOR
 		if (Debug_Map) {
@@ -424,10 +424,10 @@ void GScreenClass::Render(void)
 			Messages.Set_Width(Lepton_To_Cell(Map.TacLeptonWidth) * ICON_PIXEL_W);
 		}
 		Messages.Draw();
-		DBG("Render: Blit_Display");
+		//DBG("Render: Blit_Display");
 
 		Blit_Display();
-		DBG("Render: done");
+		//DBG("Render: done");
 		IsToUpdate = false;
 		IsToRedraw = false;
 

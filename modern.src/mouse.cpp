@@ -232,9 +232,9 @@ void MouseClass::AI(KeyNumType &input, int x, int y)
 		}
 	}
 
-	DBG("MouseClass::AI → ScrollClass::AI");
+	//DBG("MouseClass::AI → ScrollClass::AI");
 	ScrollClass::AI(input, x, y);
-	DBG("MouseClass::AI done");
+	//DBG("MouseClass::AI done");
 }
 
 

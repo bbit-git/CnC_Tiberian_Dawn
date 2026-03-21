@@ -260,6 +260,7 @@ void MapClass::Set_Map_Dimensions(int x, int y, int w, int h)
 	MapCellY = y;
 	MapCellWidth = w;
 	MapCellHeight = h;
+	DBG("Set_Map_Dimensions: x=%d y=%d w=%d h=%d (pixels: %dx%d)", x, y, w, h, w*24, h*24);
 }
 
 

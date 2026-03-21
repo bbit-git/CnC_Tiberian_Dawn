@@ -159,13 +159,13 @@ short const * HelpClass::Overlap_List(void) const
  *=============================================================================================*/
 void HelpClass::AI(KeyNumType &key, int x, int y)
 {
-	DBG("HelpClass::AI enter");
+	//DBG("HelpClass::AI enter");
 
 	if (!CountDownTimer.Time() && !IsRight && (x != X || y != Y)) {
 		Help_Text(TXT_NONE);
 	}
-	DBG("HelpClass::AI CDT=%ld Text=%d",
-		(long)CountDownTimer.Time(), Text);
+	//DBG("HelpClass::AI CDT=%ld Text=%d",
+	//	(long)CountDownTimer.Time(), Text);
 
 	/*
 	**	Process the countdown timer only if it hasn't already expired and there is
@@ -194,9 +194,9 @@ void HelpClass::AI(KeyNumType &key, int x, int y)
 		}
 	}
 
-	DBG("HelpClass::AI → TabClass::AI");
+	//DBG("HelpClass::AI → TabClass::AI");
 	TabClass::AI(key, x, y);
-	DBG("HelpClass::AI done");
+	//DBG("HelpClass::AI done");
 }
 
 

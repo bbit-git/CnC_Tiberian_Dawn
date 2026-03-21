@@ -423,7 +423,7 @@ bool FootClass::Register_Cell(PathType *path, CELL cell, FacingType dir, int cos
 #ifdef OBSOLETE
 bool FootClass::Register_Cell(PathType *path, CELL cell, FacingType dir, int cost, MoveType threshhold)
 {
-	DBG("Register_Cell: cell=%d dir=%d cost=%d len=%d", (int)cell, (int)dir, cost, path->Length);
+	//DBG("Register_Cell: cell=%d dir=%d cost=%d len=%d", (int)cell, (int)dir, cost, path->Length);
 	FacingType  *list;
 	int 	pos  = cell >> 5;
 	int	bit  = (cell & 31); /* LP64: was (cell & 31) - 1, but shift by -1 is UB */
@@ -529,9 +529,9 @@ bool FootClass::Register_Cell(PathType *path, CELL cell, FacingType dir, int cos
  *=============================================================================================*/
 PathType * FootClass::Find_Path(CELL dest, FacingType *final_moves, int maxlen, MoveType threshhold)
 {
-	DBG("Find_Path: enter dest=%d Coord=%x maxlen=%d", (int)dest, Coord, maxlen);
+	//DBG("Find_Path: enter dest=%d Coord=%x maxlen=%d", (int)dest, Coord, maxlen);
 	CELL					source = Coord_Cell(Coord);		// Source expressed as cell
-	DBG("Find_Path: source=%d", (int)source);
+	//DBG("Find_Path: source=%d", (int)source);
 	static PathType	path;										// Main path control.
 	CELL					next;										// Next cell to enter
 	CELL					startcell;								// Cell we started in
@@ -556,14 +556,14 @@ PathType * FootClass::Find_Path(CELL dest, FacingType *final_moves, int maxlen, 
 	** then forget it.
 	*/
 	if (!final_moves) return(NULL);
-	DBG("Find_Path: past null check, Team=%p", (void*)Team);
+	//DBG("Find_Path: past null check, Team=%p", (void*)Team);
 
 	if (!Debug_Find_Path) {
 		DrawPath = IsSelected && Special.IsShowPath;
 	} else {
 		DrawPath = IsSelected;
 	}
-	DBG("Find_Path: overlap init");
+	//DBG("Find_Path: overlap init");
 
 //	MoveMask = flags;
 	if (Team && Team->Class->IsRoundAbout) {
@@ -574,7 +574,7 @@ PathType * FootClass::Find_Path(CELL dest, FacingType *final_moves, int maxlen, 
 		unit_threat = threat = -1;
 	}
 
-	DBG("Find_Path: setting locations");
+	//DBG("Find_Path: setting locations");
 	StartLocation = source;
 	DestLocation = dest;
 
@@ -591,7 +591,7 @@ PathType * FootClass::Find_Path(CELL dest, FacingType *final_moves, int maxlen, 
 	path.LastOverlap	= -1;
 	path.LastFixup		= -1;
 
-	DBG("Find_Path: memset overlap %d bytes", (int)sizeof(MainOverlap));
+	//DBG("Find_Path: memset overlap %d bytes", (int)sizeof(MainOverlap));
 	memset(path.Overlap, 0, sizeof(MainOverlap));
 
 	/*
@@ -600,7 +600,7 @@ PathType * FootClass::Find_Path(CELL dest, FacingType *final_moves, int maxlen, 
 	*/
 //	memset(path.Overlap, 0, 512);
 	path.Overlap[source >> 5] |= (1 << (source & 31));
-	DBG("Find_Path: overlap set, entering main loop");
+	//DBG("Find_Path: overlap set, entering main loop");
 
 	startcell 			= source;
 
@@ -645,25 +645,25 @@ top_of_list:
 		*/
 		direction	= CELL_FACING(startcell, dest);
 		next			= Adjacent_Cell(startcell, direction);
-		DBG("Find_Path: start=%d(%d,%d) dest=%d(%d,%d) next=%d dir=%d",
-			(int)startcell, Cell_X(startcell), Cell_Y(startcell),
-			(int)dest, Cell_X(dest), Cell_Y(dest),
-			(int)next, (int)direction);
+		//DBG("Find_Path: start=%d(%d,%d) dest=%d(%d,%d) next=%d dir=%d",
+		//	(int)startcell, Cell_X(startcell), Cell_Y(startcell),
+		//	(int)dest, Cell_X(dest), Cell_Y(dest),
+		//	(int)next, (int)direction);
 
 		/*
 		**	If we can move here, then make this our next move.
 		*/
-		DBG("Find_Path: Passable_Cell(%d)", (int)next);
+		//DBG("Find_Path: Passable_Cell(%d)", (int)next);
 		cost = Passable_Cell(next, direction, threat, threshhold);
-		DBG("Find_Path: cost=%d DrawPath=%d", cost, DrawPath);
+		//DBG("Find_Path: cost=%d DrawPath=%d", cost, DrawPath);
 		if (cost) {
-			DBG("Find_Path: passable, Draw_Cell_Point");
+			//DBG("Find_Path: passable, Draw_Cell_Point");
 			Draw_Cell_Point(next, true, threat_stage);
-			DBG("Find_Path: calling Register_Cell");
+			//DBG("Find_Path: calling Register_Cell");
 			Register_Cell(&path, next, direction, cost, threshhold);
-			DBG("Find_Path: registered");
+			//DBG("Find_Path: registered");
 		} else {
-			DBG("Find_Path: obstacle at %d, skipping", (int)next);
+			//DBG("Find_Path: obstacle at %d, skipping", (int)next);
 			break; /* TODO: Follow_Edge obstacle handling needs LP64 audit */
 			if (0) { /* disabled: Follow_Edge causes stack corruption on LP64 */
 			if (Debug_Find_Path && DrawPath) {

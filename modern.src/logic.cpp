@@ -191,11 +191,11 @@ void LogicClass::AI(void)
 	/*
 	**	AI for all sentient objects is processed.
 	*/
-	DBG("Logic.AI: %d objects", Count());
+	//DBG("Logic.AI: %d objects", Count());
 	for (index = 0; index < Count(); index++) {
 		ObjectClass * obj = (*this)[index];
 
-		DBG("Logic.AI: obj[%d] %s", index, obj ? obj->Class_Of().IniName : "(null)");
+		//DBG("Logic.AI: obj[%d] %s", index, obj ? obj->Class_Of().IniName : "(null)");
 		obj->AI();
 
 		/*

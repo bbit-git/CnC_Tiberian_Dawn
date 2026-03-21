@@ -205,7 +205,7 @@ void Main_Game(int argc, char *argv[])
 			*/
 			if (!Debug_Map) {
 				TotalLocks=0;
-				DBG("Main_Loop: calling");
+				//DBG("Main_Loop: calling");
 				if (Main_Loop()) {
 					DBG("Main_Loop: returned true (exit)");
 					break;
@@ -1477,12 +1477,12 @@ bool Main_Loop()
 	/*
 	** I think I'm gonna cry if this makes it work
 	*/
-	DBG("Main_Loop: enter");
+	//DBG("Main_Loop: enter");
 	if (Get_Mouse_State())Show_Mouse();
 	Check_For_Focus_Loss();
-	DBG("Main_Loop: Reallocate_Big_Shape_Buffer");
+	//DBG("Main_Loop: Reallocate_Big_Shape_Buffer");
 	Reallocate_Big_Shape_Buffer();
-	DBG("Main_Loop: timers");
+	//DBG("Main_Loop: timers");
 
 	/*
 	** Sync-bug trapping code
@@ -1537,14 +1537,14 @@ bool Main_Loop()
 		if (SpecialDialog == SDLG_NONE && GameInFocus) {
 
 			WWMouse->Erase_Mouse(HidPage, TRUE);
-			DBG("Main_Loop: Input");
+			//DBG("Main_Loop: Input");
 			Map.Input(input, x, y);
 			if (input) {
 				Keyboard_Process(input);
 			}
-			DBG("Main_Loop: Render");
+			//DBG("Main_Loop: Render");
 			Map.Render();
-			DBG("Main_Loop: Render done");
+			//DBG("Main_Loop: Render done");
 		}
 	}
 
@@ -1562,12 +1562,12 @@ bool Main_Loop()
 	** layer in the same way, and any processing done that's based on
 	** the order of this layer will sync on different machines.
 	*/
-	DBG("Main_Loop: Sort");
+	//DBG("Main_Loop: Sort");
 	Map.Layer[LAYER_GROUND].Sort();
 
-	DBG("Main_Loop: Logic.AI");
+	//DBG("Main_Loop: Logic.AI");
 	Logic.AI();
-	DBG("Main_Loop: Logic.AI done");
+	//DBG("Main_Loop: Logic.AI done");
 
 //	Heap_Dump_Check( "After Logic.AI" );
 
@@ -1591,9 +1591,9 @@ bool Main_Loop()
 	/*
 	**	Process all commands that are ready to be processed.
 	*/
-	DBG("Main_Loop: Queue_AI");
+	//DBG("Main_Loop: Queue_AI");
 	Queue_AI();
-	DBG("Main_Loop: Queue_AI done");
+	//DBG("Main_Loop: Queue_AI done");
 
 	/*
 	**	Keep track of elapsed time in the game.
@@ -2745,7 +2745,7 @@ void CC_Draw_Shape(void const * shapefile, int shapenum, int x, int y, WindowNum
 		if (!is_shp) {
 			shape_size = Build_Frame(shapefile, shapenum, ShapeBuffer);
 		}
-		DBG("CC_Draw_Shape: is_shp=%d size=%lu", is_shp, shape_size);
+		//DBG("CC_Draw_Shape: is_shp=%d size=%lu", is_shp, shape_size);
 		if (!is_shp && shape_size) {
 			shape_pointer = (char *)shape_size;
 			frame_w = Get_Build_Frame_Width(shapefile);
