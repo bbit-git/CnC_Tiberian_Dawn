@@ -498,14 +498,14 @@ inline int Coord_Y(COORDINATE coord) {return (short)(HIGH_WORD(coord));}
 inline int Cell_X(CELL cell) {return (int)(((unsigned)cell) & 0x3F);}
 inline int Cell_Y(CELL cell) {return (int)(((unsigned)cell) >> 6);}
 inline int Dir_Diff(DirType dir1, DirType dir2) {return (int)(*((signed char*)&dir2) - *((signed char*)&dir1));}
-inline CELL Coord_XLepton(COORDINATE coord) {return (CELL)(*((unsigned char*)&coord));}
-inline CELL Coord_YLepton(COORDINATE coord) {return (CELL)(*(((unsigned char*)&coord)+2));}
-inline COORDINATE Coord_Add(COORDINATE coord1, COORDINATE coord2) {return (COORDINATE)MAKE_LONG((*((short*)(&coord1)+1) + *((short*)(&coord2)+1)), (*((short*)(&coord1)) + *((short*)(&coord2))));}
-inline COORDINATE Coord_Sub(COORDINATE coord1, COORDINATE coord2) {return (COORDINATE)MAKE_LONG((*((short*)(&coord1)+1) - *((short*)(&coord2)+1)), (*((short*)(&coord1)) - *((short*)(&coord2))));}
-inline COORDINATE Coord_Snap(COORDINATE coord) {return (COORDINATE)MAKE_LONG((((*(((unsigned short *)&coord)+1))&0xFF00)|0x80), (((*((unsigned short *)&coord))&0xFF00)|0x80));}
-inline COORDINATE Coord_Mid(COORDINATE coord1, COORDINATE coord2) {return (COORDINATE)MAKE_LONG((*((unsigned short *)(&coord1)+1) + *((unsigned short *)(&coord2)+1))>>1, (*((unsigned short *)(&coord1)) + *((unsigned short *)(&coord2)))>>1);}
+inline CELL Coord_XLepton(COORDINATE coord) {return (CELL)(coord & 0xFF);}
+inline CELL Coord_YLepton(COORDINATE coord) {return (CELL)((coord >> 16) & 0xFF);}
+inline COORDINATE Coord_Add(COORDINATE coord1, COORDINATE coord2) {int _x=(short)LOW_WORD(coord1)+(short)LOW_WORD(coord2); int _y=(short)HIGH_WORD(coord1)+(short)HIGH_WORD(coord2); return (COORDINATE)MAKE_LONG(_y,_x);}
+inline COORDINATE Coord_Sub(COORDINATE coord1, COORDINATE coord2) {int _x=(short)LOW_WORD(coord1)-(short)LOW_WORD(coord2); int _y=(short)HIGH_WORD(coord1)-(short)HIGH_WORD(coord2); return (COORDINATE)MAKE_LONG(_y,_x);}
+inline COORDINATE Coord_Snap(COORDINATE coord) {int _x=(LOW_WORD(coord)&0xFF00)|0x80; int _y=(HIGH_WORD(coord)&0xFF00)|0x80; return (COORDINATE)MAKE_LONG(_y,_x);}
+inline COORDINATE Coord_Mid(COORDINATE coord1, COORDINATE coord2) {unsigned _x=((unsigned)LOW_WORD(coord1)+(unsigned)LOW_WORD(coord2))>>1; unsigned _y=((unsigned)HIGH_WORD(coord1)+(unsigned)HIGH_WORD(coord2))>>1; return (COORDINATE)MAKE_LONG(_y,_x);}
 inline COORDINATE Cell_Coord(CELL cell) {return (COORDINATE) MAKE_LONG( (((cell & 0x0FC0)<<2)|0x80), ((((cell & 0x003F)<<1)+1)<<7) );}
-inline COORDINATE XYPixel_Coord(int x, int y) {return ((COORDINATE)MAKE_LONG((int)(((long)y*(long)ICON_LEPTON_H)/(long)ICON_PIXEL_H), (int)(((long)x*(long)ICON_LEPTON_W)/(long)ICON_PIXEL_W)));}
+inline COORDINATE XYPixel_Coord(int x, int y) {return ((COORDINATE)MAKE_LONG((y*ICON_LEPTON_H)/ICON_PIXEL_H, (x*ICON_LEPTON_W)/ICON_PIXEL_W));}
 inline int Facing_To_32(DirType facing) {return Facing32[facing];}
 inline DirType Direction256(COORDINATE coord1, COORDINATE coord2) {return ((DirType)Desired_Facing256(Coord_X(coord1), Coord_Y(coord1), Coord_X(coord2), Coord_Y(coord2)));}
 inline DirType Direction(COORDINATE coord1, COORDINATE coord2) {return ((DirType)Desired_Facing256(Coord_X(coord1), Coord_Y(coord1), Coord_X(coord2), Coord_Y(coord2)));}
