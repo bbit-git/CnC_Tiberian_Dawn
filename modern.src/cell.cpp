@@ -850,11 +850,8 @@ void CellClass::Draw_It(int x, int y, int draw_type) const
 	/*
 	**	Draw the stamp of the template.
 	*/
-	if (Debug_Icon) {
-		LogicPage->Fill_Rect(Map.TacPixelX+x, Map.TacPixelY+y, Map.TacPixelX+x+ICON_PIXEL_W-1, Map.TacPixelY+y+ICON_PIXEL_H-1, Sim_Random_Pick(1, 254));
-		FontXSpacing -= 2;
-		Fancy_Text_Print("%d\r%2X%c\r%02X.%02X", Map.TacPixelX+x+(ICON_PIXEL_W>>1), Map.TacPixelY+y, WHITE, TBLACK, TPF_6POINT|TPF_NOSHADOW|TPF_CENTER, cell, Flag.Composite, (Cell_Occupier() ? '*' : ' '), Overlay, OverlayData);
-		FontXSpacing += 2;
+	if (0) {
+		/* Debug_Icon cell fill disabled — overlay now in DisplayClass::Draw_It */
 	} else {
 
 

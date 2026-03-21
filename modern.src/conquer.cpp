@@ -724,7 +724,7 @@ void Keyboard_Process(KeyNumType &input)
 #endif
 
 #ifdef CHEAT_KEYS
-	if (Debug_Flag && input && (input & KN_RLSE_BIT) == 0) {
+	if (input && (input & KN_RLSE_BIT) == 0) {
 		Debug_Key(input);
 	}
 #endif
@@ -2849,6 +2849,11 @@ void CC_Draw_Shape(void const * shapefile, int shapenum, int x, int y, WindowNum
 
 			if (x > ( WindowList[window][WINDOWWIDTH] << 2)) {
 				predoffset = -predoffset;
+			}
+
+			/* Debug: mark actual sprite center with green pixel */
+			if (Debug_Icon) {
+				draw_window.Put_Pixel(x, y, GREEN);
 			}
 
 			if (draw_window.Lock()){
