@@ -2717,18 +2717,32 @@ void CC_Draw_Shape(void const * shapefile, int shapenum, int x, int y, WindowNum
 		DBG("CC_Draw_Shape: shape=%p num=%d x=%d y=%d flags=%x", shapefile, shapenum, x, y, flags);
 
 		int frame_w, frame_h;
+		bool is_shp = false;
 
 		/*
-		** Try Build_Frame first (KeyFrame format). If it returns 0,
-		** fall back to SHP format via Extract_Shape.
+		** Detect SHP vs KeyFrame format BEFORE calling Build_Frame.
+		** SHP: [uint16 NumShapes][uint32 offsets...] — Offsets[0] ≈ (NumShapes+1)*4
+		** KeyFrame: [uint16 frames][uint16 x][uint16 y][uint16 w][uint16 h]...
 		*/
-		shape_size = Build_Frame(shapefile, shapenum, ShapeBuffer);
-		DBG("CC_Draw_Shape: Build_Frame returned %lu", shape_size);
-		if (shape_size) {
+		{
+			const uint8_t* raw = (const uint8_t*)shapefile;
+			uint16_t nshp = *(const uint16_t*)raw;
+			uint32_t off0 = *(const uint32_t*)(raw + 2);
+			uint32_t expected = (uint32_t)(nshp + 1) * 4;
+			if (nshp > 0 && nshp <= 4096 && off0 >= expected && off0 <= expected + 32) {
+				is_shp = true;
+			}
+		}
+
+		if (!is_shp) {
+			shape_size = Build_Frame(shapefile, shapenum, ShapeBuffer);
+		}
+		DBG("CC_Draw_Shape: is_shp=%d size=%lu", is_shp, shape_size);
+		if (!is_shp && shape_size) {
 			shape_pointer = (char *)shape_size;
 			frame_w = Get_Build_Frame_Width(shapefile);
 			frame_h = Get_Build_Frame_Height(shapefile);
-			DBG("CC_Draw_Shape: KeyFrame %dx%d", frame_w, frame_h);
+			if (frame_w <= 0 || frame_h <= 0 || frame_w > 1024 || frame_h > 1024) return;
 		} else {
 			/*
 			** Build_Frame failed — try SHP format.
