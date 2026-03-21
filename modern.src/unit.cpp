@@ -379,6 +379,15 @@ COORDINATE UnitClass::Sort_Y(void) const
 void UnitClass::AI(void)
 {
 	Validate();
+	/* Check vtable integrity — detect corruption before it crashes */
+	{
+		void* actual_vt = *(void**)this;
+		if (actual_vt != UnitClass::VTable) {
+			fprintf(stderr, "UNIT VTABLE BAD: this=%p vtable=%p expected=%p Class=%p\n",
+				(void*)this, actual_vt, UnitClass::VTable, (void*)Class);
+			return;
+		}
+	}
 	//DBG("UnitClass::AI %s Coord=%x Mission=%d", Class->IniName, Coord, (int)Mission);
 
 	/*
@@ -425,8 +434,6 @@ void UnitClass::AI(void)
 	**	on the map in the normal fashion.
 	*/
 	if (*this == UNIT_HOVER) {
-//		Mark_For_Redraw();
-//if (IsDown) Mono_Printf("*");
 		Mark(MARK_CHANGE);
 	}
 
@@ -3033,7 +3040,7 @@ void UnitClass::Init(void)
 	Units.Free_All();
 
 	ptr = new UnitClass();
-	VTable = ((void **)(((char *)ptr) + sizeof(AbstractClass) - 4))[0];
+	VTable = *(void**)ptr;
 	delete ptr;
 }
 

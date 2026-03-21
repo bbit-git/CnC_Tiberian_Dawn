@@ -192,7 +192,7 @@ void SmudgeClass::Init(void)
 	Smudges.Free_All();
 
 	ptr = new SmudgeClass();
-	VTable = ((void **)(((char *)ptr) + sizeof(AbstractClass) - 4))[0];
+	VTable = *(void**)ptr;
 	delete ptr;
 }
 
