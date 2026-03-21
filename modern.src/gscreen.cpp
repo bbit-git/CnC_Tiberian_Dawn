@@ -518,7 +518,8 @@ void GScreenClass::Blit_Display(void)
 #endif	//(0)
 
 	} else {
-		ModeX_Blit (&HiddenPage);
+		/* 320x200 mode: blit HidPage → SeenBuff (no ModeX on SDL) */
+		HidPage.Blit(SeenBuff, 0, 0, 0, 0, HidPage.Get_Width(), HidPage.Get_Height(), (BOOL)FALSE);
 	}
 
 }

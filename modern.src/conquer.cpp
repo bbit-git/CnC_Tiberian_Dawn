@@ -162,7 +162,12 @@ void Main_Game(int argc, char *argv[])
 	*/
 	while (Select_Game(fade)) {
 		ScenarioInit = 0;		// Kludge.
-		DBG("Main_Game: Select_Game returned true, fading palette");
+		DBG("Main_Game: Select_Game returned true, switching to 320x200");
+
+		/* Switch to native 320x200 for gameplay rendering */
+		extern void TD_SDL_Switch_Resolution(int, int);
+		TD_SDL_Switch_Resolution(320, 200);
+		Options.Adjust_Variables_For_Resolution();
 
 		fade = true;
 
@@ -308,6 +313,13 @@ void Main_Game(int argc, char *argv[])
 #endif
 		//Stop_Profiler();
 		InMainLoop = false;
+
+		/* Switch back to 640x400 for menu rendering */
+		{
+			extern void TD_SDL_Switch_Resolution(int, int);
+			TD_SDL_Switch_Resolution(640, 400);
+			Options.Adjust_Variables_For_Resolution();
+		}
 
 		if (!GameStatisticsPacketSent && PacketLater){
 			Send_Statistics_Packet();
@@ -2714,10 +2726,11 @@ void CC_Draw_Shape(void const * shapefile, int shapenum, int x, int y, WindowNum
 	unsigned	long	shape_size;
 
 	if (shapefile && shapenum != -1) {
-		DBG("CC_Draw_Shape: shape=%p num=%d x=%d y=%d flags=%x", shapefile, shapenum, x, y, flags);
 
 		int frame_w, frame_h;
 		bool is_shp = false;
+
+		/* Coordinates from Coord_To_Pixel are in native 320x200 space */
 
 		/*
 		** Detect SHP vs KeyFrame format BEFORE calling Build_Frame.

@@ -175,7 +175,11 @@ void Choose_Side(void)
 
 	while (Get_Mouse_State()) Show_Mouse();
 
-	while (endframe != frame || (speechplaying && Is_Sample_Playing(speech)) ) {
+	/* LP64/SDL3 fix: use latching flag for endframe match. Don't block on
+	** Is_Sample_Playing — SDL3 bound streams may never report 0 queued. */
+	bool reached_endframe = false;
+	while (!reached_endframe) {
+		if (endframe != 255 && endframe == frame) reached_endframe = true;
 		Animate_Frame(anim, SysMemPage, frame++);
 		if (setpalette) {
 			Wait_Vert_Blank();
