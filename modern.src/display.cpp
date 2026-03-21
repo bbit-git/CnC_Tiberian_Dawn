@@ -2241,6 +2241,15 @@ void DisplayClass::Redraw_Icons(int draw_flags)
  *=============================================================================================*/
 void DisplayClass::Redraw_Shadow(void)
 {
+	static int _strace = 0;
+	if (_strace++ < 3) {
+		int unmapped = 0, mapped = 0;
+		for (int i = 0; i < MAP_CELL_TOTAL; i++) {
+			if ((*this)[i].IsMapped) mapped++; else unmapped++;
+		}
+		fprintf(stderr, "Redraw_Shadow: IsShadowPresent=%d mapped=%d unmapped=%d Debug_Unshroud=%d\n",
+			IsShadowPresent, mapped, unmapped, Debug_Unshroud);
+	}
 	if (IsShadowPresent) {
 		for (int y = -Coord_YLepton(TacticalCoord); y <= TacLeptonHeight; y += CELL_LEPTON_H) {
 			for (int x = -Coord_XLepton(TacticalCoord); x <= TacLeptonWidth; x += CELL_LEPTON_W) {

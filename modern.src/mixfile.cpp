@@ -271,7 +271,9 @@ MixFileClass * MixFileClass::Finder(char const *filename)
 
 	ptr = First;
 	while (ptr) {
-		if (stricmp(&ptr->Filename[strlen(ptr->Filename)-strlen(filename)], filename) == 0) {
+		int flen = strlen(ptr->Filename);
+		int qlen = strlen(filename);
+		if (qlen <= flen && stricmp(&ptr->Filename[flen - qlen], filename) == 0) {
 			return(ptr);
 		}
 		ptr = (MixFileClass *)ptr->Get_Next();

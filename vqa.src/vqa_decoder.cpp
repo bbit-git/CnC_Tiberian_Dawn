@@ -613,8 +613,8 @@ long VQA_Play(VQAHandle* handle, int mode) {
 
         if (g_video_renderer->poll_abort()) {
             dec->stopped = true;
-            extern int Brokeout;
-            Brokeout = 1;
+            extern bool Brokeout;
+            Brokeout = true;
             break;
         }
 
