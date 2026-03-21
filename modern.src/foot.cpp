@@ -443,7 +443,7 @@ bool FootClass::Basic_Path(void)
 			**	scanning is unnecessary.
 			*/
 			DBG("Basic_Path: Find_Path cell=%d maxtype=%d", (int)cell, (int)maxtype);
-			path = Find_Path(cell, &workpath1[0], sizeof(workpath1), maxtype);
+			path = Find_Path(cell, &workpath1[0], (sizeof(workpath1)/sizeof(workpath1[0])), maxtype);
 			if (path && path->Cost) {
 				memcpy(&path1, path, sizeof(path1));
 				found1 = true;
@@ -453,10 +453,10 @@ bool FootClass::Basic_Path(void)
 				**	comparison with the most agressive path. If they are very close, then
 				**	go with the best (easiest) path method.
 				*/
-				path = Find_Path(cell, &workpath2[0], sizeof(workpath2), MOVE_CLOAK);
+				path = Find_Path(cell, &workpath2[0], (sizeof(workpath2)/sizeof(workpath2[0])), MOVE_CLOAK);
 				if (path && path->Cost && path->Cost < MAX((path1.Cost + (path1.Cost/2)), 3)) {
 					memcpy(&path1, path, sizeof(path1));
-					memcpy(workpath1, workpath2, sizeof(workpath1));
+					memcpy(workpath1, workpath2, (sizeof(workpath1)/sizeof(workpath1[0])));
 				} else {
 
 					/*
@@ -464,10 +464,10 @@ bool FootClass::Basic_Path(void)
 					**	the rest of the path options, looking for the best one.
 					*/
 					for (MoveType move = MOVE_MOVING_BLOCK; move < maxtype; move++) {
-						path = Find_Path(cell, &workpath2[0], sizeof(workpath2), move);
+						path = Find_Path(cell, &workpath2[0], (sizeof(workpath2)/sizeof(workpath2[0])), move);
 						if (path && path->Cost && path->Cost < MAX((path1.Cost + (path1.Cost/2)), 3)) {
 							memcpy(&path1, path, sizeof(path1));
-							memcpy(workpath1, workpath2, sizeof(workpath1));
+							memcpy(workpath1, workpath2, (sizeof(workpath1)/sizeof(workpath1[0])));
 						}
 					}
 				}
@@ -476,19 +476,19 @@ bool FootClass::Basic_Path(void)
 #ifdef OBSOLETE
 			for (MoveType move = MOVE_CLOAK; move <= maxtype; move++) {
 				if (!found1) {
-					path = Find_Path(cell, &workpath1[0], sizeof(workpath1), move);
+					path = Find_Path(cell, &workpath1[0], (sizeof(workpath1)/sizeof(workpath1[0])), move);
 					if (path && path->Cost) {
 						memcpy(&path1, path, sizeof(path1));
 						found1 = true;
 						if (path1.Cost < 5) break;
 					}
 				} else {
-					path = Find_Path(cell, &workpath2[0], sizeof(workpath2), move);
+					path = Find_Path(cell, &workpath2[0], (sizeof(workpath2)/sizeof(workpath2[0])), move);
 
 					if (path) {
 						if (path->Cost && path->Cost <= path1.Cost/2) {
 							memcpy(&path1, path, sizeof(path1));
-							memcpy(workpath1, workpath2, sizeof(workpath1));
+							memcpy(workpath1, workpath2, (sizeof(workpath1)/sizeof(workpath1[0])));
 						}
 					}
 				}
@@ -501,7 +501,7 @@ bool FootClass::Basic_Path(void)
 			*/
 			if (found1) {
 				Fixup_Path(&path1);
-				memcpy(&Path[0], &workpath1[0], MIN(path->Length, (int)sizeof(Path)));
+				memcpy(&Path[0], &workpath1[0], MIN(path->Length, (int)(sizeof(Path)/sizeof(Path[0]))) * sizeof(Path[0])); /* LP64: length is in elements, memcpy needs bytes */
 			}
 
 			Mark(MARK_DOWN);

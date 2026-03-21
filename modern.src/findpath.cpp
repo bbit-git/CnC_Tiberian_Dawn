@@ -286,7 +286,7 @@ bool FootClass::Unravel_Loop(PathType *path, CELL &cell, FacingType &dir, int sx
 		/*
 		** Remove this cells flag from the overlap list for the path
 		*/
-		path->Overlap[curr_pos >> 5] &= ~(1 << ((curr_pos & 31) - 1));
+		path->Overlap[curr_pos >> 5] &= ~(1 << (curr_pos & 31));
 
 		/*
 		** Mark cell on the map
@@ -330,7 +330,7 @@ bool FootClass::Register_Cell(PathType *path, CELL cell, FacingType dir, int cos
 {
 	FacingType  *list;
 	int 	pos  = cell >> 5;
-	int	bit  = (cell & 31) - 1;
+	int	bit  = (cell & 31); /* LP64: was (cell & 31) - 1, but shift by -1 is UB */
 
 	/*
 	** See if this point has already been registered as on the list.  If so
@@ -349,7 +349,7 @@ bool FootClass::Register_Cell(PathType *path, CELL cell, FacingType dir, int cos
 
 		if (path->Command[path->Length - 1] == Opposite(dir)) {
 			CELL pos = Adjacent_Cell(cell, Opposite(dir));
-			path->Overlap[pos >> 5] &= ~(1 << ((pos & 31) - 1));
+			path->Overlap[pos >> 5] &= ~(1 << (pos & 31));
 			path->Length--;
 			Draw_Cell_Point(pos, true, -1, BLUE);
 		} else {
@@ -401,7 +401,7 @@ bool FootClass::Register_Cell(PathType *path, CELL cell, FacingType dir, int cos
 			while (idx < path->Length) {
 				pos			= Adjacent_Cell(pos, *list);
 				path->Cost -= Passable_Cell(pos, *list, -1, threshhold);
-				path->Overlap[pos >> 5] &= ~(1 << ((pos & 31) - 1));
+				path->Overlap[pos >> 5] &= ~(1 << (pos & 31));
 				Draw_Cell_Point(pos, true, -1, LTBLUE);
 				idx++;
 				list++;
@@ -423,9 +423,10 @@ bool FootClass::Register_Cell(PathType *path, CELL cell, FacingType dir, int cos
 #ifdef OBSOLETE
 bool FootClass::Register_Cell(PathType *path, CELL cell, FacingType dir, int cost, MoveType threshhold)
 {
+	DBG("Register_Cell: cell=%d dir=%d cost=%d len=%d", (int)cell, (int)dir, cost, path->Length);
 	FacingType  *list;
 	int 	pos  = cell >> 5;
-	int	bit  = (cell & 31) - 1;
+	int	bit  = (cell & 31); /* LP64: was (cell & 31) - 1, but shift by -1 is UB */
 	int	idx;
 
 	/*
@@ -445,7 +446,7 @@ bool FootClass::Register_Cell(PathType *path, CELL cell, FacingType dir, int cos
 
 		if (path->Command[path->Length - 1] == Opposite(dir)) {
 			CELL pos = Adjacent_Cell(cell, Opposite(dir));
-			path->Overlap[pos >> 5] &= ~(1 << ((pos & 31) - 1));
+			path->Overlap[pos >> 5] &= ~(1 << (pos & 31));
 			path->Length--;
 			Draw_Cell_Point(pos, true, -1, BLUE);
 		} else {
@@ -486,7 +487,7 @@ bool FootClass::Register_Cell(PathType *path, CELL cell, FacingType dir, int cos
 			while (idx < path->Length) {
 				pos			= Adjacent_Cell(pos, *list);
 				path->Cost -= Passable_Cell(pos, *list, -1, threshhold);
-				path->Overlap[pos >> 5] &= ~(1 << ((pos & 31) - 1));
+				path->Overlap[pos >> 5] &= ~(1 << (pos & 31));
 				Draw_Cell_Point(pos, true, -1, LTBLUE);
 				idx++;
 				list++;
@@ -598,7 +599,7 @@ PathType * FootClass::Find_Path(CELL dest, FacingType *final_moves, int maxlen, 
 	** on the overlap list.  (Otherwise the harvesters will drive in circles... )
 	*/
 //	memset(path.Overlap, 0, 512);
-	path.Overlap[source >> 5] |= (1 << ((source & 31) - 1));
+	path.Overlap[source >> 5] |= (1 << (source & 31));
 	DBG("Find_Path: overlap set, entering main loop");
 
 	startcell 			= source;
@@ -652,11 +653,19 @@ top_of_list:
 		/*
 		**	If we can move here, then make this our next move.
 		*/
+		DBG("Find_Path: Passable_Cell(%d)", (int)next);
 		cost = Passable_Cell(next, direction, threat, threshhold);
+		DBG("Find_Path: cost=%d DrawPath=%d", cost, DrawPath);
 		if (cost) {
+			DBG("Find_Path: passable, Draw_Cell_Point");
 			Draw_Cell_Point(next, true, threat_stage);
+			DBG("Find_Path: calling Register_Cell");
 			Register_Cell(&path, next, direction, cost, threshhold);
+			DBG("Find_Path: registered");
 		} else {
+			DBG("Find_Path: obstacle at %d, skipping", (int)next);
+			break; /* TODO: Follow_Edge obstacle handling needs LP64 audit */
+			if (0) { /* disabled: Follow_Edge causes stack corruption on LP64 */
 			if (Debug_Find_Path && DrawPath) {
 				Debug_Draw_Map("Walk Through Obstacle", startcell, dest, true);
 			}
@@ -742,7 +751,7 @@ top_of_list:
 				pleft.Overlap 	= LeftOverlap;
 				Mem_Copy(path.Command, pleft.Command, path.Length);
 				Mem_Copy(path.Overlap, pleft.Overlap, sizeof(LeftOverlap));
-				left = Follow_Edge(startcell, next, &pleft, COUNTERCLOCK, direction, threat, threat_stage, sizeof(moves_left), threshhold);
+				left = Follow_Edge(startcell, next, &pleft, COUNTERCLOCK, direction, threat, threat_stage, (sizeof(moves_left)/sizeof(moves_left[0])), threshhold);
 //				left = Follow_Edge(startcell, next, &pleft, COUNTERCLOCK, direction, threat, threat_stage, follow_len, threshhold);
 
 				if (left) {
@@ -769,7 +778,7 @@ top_of_list:
 				pright.Overlap = RightOverlap;
 				Mem_Copy(path.Command, pright.Command, path.Length);
 				Mem_Copy(path.Overlap, pright.Overlap, sizeof(RightOverlap));
-				right = Follow_Edge(startcell, next, &pright, CLOCK, direction, threat, threat_stage, sizeof(moves_right), threshhold);
+				right = Follow_Edge(startcell, next, &pright, CLOCK, direction, threat, threat_stage, (sizeof(moves_right)/sizeof(moves_right[0])), threshhold);
 //				right = Follow_Edge(startcell, next, &pright, CLOCK, direction, threat, threat_stage, follow_len, threshhold);
 
 				/*
@@ -871,6 +880,7 @@ top_of_list:
 			}
 			Debug_Draw_Map("Walking to next obstacle", next, dest, true);
 		}
+		} /* end disabled Follow_Edge block */
 		startcell = next;
 	}
 
