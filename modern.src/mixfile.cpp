@@ -245,11 +245,7 @@ MixFileClass::MixFileClass(char const *filename)
 void const * MixFileClass::Retrieve(char const *filename) {
 	void *ptr = 0;
 	Offset(filename, &ptr);
-//	if (!ptr) {
-//		errno = ENOENT;
-//		File_Fatal(filename);
-//	}
-	return(ptr); 
+	return(ptr);
 };
 
 
@@ -495,10 +491,11 @@ bool MixFileClass::Offset(char const *filename, void ** realptr, MixFileClass **
 	while (ptr) {
 		SubBlock * block;
 
-		/*
-		**	Binary search for the file in this mixfile. If it is found, then extract the
-		**	appropriate information and store it in the locations provided and then return.
-		*/
+		if (!ptr->Buffer || ptr->Count <= 0 || ptr->Count > 10000) {
+			ptr = (MixFileClass *)ptr->Get_Next();
+			continue;
+		}
+
 		/* Linear search — try both remastered (4-byte chunk) and old (byte-by-byte) CRCs */
 		block = nullptr;
 		for (int i = 0; i < ptr->Count; i++) {

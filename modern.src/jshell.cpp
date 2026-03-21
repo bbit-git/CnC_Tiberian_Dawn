@@ -72,8 +72,8 @@ void * Small_Icon(void const * iconptr, int iconnum)
 	unsigned char * data;
 
 	if (iconptr) {
-		iconnum = iptr->Map[iconnum];
-		data = &iptr->Icons[iconnum*(24*24)];
+		iconnum = IControl_Map(iconptr)[iconnum];
+		data = &IControl_Icons(iconptr)[iconnum*(24*24)];
 
 		for (int index = 0; index < 9; index++) {
 			int _offsets[9] = {
