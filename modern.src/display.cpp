@@ -635,11 +635,10 @@ void DisplayClass::Set_View_Dimensions(int x, int y, int width, int height)
 	if (width == -1) {
 		width = SeenBuff.Get_Width() - x;
 	}
-	TacLeptonWidth = Pixel_To_Lepton(width);
-
 	if (height == -1) {
 		height = SeenBuff.Get_Height() - y;
 	}
+	TacLeptonWidth = Pixel_To_Lepton(width);
 	TacLeptonHeight = Pixel_To_Lepton(height);
 
 	/*
@@ -1644,16 +1643,9 @@ bool DisplayClass::Coord_To_Pixel(COORDINATE coord, int &x, int &y)
 {
 	static int _trace = 0;
 	if (coord) {
+		/* Revert to original Coord_To_Pixel logic */
 		int xtac = Pixel_To_Lepton(Lepton_To_Pixel(Coord_X(TacticalCoord)));
 		int xoff = Pixel_To_Lepton(Lepton_To_Pixel(Coord_X(coord)));
-		if (_trace < 1) {
-			DBG("C2P: TacCoord=%08x coord=%08x Coord_X(tac)=%d Coord_Y(tac)=%d Coord_X(c)=%d Coord_Y(c)=%d",
-				TacticalCoord, coord, Coord_X(TacticalCoord), Coord_Y(TacticalCoord),
-				Coord_X(coord), Coord_Y(coord));
-			DBG("C2P: TacLepW=%d TacLepH=%d TacPixX=%d TacPixY=%d",
-				(int)TacLeptonWidth, (int)TacLeptonHeight, TacPixelX, TacPixelY);
-			_trace++;
-		}
 
 		xoff = (xoff+EDGE_ZONE) - xtac;
 		if ((unsigned)xoff <= TacLeptonWidth + EDGE_ZONE*2) {
@@ -2124,6 +2116,13 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
  *=============================================================================================*/
 void DisplayClass::Redraw_Icons(int draw_flags)
 {
+	static int _trace = 0;
+	if (_trace < 2) {
+		DBG("Redraw_Icons: TacW=%d TacH=%d XLep=%d YLep=%d cellW=%d",
+			(int)TacLeptonWidth, (int)TacLeptonHeight,
+			Coord_XLepton(TacticalCoord), Coord_YLepton(TacticalCoord), CELL_LEPTON_W);
+		_trace++;
+	}
 	IsShadowPresent = false;
 	for (int y = -Coord_YLepton(TacticalCoord); y <= TacLeptonHeight; y += CELL_LEPTON_H) {
 		for (int x = -Coord_XLepton(TacticalCoord); x <= TacLeptonWidth; x += CELL_LEPTON_W) {
@@ -2139,6 +2138,11 @@ void DisplayClass::Redraw_Icons(int draw_flags)
 				int ypixel;
 
 				if (Coord_To_Pixel(coord, xpixel, ypixel)) {
+					static int _dtrace = 0;
+					if (_dtrace < 20) {
+						DBG("Redraw_Icons: cell=%d xpix=%d ypix=%d", (int)cell, xpixel, ypixel);
+						_dtrace++;
+					}
 					CellClass * cellptr = &(*this)[Coord_Cell(coord)];
 
 					/*
