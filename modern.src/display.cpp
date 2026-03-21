@@ -1771,7 +1771,9 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
 {
 	int	x,y;			// Working cell index values.
 
+	DBG("DisplayClass::Draw_It forced=%d IsToRedraw=%d", forced, IsToRedraw);
 	MapClass::Draw_It(forced);
+	DBG("DisplayClass::Draw_It MapClass done");
 
 	if (IsToRedraw || forced) {
 		IsToRedraw = false;
@@ -1780,6 +1782,7 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
 		**	In rubber band mode, mark all cells under the "rubber band" to be
 		**	redrawn.
 		*/
+		DBG("DisplayClass::Draw_It Refresh_Band");
 		Refresh_Band();
 
 		/*
@@ -2018,7 +2021,9 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
 		**	flagged to be redrawn.
 		*/
 		//Redraw_Icons(CELL_BLIT_ONLY);
+		DBG("DisplayClass::Draw_It Redraw_Icons");
 		Redraw_Icons(0);
+		DBG("DisplayClass::Draw_It Redraw_Icons done");
 
 		/*
 		**	Once the icons are drawn, duplicate the bottom line of the screen into the phantom
@@ -2031,22 +2036,16 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
 #endif //FIX_ME_LATER
 		if (HidPage.Lock()){
 
-			//Redraw_Icons(CELL_DRAW_ONLY);
-
-			/*
-			**	Redraw the game objects layer by layer. The layer drawing occurs on the ground layer
-			**	first and then followed by all the layers in increasing altituded.
-			*/
 			for (LayerType layer = LAYER_GROUND; layer < LAYER_COUNT; layer++) {
 				for (int index = 0; index < Layer[layer].Count(); index++) {
-					Layer[layer][index]->Render(forced);
+					ObjectClass* obj = Layer[layer][index];
+					if (!obj) continue;
+					DBG("Render L%d[%d] %s c=%x", (int)layer, index, obj->Class_Of().IniName, obj->Render_Coord());
+					obj->Render(forced);
 				}
 			}
+			DBG("DisplayClass::Draw_It objects done, shadow");
 
-			/*
-			**	Finally, redraw the shadow overlay as necessary.
-			*/
-//Colour_Debug(5);
 			Redraw_Shadow();
 		}
 

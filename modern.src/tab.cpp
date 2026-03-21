@@ -86,6 +86,7 @@ TabClass::TabClass(void)
  *=============================================================================================*/
 void TabClass::Draw_It(bool complete)
 {
+	DBG("TabClass::Draw_It");
 
 	SidebarClass::Draw_It(complete);
 
