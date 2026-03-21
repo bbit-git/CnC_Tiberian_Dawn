@@ -396,8 +396,9 @@ void UnitClass::AI(void)
 	**	Delete this unit if it finds itself off the edge of the map and it is in
 	**	guard or other static mission mode.
 	*/
-	if (!Team && Mission == MISSION_GUARD && !Map.In_Radar(Coord_Cell(Coord))) {
+	if (!Team && Mission == MISSION_GUARD && MissionQueue == MISSION_NONE && !Map.In_Radar(Coord_Cell(Coord))) {
 		Stun();
+		Limbo();
 		delete this;
 		return;
 	}
@@ -930,6 +931,8 @@ ResultType UnitClass::Take_Damage(int & damage, int distance, WarheadType warhea
 		/*
 		**	Finally, delete the vehicle.
 		*/
+		Stun();
+		Limbo();
 		delete this;
 
 	} else {
@@ -1565,11 +1568,11 @@ bool UnitClass::Try_To_Deploy(void)
 					** the owner house's flag home cell (since the house's FlagHome is
 					** presumably 0 at this point).
 					*/
-					fprintf(stderr, "  Stun + Limbo MCV (no delete)\n");
 					Stun();
 					Limbo();
-					//delete this;  // DISABLED — test if crash is from deletion
-					fprintf(stderr, "  MCV limbo'd OK\n");
+					/* delete this — disabled for MCV. Pool slot leaks but avoids
+					** vtable corruption crash. The destructor chain corrupts the vtable
+					** and the slot can be reused before the Logic iteration completes. */
 					return(true);
 				} else {
 
@@ -1748,6 +1751,7 @@ void UnitClass::Per_Cell_Process(bool center)
 			} else {
 				Mark(MARK_DOWN);
 				Stun();
+				Limbo();
 				delete this;
 				return;
 			}

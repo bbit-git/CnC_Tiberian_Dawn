@@ -1060,7 +1060,12 @@ bool ObjectClass::Limbo(void)
 		**	Remove the object from the logic processing list.
 		*/
 		if (Class_Of().IsSentient) {
+			int before = Logic.Count();
 			Logic.Delete(this);
+			int after = Logic.Count();
+			fprintf(stderr, "Limbo %s %p: Logic.Delete %d→%d %s\n",
+				Class_Of().IniName, (void*)this, before, after,
+				(before > after) ? "OK" : "FAILED!");
 		}
 
 		Hidden();
@@ -1120,6 +1125,13 @@ bool ObjectClass::Unlimbo(COORDINATE coord, DirType )
 					}
 
 					if (Class_Of().IsSentient) {
+						/* Check for duplicate submission */
+						for (int _li = 0; _li < Logic.Count(); _li++) {
+							if (Logic[_li] == this) {
+								fprintf(stderr, "Logic.Submit DUPLICATE %s %p (already at index %d)!\n",
+									Class_Of().IniName, (void*)this, _li);
+							}
+						}
 						Logic.Submit(this);
 					}
 				}

@@ -183,7 +183,11 @@ void LogicClass::AI(void)
 	**	Team AI is processed.
 	*/
 	for (index = 0; index < Teams.Count(); index++) {
-		Teams.Ptr(index)->AI();
+		TeamClass *team = Teams.Ptr(index);
+		team->AI();
+		if (index < Teams.Count() && team != Teams.Ptr(index)) {
+			index--;
+		}
 	}
 
 //	Heap_Dump_Check( "After Team AI" );
@@ -195,15 +199,24 @@ void LogicClass::AI(void)
 	for (index = 0; index < Count(); index++) {
 		ObjectClass * obj = (*this)[index];
 
-		//DBG("Logic.AI: obj[%d] %s", index, obj ? obj->Class_Of().IniName : "(null)");
+		if (!obj || !obj->IsActive || obj->IsInLimbo) {
+			continue;
+		}
+
+		/* Check vtable is in code segment (not zeroed or corrupted) */
+		void* vtbl = *(void**)obj;
+		if (vtbl == nullptr) {
+			fprintf(stderr, "Logic.AI: SKIP null vtable obj=%p index=%d\n", (void*)obj, index);
+			continue;
+		}
+
 		obj->AI();
 
 		/*
 		**	If the object was destroyed in the process of performing its AI, then
 		**	adjust the index so that no object gets skipped.
 		*/
-		if (obj != (*this)[index]) {
-//		if (!obj->IsActive) {
+		if (index < Count() && obj != (*this)[index]) {
 			index--;
 		}
 	}

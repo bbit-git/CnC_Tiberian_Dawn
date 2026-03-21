@@ -650,7 +650,7 @@ void InfantryClass::Per_Cell_Process(bool center)
 		TechnoClass * tech = cellptr->Cell_Techno();
 		if (tech && tech->As_Target() == NavCom) {
 			tech->Captured(House);
-			delete this;
+			Limbo(); delete this;
 			return;
 		} else {
 //#ifdef NEVER
@@ -1007,7 +1007,7 @@ void InfantryClass::AI(void)
 
 	if (!Team && Mission == MISSION_GUARD && !Map.In_Radar(Coord_Cell(Coord))) {
 		Stun();
-		delete this;
+		Limbo(); delete this;
 		return;
 	}
 	//DBG("InfantryClass::AI Commence");
@@ -1221,7 +1221,7 @@ void InfantryClass::AI(void)
 			case DO_EXPLOSION2_DEATH:
 			case DO_GRENADE_DEATH:
 			case DO_FIRE_DEATH:
-				delete this;
+				Limbo(); delete this;
 				return;
 		}
 	}

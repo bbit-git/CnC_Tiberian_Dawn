@@ -633,7 +633,7 @@ int DynamicVectorClass<T>::Delete(int index)
  *=============================================================================================*/
 BooleanVectorClass::BooleanVectorClass(unsigned size, unsigned char * array)
 {
-	BitArray.Resize(((size + (8-1)) / 8), array);
+	BitArray.Resize(((size + 31) / 32) * 4, array);
 	LastIndex = -1;
 	BitCount = size;
 }
@@ -742,7 +742,12 @@ int BooleanVectorClass::Resize(unsigned size)
 		**	Actually resize the bit array. Since this is a bit packed array,
 		**	there are 8 elements per byte (rounded up).
 		*/
-		int success = BitArray.Resize(((size + (8-1)) / 8));
+		/*
+		**	Get_Bit/Set_Bit access in 4-byte (unsigned) words, so the byte
+		**	array must be rounded up to a 4-byte boundary to prevent
+		**	heap-buffer-overflow on the last word access.
+		*/
+		int success = BitArray.Resize(((size + 31) / 32) * 4);
 
 		/*
 		**	Since there is no default constructor for bit packed integers, a manual

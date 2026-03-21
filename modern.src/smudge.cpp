@@ -163,7 +163,7 @@ SmudgeClass::SmudgeClass(SmudgeType type, COORDINATE pos, HousesType house) :
 	if (pos != -1) {
 		ToOwn = house;
 		if (!Unlimbo(pos)) {
-			delete this;
+			Limbo(); delete this;
 		}
 		ToOwn = HOUSE_NONE;
 	}
@@ -265,7 +265,7 @@ bool SmudgeClass::Mark(MarkType mark)
 			**	Whether it was successful in placing, or not, delete the smudge object. It isn't
 			**	needed once the map has been updated with the proper smudge data.
 			*/
-			delete this;
+			Limbo(); delete this;
 			return(true);
 		}
 	}
