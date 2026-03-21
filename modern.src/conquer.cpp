@@ -164,8 +164,6 @@ void Main_Game(int argc, char *argv[])
 		ScenarioInit = 0;		// Kludge.
 		DBG("Main_Game: Select_Game returned true, switching to 320x200");
 
-		/* 320x200 native — no resolution switch needed */
-
 		fade = true;
 
 		Fade_Palette_To(GamePalette, FADE_PALETTE_MEDIUM, NULL);
