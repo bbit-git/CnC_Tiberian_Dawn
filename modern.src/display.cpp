@@ -1024,6 +1024,7 @@ void DisplayClass::AI(KeyNumType & input, int x, int y)
 			Mouse_Left_Release(-1, Get_Mouse_X(), Get_Mouse_Y(), NULL, ACTION_NONE);
 	}
 
+	DBG("DisplayClass::AI → MapClass::AI");
 	MapClass::AI(input, x, y);
 }
 

@@ -281,9 +281,7 @@ void Choose_Side(void)
 		}
 	}
 
-#ifdef DEBUG
-	fprintf(stderr, "Choose_Side: briefing done, cleaning up\n");
-#endif
+	DBG("Choose_Side: briefing done, cleaning up");
 	Free_Interpolated_Palettes();
 	Set_Primary_Buffer_Format();
 /* get rid of all the animating objects */
@@ -303,9 +301,7 @@ void Choose_Side(void)
 	} else {
 		PreserveVQAScreen = 1;
 	}
-#ifdef DEBUG
-	fprintf(stderr, "Choose_Side: freeing audio\n");
-#endif
+	DBG("Choose_Side: freeing audio");
 	Free(staticaud);
 	Free(speechg);
 	Free(speechn);
@@ -317,8 +313,6 @@ void Choose_Side(void)
 	delete TextPrintBuffer;
 	TextPrintBuffer = NULL;
 	BlitList.Clear();
-#ifdef DEBUG
-	fprintf(stderr, "Choose_Side: done\n");
-#endif
+	DBG("Choose_Side: done");
 }
 #endif

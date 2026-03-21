@@ -994,34 +994,28 @@ void InfantryClass::Assign_Target(TARGET target)
 void InfantryClass::AI(void)
 {
 	Validate();
+	DBG("InfantryClass::AI %s Coord=%x", Class->IniName, Coord);
 	FootClass::AI();
+	DBG("InfantryClass::AI FootClass done");
 
 	if (IsUnloading) Mark(MARK_CHANGE);
 
-	/*
-	**	Special hack to make sure that if this infantry is in firing animation, but the
-	**	stage class isn't set, then abort the firing flag.
-	*/
 	if (IsFiring && !Fetch_Rate()) {
 		IsFiring = false;
 	}
+	DBG("InfantryClass::AI checking map");
 
-	/*
-	**	Delete this unit if it finds itself off the edge of the map and it is in
-	**	guard or other static mission mode.
-	*/
 	if (!Team && Mission == MISSION_GUARD && !Map.In_Radar(Coord_Cell(Coord))) {
 		Stun();
 		delete this;
 		return;
 	}
+	DBG("InfantryClass::AI Commence");
 
-	/*
-	**	Act on new orders if the unit is at a good position to do so.
-	*/
 	if (!IsDriving && (Doing == DO_NOTHING || MasterDoControls[Doing].Interrupt)) {
 		Commence();
 	}
+	DBG("InfantryClass::AI fear/fire/anim section");
 
 	/*
 	**	After a time, the infantry will gain courage.
@@ -1177,10 +1171,7 @@ void InfantryClass::AI(void)
 		}
 	}
 
-	/*
-	**	Handle the completion of the animation sequence.
-	*/
-
+	DBG("InfantryClass::AI anim Doing=%d", (int)Doing);
 	if (Doing == DO_NOTHING || Fetch_Stage() >= Class->DoControls[Doing].Count) {
 		switch (Doing) {
 			default:
@@ -1238,39 +1229,34 @@ void InfantryClass::AI(void)
 	/*
 	**	Perform movement operations at this time.
 	*/
+	DBG("InfantryClass::AI move IsFiring=%d IsDriving=%d Mission=%d NavCom=%d", IsFiring, IsDriving, (int)Mission, (int)NavCom);
 	if (!IsFiring /*&& !IsBoxing*/) {
 		if (!IsDriving) {
+			DBG("InfantryClass::AI !IsDriving guard check");
 
-			/*
-			**	When in guard mode, never allow a valid navcom.
-			*/
 			if (Mission == MISSION_GUARD && MissionQueue == MISSION_NONE && Target_Legal(NavCom)) {
 				Assign_Destination(TARGET_NONE);
-//				if (IsTethered) Scatter(0, true);
 			}
 
-			/*
-			**	A head to coordinate is needed. If there is no path
-			**	available, then create one.
-			*/
+			DBG("InfantryClass::AI navcom=%d Path[0]=%d Center=%x", (int)NavCom, (int)Path[0], Center_Coord());
 			if (Target_Legal(NavCom) && Strength && Mission != MISSION_GUARD) {
+				DBG("InfantryClass::AI entering path section");
 
 				/*
 				**	Determine if the next cell in the list is available
 				**	to be entered. If not, then abort the path and try
 				**	again.
 				*/
-				if (Path[0] != FACING_NONE && Can_Enter_Cell(Adjacent_Cell(Coord_Cell(Center_Coord()), Path[0])) != MOVE_OK) {
-					Path[0] = FACING_NONE;
+				if (Path[0] != FACING_NONE) {
+					DBG("InfantryClass::AI Can_Enter_Cell check");
+					if (Can_Enter_Cell(Adjacent_Cell(Coord_Cell(Center_Coord()), Path[0])) != MOVE_OK) {
+						Path[0] = FACING_NONE;
+					}
 				}
 
-				/*
-				**	Check to see if the target is closer than expected. This occurs
-				**	when heading toward a moving object and that object is heading
-				**	toward the unit. Shorten the precalculated path to be no longer
-				**	than the distance to the target.
-				*/
+				DBG("InfantryClass::AI distance check");
 				int d = Lepton_To_Cell(Distance(NavCom));
+				DBG("InfantryClass::AI d=%d Path[0]=%d", d, (int)Path[0]);
 				if (d < CONQUER_PATH_MAX) {
 					Path[d] = FACING_NONE;
 				}
@@ -1278,6 +1264,7 @@ void InfantryClass::AI(void)
 				/*
 				**	Find a path to follow if one isn't already calculated.
 				*/
+				DBG("InfantryClass::AI path find check");
 				if (Path[0] == FACING_NONE) {
 
 					/*
@@ -1413,6 +1400,7 @@ void InfantryClass::AI(void)
 		}
 		IsNewNavCom = false;
 	}
+	DBG("InfantryClass::AI done");
 }
 
 

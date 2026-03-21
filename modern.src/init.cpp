@@ -271,19 +271,16 @@ bool Init_Game(int , char *[])
 	} else {
 		SystemStrings = (char const *)MixFileClass::Retrieve(Language_Name("CONQUER"));
 	}
-#ifdef DEBUG
 	if (SystemStrings) {
 		unsigned char const* raw = (unsigned char const*)SystemStrings;
-		fprintf(stderr, "Strings raw: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+		DBG("Strings raw: %02x %02x %02x %02x %02x %02x %02x %02x",
 				raw[0],raw[1],raw[2],raw[3],raw[4],raw[5],raw[6],raw[7]);
-		fprintf(stderr, "str[0]=\"%.30s\" str[1]=\"%.30s\" str[25]=\"%.30s\"\n",
+		DBG("str[0]=\"%.30s\" str[1]=\"%.30s\" str[25]=\"%.30s\"",
 				Extract_String(SystemStrings, 0), Extract_String(SystemStrings, 1),
 				Extract_String(SystemStrings, 25));
-		fflush(stderr);
 	} else {
-		fprintf(stderr, "SystemStrings is NULL after initial load\n"); fflush(stderr);
+		DBG("SystemStrings is NULL after initial load");
 	}
-#endif
 
 	/*
 	**	Default palette initialization. Uses the desert palette for convenience,
@@ -566,29 +563,27 @@ bool Init_Game(int , char *[])
 	   which were not available when first attempted during early init. */
 	if (!SystemStrings) {
 		char const* lang = Language_Name("CONQUER");
-		fprintf(stderr, "Retry language: looking for '%s'\n", lang);
-		fflush(stderr);
+		DBG("Retry language: looking for '%s'", lang);
 		SystemStrings = (char const *)MixFileClass::Retrieve(lang);
 		if (SystemStrings) {
 			CCDebugString("C&C95 - Language strings loaded from MIX\n");
 #ifdef DEBUG
 			/* Dump first bytes to understand string table format */
 			unsigned char const* raw = (unsigned char const*)SystemStrings;
-			fprintf(stderr, "StringTable header: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+			DBG("StringTable header: %02x %02x %02x %02x %02x %02x %02x %02x",
 					raw[0],raw[1],raw[2],raw[3],raw[4],raw[5],raw[6],raw[7]);
 			/* Try interpreting as count + offsets */
 			unsigned short cnt = raw[0] | (raw[1]<<8);
-			fprintf(stderr, "StringTable count=%d\n", cnt);
+			DBG("StringTable count=%d", cnt);
 			for (int i = 0; i < 5 && i < cnt; i++) {
 				unsigned short off = raw[2+i*2] | (raw[3+i*2]<<8);
-				fprintf(stderr, "  [%d] off=%d str=\"%.30s\"\n", i, off, (char*)raw+off);
+				DBG("  [%d] off=%d str=\"%.30s\"", i, off, (char*)raw+off);
 			}
 			/* Check index 25 */
 			if (cnt > 25) {
 				unsigned short off = raw[2+25*2] | (raw[3+25*2]<<8);
-				fprintf(stderr, "  [25] off=%d str=\"%.30s\"\n", off, (char*)raw+off);
+				DBG("  [25] off=%d str=\"%.30s\"", off, (char*)raw+off);
 			}
-			fflush(stderr);
 #endif
 		}
 	}
@@ -1687,7 +1682,9 @@ bool Select_Game(bool fade)
 	**	movies, which will have cleared the screen to black already.)
 	*/
 	CCDebugString ("C&C95 - About to call Call_Back.\n");
+	DBG("INIT: first Call_Back");
 	Call_Back();
+	DBG("INIT: Call_Back done, rendering map");
 
 	/*
 	** This is desperately sad isnt it?

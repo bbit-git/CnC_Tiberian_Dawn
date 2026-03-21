@@ -241,13 +241,11 @@ unsigned long Build_Frame(void const *dataptr, unsigned short framenumber, void 
 	if ( keyfr->frames == 0 || keyfr->frames > 4096 ||
 	     keyfr->width == 0 || keyfr->width > 1024 ||
 	     keyfr->height == 0 || keyfr->height > 1024 ) {
-#ifdef DEBUG
-		fprintf(stderr, "Build_Frame: bad header frames=%d w=%d h=%d, bytes: %02X %02X %02X %02X %02X %02X\n",
+		DBG("Build_Frame: bad header frames=%d w=%d h=%d, bytes: %02X %02X %02X %02X %02X %02X",
 			keyfr->frames, keyfr->width, keyfr->height,
 			((unsigned char*)dataptr)[0], ((unsigned char*)dataptr)[1],
 			((unsigned char*)dataptr)[2], ((unsigned char*)dataptr)[3],
 			((unsigned char*)dataptr)[4], ((unsigned char*)dataptr)[5]);
-#endif
 		return(0);
 	}
 	if ( framenumber >= keyfr->frames ) {

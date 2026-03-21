@@ -163,9 +163,9 @@ inline static FacingType Next_Direction(FacingType facing, FacingType dir)
 /* Define a couple of variables which are private to the module they are   */
 /*      declared in.                                                       */
 /*=========================================================================*/
-static unsigned long MainOverlap[MAP_CELL_TOTAL/32];		// overlap list for the main path
-static unsigned long LeftOverlap[MAP_CELL_TOTAL/32];		// overlap list for the left path
-static unsigned long RightOverlap[MAP_CELL_TOTAL/32];	// overlap list for the right path
+static uint32_t MainOverlap[MAP_CELL_TOTAL/32];		// overlap list for the main path
+static uint32_t LeftOverlap[MAP_CELL_TOTAL/32];		// overlap list for the left path
+static uint32_t RightOverlap[MAP_CELL_TOTAL/32];		// overlap list for the right path
 
 
 //static CELL MoveMask = 0;
@@ -528,7 +528,9 @@ bool FootClass::Register_Cell(PathType *path, CELL cell, FacingType dir, int cos
  *=============================================================================================*/
 PathType * FootClass::Find_Path(CELL dest, FacingType *final_moves, int maxlen, MoveType threshhold)
 {
+	DBG("Find_Path: enter dest=%d Coord=%x maxlen=%d", (int)dest, Coord, maxlen);
 	CELL					source = Coord_Cell(Coord);		// Source expressed as cell
+	DBG("Find_Path: source=%d", (int)source);
 	static PathType	path;										// Main path control.
 	CELL					next;										// Next cell to enter
 	CELL					startcell;								// Cell we started in
@@ -553,18 +555,14 @@ PathType * FootClass::Find_Path(CELL dest, FacingType *final_moves, int maxlen, 
 	** then forget it.
 	*/
 	if (!final_moves) return(NULL);
-//	IsFindPath = true;
+	DBG("Find_Path: past null check, Team=%p", (void*)Team);
 
-	/*
-	** Set the draw path variable to draw the path of the selected unit
-	** if necessary.
-	*/
 	if (!Debug_Find_Path) {
 		DrawPath = IsSelected && Special.IsShowPath;
 	} else {
 		DrawPath = IsSelected;
 	}
-	Debug_Draw_Map("Initial Draw", source, dest, false);
+	DBG("Find_Path: overlap init");
 
 //	MoveMask = flags;
 	if (Team && Team->Class->IsRoundAbout) {
@@ -575,6 +573,7 @@ PathType * FootClass::Find_Path(CELL dest, FacingType *final_moves, int maxlen, 
 		unit_threat = threat = -1;
 	}
 
+	DBG("Find_Path: setting locations");
 	StartLocation = source;
 	DestLocation = dest;
 
@@ -591,6 +590,7 @@ PathType * FootClass::Find_Path(CELL dest, FacingType *final_moves, int maxlen, 
 	path.LastOverlap	= -1;
 	path.LastFixup		= -1;
 
+	DBG("Find_Path: memset overlap %d bytes", (int)sizeof(MainOverlap));
 	memset(path.Overlap, 0, sizeof(MainOverlap));
 
 	/*
@@ -599,6 +599,7 @@ PathType * FootClass::Find_Path(CELL dest, FacingType *final_moves, int maxlen, 
 	*/
 //	memset(path.Overlap, 0, 512);
 	path.Overlap[source >> 5] |= (1 << ((source & 31) - 1));
+	DBG("Find_Path: overlap set, entering main loop");
 
 	startcell 			= source;
 
@@ -643,6 +644,10 @@ top_of_list:
 		*/
 		direction	= CELL_FACING(startcell, dest);
 		next			= Adjacent_Cell(startcell, direction);
+		DBG("Find_Path: start=%d(%d,%d) dest=%d(%d,%d) next=%d dir=%d",
+			(int)startcell, Cell_X(startcell), Cell_Y(startcell),
+			(int)dest, Cell_X(dest), Cell_Y(dest),
+			(int)next, (int)direction);
 
 		/*
 		**	If we can move here, then make this our next move.

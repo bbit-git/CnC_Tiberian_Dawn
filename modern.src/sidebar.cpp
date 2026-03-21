@@ -890,6 +890,7 @@ void SidebarClass::AI(KeyNumType & input, int x, int y)
 		Upgrade.Turn_Off();
 	}
 
+	DBG("SidebarClass::AI → PowerClass::AI");
 	PowerClass::AI(input, x, y);
 }
 

@@ -214,7 +214,9 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 		}
 	}
 
+	DBG("ScrollClass::AI → HelpClass::AI");
 	HelpClass::AI(input, x, y);
+	DBG("ScrollClass::AI done");
 }
 
 

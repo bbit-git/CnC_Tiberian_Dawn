@@ -207,6 +207,7 @@ void TabClass::AI(KeyNumType &input, int x, int y)
 
 	Credits.AI();
 
+	DBG("TabClass::AI → SidebarClass::AI");
 	SidebarClass::AI(input, x, y);
 }
 

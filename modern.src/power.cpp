@@ -351,6 +351,7 @@ void PowerClass::AI(KeyNumType &input, int x, int y)
 			Flag_To_Redraw(false);
 		}
 	}
+	DBG("PowerClass::AI → RadarClass::AI");
 	RadarClass::AI(input, x, y);
 }
 
