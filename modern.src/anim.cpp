@@ -454,7 +454,7 @@ void AnimClass::Init(void)
 	Anims.Free_All();
 
 	ptr = new AnimClass();
-	VTable = ((void **)(((char *)ptr) + sizeof(AbstractClass) - 4))[0];
+	VTable = *(void**)ptr;
 	delete ptr;
 }
 
