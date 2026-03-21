@@ -1840,14 +1840,20 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
 		if (Lepton_To_Pixel(Coord_X(DesiredTacticalCoord)) != Lepton_To_Pixel(Coord_X(TacticalCoord)) ||
 			Lepton_To_Pixel(Coord_Y(DesiredTacticalCoord)) != Lepton_To_Pixel(Coord_Y(TacticalCoord))) {
 
+			/* LP64/SDL3: Force full redraw on scroll. The original scroll blit
+			** optimization copies existing screen content shifted, then only redraws
+			** exposed edges. This has issues with the 320x200 rendering pipeline.
+			** Full redraw is safer until the blit optimization is debugged. */
+			forced = true;
+
 			int xmod = Lepton_To_Pixel(Coord_X(DesiredTacticalCoord));
 			int ymod = Lepton_To_Pixel(Coord_Y(DesiredTacticalCoord));
 
-			int oldx = Lepton_To_Pixel(Coord_X(TacticalCoord))-xmod;		// Old relative offset.
+			int oldx = Lepton_To_Pixel(Coord_X(TacticalCoord))-xmod;
 			int oldy = Lepton_To_Pixel(Coord_Y(TacticalCoord))-ymod;
 
-			int oldw = Lepton_To_Pixel(TacLeptonWidth)-ABS(oldx);			// Replicable width.
-			int oldh = Lepton_To_Pixel(TacLeptonHeight)-ABS(oldy);		// Replicable height.
+			int oldw = Lepton_To_Pixel(TacLeptonWidth)-ABS(oldx);
+			int oldh = Lepton_To_Pixel(TacLeptonHeight)-ABS(oldy);
 
 			if (oldw < 1) forced = true;
 			if (oldh < 1) forced = true;
