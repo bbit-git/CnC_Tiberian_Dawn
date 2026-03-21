@@ -1641,7 +1641,6 @@ bool DisplayClass::Map_Cell(CELL cell, HouseClass * house)
 #define	EDGE_ZONE	(CELL_LEPTON_W*2)
 bool DisplayClass::Coord_To_Pixel(COORDINATE coord, int &x, int &y)
 {
-	static int _trace = 0;
 	if (coord) {
 		int xtac = Pixel_To_Lepton(Lepton_To_Pixel(Coord_X(TacticalCoord)));
 		int xoff = Pixel_To_Lepton(Lepton_To_Pixel(Coord_X(coord)));
@@ -1778,6 +1777,11 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
 	//DBG("DisplayClass::Draw_It forced=%d IsToRedraw=%d", forced, IsToRedraw);
 	MapClass::Draw_It(forced);
 	//DBG("DisplayClass::Draw_It MapClass done");
+
+	if (Debug_Icon) {
+		IsToRedraw = true;
+		CellRedraw.Set();
+	}
 
 	if (IsToRedraw || forced) {
 		IsToRedraw = false;

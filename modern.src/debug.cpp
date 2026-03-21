@@ -70,6 +70,15 @@ void Debug_Key(unsigned input)
 	if (!input || input & KN_BUTTON) return;
 
 	/*
+	**	Debug overlay toggle — always available when CHEAT_KEYS defined.
+	*/
+	if (input == KN_F3) {
+		Debug_Icon = (Debug_Icon == false);
+		Map.Flag_To_Redraw(true);
+		return;
+	}
+
+	/*
 	**	Processing of normal keystrokes.
 	*/
 	if (Debug_Flag) {

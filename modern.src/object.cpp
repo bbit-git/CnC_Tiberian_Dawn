@@ -1099,6 +1099,15 @@ bool ObjectClass::Unlimbo(COORDINATE coord, DirType )
 			IsToDisplay = false;
 			Coord = Class_Of().Coord_Fixup(coord);
 
+			{
+				static int _utrace = 0;
+				if (_utrace < 5) {
+					fprintf(stderr, "Unlimbo %s: input=0x%08X fixup=0x%08X Coord=0x%08X\n",
+						Class_Of().IniName, (unsigned)coord, (unsigned)Class_Of().Coord_Fixup(coord), (unsigned)Coord);
+					_utrace++;
+				}
+			}
+
 			if (Mark(MARK_DOWN)) {
 				if (IsActive) {
 
