@@ -328,6 +328,7 @@ bool RadarClass::Radar_Activate(int control)
  *=============================================================================================*/
 void RadarClass::Draw_It(bool forced)
 {
+	DBG("RadarClass::Draw_It");
 	DisplayClass::Draw_It(forced);
 //	if (!In_Debugger)	while (!HidPage.Lock()) {}
 

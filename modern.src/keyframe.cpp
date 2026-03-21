@@ -214,6 +214,16 @@ void Enable_Uncompressed_Shapes (void)
 
 unsigned long Build_Frame(void const *dataptr, unsigned short framenumber, void *buffptr)
 {
+	/*
+	** TODO: Build_Frame interprets data as KeyFrame format, but callers
+	** also pass SHP-format data (different header layout). SHP headers
+	** can pass the sanity check but produce garbage decompression that
+	** corrupts BigShapeBuffer. Disabled until proper SHP vs KeyFrame
+	** format detection is implemented.
+	*/
+	(void)dataptr; (void)framenumber; (void)buffptr;
+	return 0;
+#if 0 /* disabled: SHP/KeyFrame format mismatch causes heap corruption */
 	char *ptr, *lockptr;//, *uncomp_ptr;
 	unsigned long offset[SUBFRAMEOFFS];
 	unsigned long offcurr, off16, offdiff;
@@ -496,6 +506,7 @@ unsigned long Build_Frame(void const *dataptr, unsigned short framenumber, void 
 	}else{
 		return ((unsigned long)buffptr);
 	}
+#endif /* disabled Build_Frame */
 }
 
 
