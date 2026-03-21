@@ -2532,7 +2532,11 @@ void const * Get_Radar_Icon(void const * shapefile, int shapenum, int frames, in
 
 	/*
 	**	If there is no shape file, then there can be no radar icon imagery.
+	**	TODO: radar icons disabled until Build_Frame properly handles SHP format
+	**	(SHP files have a different header than KeyFrameHeaderType, causing
+	**	buffer overflows when interpreted as keyframe data).
 	*/
+	return(NULL);
 	if (!shapefile) return(NULL);
 
 	/*
@@ -2541,6 +2545,19 @@ void const * Get_Radar_Icon(void const * shapefile, int shapenum, int frames, in
 	*/
 	int pixel_width  = Get_Build_Frame_Width( shapefile );
 	int pixel_height = Get_Build_Frame_Height( shapefile );
+
+	/* Sanity check — corrupted or unparseable shape data */
+	if (pixel_width <= 0 || pixel_height <= 0 || pixel_width > 1024 || pixel_height > 1024) {
+#ifdef DEBUG
+		fprintf(stderr, "Get_Radar_Icon: bad shape dims %dx%d, first bytes: %02X %02X %02X %02X %02X %02X %02X %02X\n",
+			pixel_width, pixel_height,
+			((unsigned char*)shapefile)[0], ((unsigned char*)shapefile)[1],
+			((unsigned char*)shapefile)[2], ((unsigned char*)shapefile)[3],
+			((unsigned char*)shapefile)[4], ((unsigned char*)shapefile)[5],
+			((unsigned char*)shapefile)[6], ((unsigned char*)shapefile)[7]);
+#endif
+		return(NULL);
+	}
 
 	/*
 	** Find the width and height in icons, adjust these by half an

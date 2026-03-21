@@ -335,13 +335,15 @@ bool Read_Scenario_Ini(char *root, bool fresh)
 	**	Read in the team-type data. The team types must be created before any
 	**	triggers can be created.
 	*/
+#ifdef DEBUG
+	fprintf(stderr, "INI: reading TeamTypes\n");
+#endif
 	TeamTypeClass::Read_INI(buffer);
 	Call_Back();
 
-	/*
-	**	Read in the specific information for each of the house types.  This creates
-	**	the houses of different types.
-	*/
+#ifdef DEBUG
+	fprintf(stderr, "INI: reading Houses\n");
+#endif
 	HouseClass::Read_INI(buffer);
 	Call_Back();
 
@@ -390,20 +392,21 @@ bool Read_Scenario_Ini(char *root, bool fresh)
 	**	Read in the trigger data. The triggers must be created before any other
 	**	objects can be initialized.
 	*/
+#ifdef DEBUG
+	fprintf(stderr, "INI: reading Triggers\n");
+#endif
 	TriggerClass::Read_INI(buffer);
 	Call_Back();
 
-	/*
-	**	Read in the map control values. This includes dimensions
-	**	as well as theater information.
-	*/
+#ifdef DEBUG
+	fprintf(stderr, "INI: reading Map\n");
+#endif
 	Map.Read_INI(buffer);
 	Call_Back();
 
-	/*
-	**	Attempt to read the map's binary image file; if fails, read the
-	**	template data from the INI, for backward compatibility
-	*/
+#ifdef DEBUG
+	fprintf(stderr, "INI: reading Binary/Templates\n");
+#endif
 	if (fresh) {
 		if (!Map.Read_Binary(root, &ScenarioCRC)) {
 			TemplateClass::Read_INI(buffer);
@@ -411,21 +414,21 @@ bool Read_Scenario_Ini(char *root, bool fresh)
 	}
 	Call_Back();
 
-	/*
-	**	Read in and place the 3D terrain objects.
-	*/
+#ifdef DEBUG
+	fprintf(stderr, "INI: reading Terrain\n");
+#endif
 	TerrainClass::Read_INI(buffer);
 	Call_Back();
 
-	/*
-	**	Read in and place the units (all sides).
-	*/
+#ifdef DEBUG
+	fprintf(stderr, "INI: reading Units\n");
+#endif
 	UnitClass::Read_INI(buffer);
 	Call_Back();
 
-	/*
-	**	Read in and place the infantry units (all sides).
-	*/
+#ifdef DEBUG
+	fprintf(stderr, "INI: reading Infantry\n");
+#endif
 	InfantryClass::Read_INI(buffer);
 	Call_Back();
 
@@ -444,12 +447,15 @@ bool Read_Scenario_Ini(char *root, bool fresh)
 	/*
 	**	Read in any normal overlay objects.
 	*/
+#ifdef DEBUG
+	fprintf(stderr, "INI: reading Overlays\n");
+#endif
 	OverlayClass::Read_INI(buffer);
 	Call_Back();
 
-	/*
-	**	Read in any smudge overlays.
-	*/
+#ifdef DEBUG
+	fprintf(stderr, "INI: reading Smudges\n");
+#endif
 	SmudgeClass::Read_INI(buffer);
 	Call_Back();
 

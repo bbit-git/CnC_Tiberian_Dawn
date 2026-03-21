@@ -655,12 +655,16 @@ bool MapClass::Read_Binary(char const * root, unsigned long *crc)
 	*/
 	CellClass * cellptr = &Map[0];
 	for (i = 0; i < MAP_CELL_TOTAL; i++) {
+		/* On-disk format: 1 byte TemplateType + 1 byte icon = 2 bytes per cell */
+		unsigned char raw[2];
+		if (file.Read(raw, 2) != 2) break;
 		struct {
-			TemplateType TType;		// Template type.
-			unsigned char TIcon;		// Template icon number.
+			TemplateType TType;
+			unsigned char TIcon;
 		} temp;
+		temp.TType = (TemplateType)raw[0];
+		temp.TIcon = raw[1];
 
-		if (file.Read(&temp, sizeof(temp)) != sizeof(temp)) break;
 		if (temp.TType == (TemplateType)255) {
 			temp.TType = TEMPLATE_NONE;
 		}

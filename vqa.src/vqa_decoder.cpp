@@ -577,14 +577,26 @@ void VQA_Close(VQAHandle* handle) {
 }
 
 long VQA_Play(VQAHandle* handle, int mode) {
-    if (!handle || !handle->internal || !g_video_renderer) return -1;
+    if (!handle || !handle->internal || !g_video_renderer) {
+#ifdef DEBUG
+        fprintf(stderr, "VQA_Play: null check failed handle=%p internal=%p renderer=%p\n",
+                (void*)handle, handle ? handle->internal : nullptr, (void*)g_video_renderer);
+#endif
+        return -1;
+    }
     VQADecoder* dec = (VQADecoder*)handle->internal;
+#ifdef DEBUG
+    fprintf(stderr, "VQA_Play: dec=%p fps=%d frames=%d file=%lu\n",
+            (void*)dec, dec->fps, dec->total_frames, handle->VQAio);
+#endif
 
     g_video_renderer->on_playback_start();
     unsigned int frame_ms = 1000 / (dec->fps ? dec->fps : 15);
 
+#ifdef DEBUG
     fprintf(stderr, "VQA: playing %d frames at %d fps (%dms/frame)\n",
             dec->total_frames, dec->fps, frame_ms);
+#endif
 
     for (int f = 0; f < dec->total_frames && !dec->stopped; f++) {
         uint64_t t0 = g_video_renderer->get_ticks_ms();

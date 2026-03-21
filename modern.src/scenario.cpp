@@ -70,7 +70,9 @@ extern int PreserveVQAScreen;
  *=============================================================================================*/
 bool Start_Scenario(char *root, bool briefing)
 {
-
+#ifdef DEBUG
+	fprintf(stderr, "Start_Scenario: %s briefing=%d\n", root ? root : "(null)", briefing);
+#endif
 	if (!Read_Scenario(root)) {
 		CCDebugString ("C&C95 - Failed to read scenario.\n");
 		return(false);
@@ -170,7 +172,13 @@ bool Start_Scenario(char *root, bool briefing)
 bool Read_Scenario(char *root)
 {
 	CCDebugString ("C&C95 - In Read_Scenario.\n");
+#ifdef DEBUG
+	fprintf(stderr, "Read_Scenario: clearing\n");
+#endif
 	Clear_Scenario();
+#ifdef DEBUG
+	fprintf(stderr, "Read_Scenario: reading INI\n");
+#endif
 	ScenarioInit++;
 	if (Read_Scenario_Ini(root)) {
 
