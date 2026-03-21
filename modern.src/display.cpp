@@ -640,10 +640,6 @@ void DisplayClass::Set_View_Dimensions(int x, int y, int width, int height)
 	}
 	TacLeptonWidth = Pixel_To_Lepton(width);
 	TacLeptonHeight = Pixel_To_Lepton(height);
-	/* Ensure both dimensions cover the full screen regardless of swap */
-	int maxdim = (TacLeptonWidth > TacLeptonHeight) ? TacLeptonWidth : TacLeptonHeight;
-	TacLeptonWidth = maxdim;
-	TacLeptonHeight = maxdim;
 
 	/*
 	**	Adjust the tactical cell if it is now in an invalid position
@@ -1113,17 +1109,17 @@ void DisplayClass::Remove(ObjectClass const * object, LayerType layer)
  *=============================================================================================*/
 CELL DisplayClass::Click_Cell_Calc(int x, int y)
 {
-	x -= TacPixelX;
-	x = Pixel_To_Lepton(x);
-	y -= TacPixelY;
-	y = Pixel_To_Lepton(y);
+	int sx = x - TacPixelX;
+	int sy = y - TacPixelY;
+	int lx = Pixel_To_Lepton(sx);
+	int ly = Pixel_To_Lepton(sy);
 
-	if ((unsigned)x < TacLeptonWidth &&
-		(unsigned)y < TacLeptonHeight) {
+	if ((unsigned)lx < TacLeptonWidth &&
+		(unsigned)ly < TacLeptonHeight) {
 
 		COORDINATE tcoord = XY_Coord(Pixel_To_Lepton(Lepton_To_Pixel(Coord_X(TacticalCoord))), Pixel_To_Lepton(Lepton_To_Pixel(Coord_Y(TacticalCoord))));
 
-		return(Coord_Cell(Coord_Add(tcoord, XY_Coord(x, y))));
+		return(Coord_Cell(Coord_Add(tcoord, XY_Coord(lx, ly))));
 	}
 	return(-1);
 }
@@ -1647,7 +1643,6 @@ bool DisplayClass::Coord_To_Pixel(COORDINATE coord, int &x, int &y)
 {
 	static int _trace = 0;
 	if (coord) {
-		/* Revert to original Coord_To_Pixel logic */
 		int xtac = Pixel_To_Lepton(Lepton_To_Pixel(Coord_X(TacticalCoord)));
 		int xoff = Pixel_To_Lepton(Lepton_To_Pixel(Coord_X(coord)));
 
@@ -2067,6 +2062,59 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
 		if (!Debug_Unshroud) Redraw_Shadow_Rects();
 
 		HidPage.Unlock();
+
+		/*
+		**	Debug overlay: cell grid + object position markers.
+		**	Toggle with Debug_Icon flag.
+		*/
+		if (Debug_Icon) {
+			int vpw = Lepton_To_Pixel(TacLeptonWidth);
+			int vph = Lepton_To_Pixel(TacLeptonHeight);
+			int sub_x = Lepton_To_Pixel(Coord_XLepton(TacticalCoord));
+			int sub_y = Lepton_To_Pixel(Coord_YLepton(TacticalCoord));
+
+			/* Cell grid lines */
+			for (int gx = -sub_x; gx <= vpw; gx += CELL_PIXEL_W) {
+				int sx = TacPixelX + gx;
+				if (sx >= TacPixelX && sx < TacPixelX + vpw)
+					LogicPage->Draw_Line(sx, TacPixelY, sx, TacPixelY + vph - 1, LTGREY);
+			}
+			for (int gy = -sub_y; gy <= vph; gy += CELL_PIXEL_H) {
+				int sy = TacPixelY + gy;
+				if (sy >= TacPixelY && sy < TacPixelY + vph)
+					LogicPage->Draw_Line(TacPixelX, sy, TacPixelX + vpw - 1, sy, LTGREY);
+			}
+
+			/* Object position markers */
+			for (LayerType layer = LAYER_GROUND; layer < LAYER_COUNT; layer++) {
+				for (int index = 0; index < Layer[layer].Count(); index++) {
+					ObjectClass* obj = Layer[layer][index];
+					if (!obj) continue;
+					int dx, dy;
+					/* Red dot at Render_Coord */
+					if (Coord_To_Pixel(obj->Render_Coord(), dx, dy)) {
+						int sx = TacPixelX + dx;
+						int sy = TacPixelY + dy;
+						LogicPage->Put_Pixel(sx, sy, RED);
+						LogicPage->Put_Pixel(sx-1, sy, RED);
+						LogicPage->Put_Pixel(sx+1, sy, RED);
+						LogicPage->Put_Pixel(sx, sy-1, RED);
+						LogicPage->Put_Pixel(sx, sy+1, RED);
+					}
+					/* Yellow crosshair at Center_Coord */
+					if (Coord_To_Pixel(obj->Center_Coord(), dx, dy)) {
+						int sx = TacPixelX + dx;
+						int sy = TacPixelY + dy;
+						LogicPage->Draw_Line(sx-3, sy, sx+3, sy, YELLOW);
+						LogicPage->Draw_Line(sx, sy-3, sx, sy+3, YELLOW);
+					}
+				}
+			}
+
+			/* Viewport boundary */
+			LogicPage->Draw_Rect(TacPixelX, TacPixelY,
+				TacPixelX + vpw - 1, TacPixelY + vph - 1, LTCYAN);
+		}
 
 //Colour_Debug(8);
 		/*

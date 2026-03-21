@@ -3371,6 +3371,9 @@ COORDINATE BuildingClass::Sort_Y(void) const
 	if (*this == STRUCT_REPAIR) {
 		return(Coord);
 	}
+	if (*this == STRUCT_HELIPAD) {
+		return(Center_Coord());
+	}
 	if (*this == STRUCT_BARRACKS /*|| *this == STRUCT_POWER*/) {
 		return(Center_Coord());
 	}
