@@ -183,14 +183,13 @@ bool Init_Game(int , char *[])
 #else
 	int temp = RequiredCD;
 	RequiredCD = -2;
-	new MixFileClass("CCLOCAL.MIX");			// Cached.
+	new MixFileClass("CCLOCAL.MIX");
 	MixFileClass::Cache("CCLOCAL.MIX");
 	CCDebugString ("C&C95 - About to register UPDATE.MIX\n");
-	new MixFileClass("UPDATE.MIX");			// Cached.
+	new MixFileClass("UPDATE.MIX");
 	CCDebugString ("C&C95 - About to register UPDATEC.MIX\n");
-	new MixFileClass("UPDATEC.MIX");			// Cached.
+	new MixFileClass("UPDATEC.MIX");
 	MixFileClass::Cache("UPDATEC.MIX");
-	/* UPDATA.MIX contains title screen PCX and other remastered-specific data */
 	new MixFileClass("UPDATA.MIX");
 #ifdef JAPANESE
 	CCDebugString ("C&C95 - About to register LANGUAGE.MIX\n");
