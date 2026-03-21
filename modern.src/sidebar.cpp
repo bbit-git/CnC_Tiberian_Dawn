@@ -982,6 +982,7 @@ bool SidebarClass::Activate(int control)
 	**	Only if there is a change in the state of the sidebar will anything
 	**	be done to change it.
 	*/
+	DBG("Sidebar::Activate: old=%d new=%d sidew=%d", old, IsSidebarActive, sidewidth);
 	if (IsSidebarActive != old) {
 
 		/*
@@ -989,6 +990,7 @@ bool SidebarClass::Activate(int control)
 		**	activate it on the left side of the screen.
 		*/
 		if (IsSidebarActive /*&& X*/) {
+			DBG("Sidebar: activating, Set_View_Dimensions(0, %d, %d)", Map.Get_Tab_Height(), SeenBuff.Get_Width() - sidewidth);
 			Set_View_Dimensions(0, Map.Get_Tab_Height(), SeenBuff.Get_Width() - sidewidth);
 			IsToRedraw = true;
 			Help_Text(TXT_NONE);
