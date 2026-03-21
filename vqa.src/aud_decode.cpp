@@ -352,26 +352,130 @@ int AUD_Decode_Memory(const void* aud_data, int aud_size,
         }
     }
 
-    case AUD_COMP_WS_ADPCM:
-        /* Westwood proprietary ADPCM -- not implemented */
-        return 0;
+    case AUD_COMP_WS_ADPCM: {
+        /*
+         * Westwood proprietary delta codec (AUDUNCMP.ASM).
+         * 8-bit unsigned audio. Code byte: top 2 bits = mode, bottom 6 = subcode.
+         * Mode 0 (2BIT): (subcode+1) pairs of 2-bit deltas from lookup table
+         * Mode 1 (4BIT): (subcode+1) pairs of 4-bit deltas from lookup table
+         * Mode 2 (RAW):  if bit5 set → 5-bit signed delta; else (subcode+1) raw bytes
+         * Mode 3 (SILENCE): (subcode+1) bytes of repeated previous sample
+         */
+        static const int8_t _2bitdecode[4] = {-2, -1, 0, 1};
+        static const int8_t _4bitdecode[16] = {-9,-8,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,8};
 
-    case AUD_COMP_SOS_CODEC: /* SOS CODEC — same algorithm as IMA ADPCM */
+        const uint8_t* src = audio_data;
+        const uint8_t* src_end = audio_data + compressed_size;
+        int out_pos = 0;
+        uint8_t prev = 0x80; /* starting sample value */
+
+        while (out_pos < out_max && src < src_end) {
+            uint8_t code = *src++;
+            int mode = (code >> 6) & 3;
+            int count = (code & 0x3F);
+
+            if (mode == 2) { /* RAW */
+                if (count & 0x20) {
+                    /* 5-bit signed delta */
+                    int8_t delta = (int8_t)((count & 0x1F) << 3) >> 3;
+                    int val = (int)prev + delta;
+                    if (val < 0) val = 0; if (val > 255) val = 255;
+                    prev = (uint8_t)val;
+                    out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
+                } else {
+                    /* Raw byte dump: count+1 bytes follow */
+                    int n = count + 1;
+                    for (int i = 0; i < n && out_pos < out_max && src < src_end; i++) {
+                        prev = *src++;
+                        out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
+                    }
+                }
+            } else if (mode == 1) { /* 4BIT */
+                int n = count + 1;
+                for (int i = 0; i < n && out_pos + 1 < out_max && src < src_end; i++) {
+                    uint8_t nibbles = *src++;
+                    /* Low nibble */
+                    int val = (int)prev + _4bitdecode[nibbles & 0x0F];
+                    if (val < 0) val = 0; if (val > 255) val = 255;
+                    prev = (uint8_t)val;
+                    out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
+                    /* High nibble */
+                    val = (int)prev + _4bitdecode[(nibbles >> 4) & 0x0F];
+                    if (val < 0) val = 0; if (val > 255) val = 255;
+                    prev = (uint8_t)val;
+                    out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
+                }
+            } else if (mode == 0) { /* 2BIT */
+                int n = count + 1;
+                for (int i = 0; i < n && out_pos + 3 < out_max && src < src_end; i++) {
+                    uint8_t packed = *src++;
+                    for (int b = 0; b < 4; b++) {
+                        int val = (int)prev + _2bitdecode[(packed >> (b * 2)) & 3];
+                        if (val < 0) val = 0; if (val > 255) val = 255;
+                        prev = (uint8_t)val;
+                        out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
+                    }
+                }
+            } else { /* SILENCE */
+                int n = count + 1;
+                for (int i = 0; i < n && out_pos < out_max; i++) {
+                    out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
+                }
+            }
+        }
+        return out_pos;
+    }
+
+    case AUD_COMP_SOS_CODEC: {
+        /*
+         * SOS CODEC (type 99) — IMA ADPCM with per-chunk framing.
+         * Each chunk: [uint16 fsize][uint16 dsize][uint32 magic=0xDEAF]
+         * followed by fsize bytes of ADPCM data.
+         * Must skip the 8-byte chunk headers during decoding.
+         */
+        ADPCMState state;
+        ADPCM_Init(&state);
+        const uint8_t* src = audio_data;
+        const uint8_t* src_end = audio_data + compressed_size;
+        int total_decoded = 0;
+
+        while (src + 8 <= src_end && total_decoded < out_max) {
+            uint16_t fsize = src[0] | (src[1] << 8);
+            /* uint16_t dsize = src[2] | (src[3] << 8); */
+            uint32_t magic = src[4] | (src[5] << 8) | (src[6] << 16) | (src[7] << 24);
+            src += 8;
+
+            if (magic != 0x0000DEAF && magic != 0xDEAF) {
+                /* Not a valid chunk header — try raw ADPCM */
+                src -= 8;
+                int remaining = (int)(src_end - src);
+                if (remaining * 2 > out_max - total_decoded)
+                    remaining = (out_max - total_decoded) / 2;
+                total_decoded += ADPCM_Decode(src, out_pcm + total_decoded, remaining, &state);
+                break;
+            }
+
+            if (src + fsize > src_end) fsize = (uint16_t)(src_end - src);
+            int max_out = (out_max - total_decoded) / 2;
+            if ((int)fsize > max_out) fsize = (uint16_t)max_out;
+            total_decoded += ADPCM_Decode(src, out_pcm + total_decoded, fsize, &state);
+            src += fsize;
+        }
+        return total_decoded;
+    }
+
     case AUD_COMP_IMA_ADPCM: {
         /*
-         * IMA ADPCM (Westwood variant).
+         * IMA ADPCM (Westwood variant, no chunk framing).
          * Each compressed byte produces 2 output samples.
          */
         int max_input = compressed_size;
-
-        /* Ensure we don't overflow the output buffer */
         if (max_input * 2 > out_max) {
             max_input = out_max / 2;
         }
 
         ADPCMState state;
         ADPCM_Init(&state);
-
         return ADPCM_Decode(audio_data, out_pcm, max_input, &state);
     }
 
