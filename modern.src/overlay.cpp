@@ -255,7 +255,7 @@ bool OverlayClass::Mark(MarkType mark)
 						}
 
 					} else {
-						delete this;
+						Limbo(); delete this;
 						return(false);
 					}
 				} else {
@@ -322,7 +322,7 @@ bool OverlayClass::Mark(MarkType mark)
 				*/
 				cellptr->Recalc_Attributes();
 			}
-			delete this;
+			Limbo(); delete this;
 			return(true);
 		}
 	}

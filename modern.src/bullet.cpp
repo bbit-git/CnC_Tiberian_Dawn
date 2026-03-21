@@ -378,7 +378,7 @@ void BulletClass::AI(void)
 		case IMPACT_EDGE:
 //			if (IsLocked) {
 				Mark();
-				delete this;
+				Limbo(); delete this;
 //			}
 			break;
 
@@ -467,7 +467,7 @@ void BulletClass::AI(void)
 				if (Class->Explosion != ANIM_NONE) {
 					new AnimClass(Class->Explosion, Coord);
 				}
-				delete this;
+				Limbo(); delete this;
 				return;
 			}
 			break;

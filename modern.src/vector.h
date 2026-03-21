@@ -233,7 +233,7 @@ class BooleanVectorClass
 		int First_False(void) const {
 			if (LastIndex != -1) Fixup(-1);
 
-			int retval = First_False_Bit(&BitArray[0]);
+			int retval = First_False_Bit(&BitArray[0], BitCount);
 			if (retval < BitCount) return(retval);
 
 			/*
@@ -247,7 +247,7 @@ class BooleanVectorClass
 		int First_True(void) const {
 			if (LastIndex != -1) Fixup(-1);
 
-			int retval = First_True_Bit(&BitArray[0]);
+			int retval = First_True_Bit(&BitArray[0], BitCount);
 			if (retval < BitCount) return(retval);
 
 			/*

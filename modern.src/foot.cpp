@@ -1987,7 +1987,7 @@ void FootClass::Sell_Back(int control)
 		House->Refund_Money(Refund_Amount());
 		Stun();
 		Limbo();
-		delete this;
+		Limbo(); delete this;
 	}
 }
 

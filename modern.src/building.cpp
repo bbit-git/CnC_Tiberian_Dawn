@@ -713,7 +713,7 @@ bool BuildingClass::Mark(MarkType mark)
 							break;
 					}
 					Transmit_Message(RADIO_OVER_OUT);
-					delete this;
+					Limbo(); delete this;
 
 				} else {
 
@@ -1010,7 +1010,7 @@ void BuildingClass::AI(void)
 		if (CountDown.Expired()) {
 			Limbo();
 			Drop_Debris(WhomToRepay);
-			delete this;
+			Limbo(); delete this;
 		}
 		return;
 	}
@@ -1253,7 +1253,7 @@ bool BuildingClass::Unlimbo(COORDINATE coord, DirType dir)
 			ObjectClass * o = OverlayTypeClass::As_Reference(OVERLAY_ROAD).Create_One_Of(House);
 			if (o && o->Unlimbo(coord)) {
 				Transmit_Message(RADIO_OVER_OUT);
-				delete this;
+				Limbo(); delete this;
 				return(true);
 			}
 		}
@@ -1294,7 +1294,7 @@ bool BuildingClass::Unlimbo(COORDINATE coord, DirType dir)
 				if (o && o->Unlimbo(coord)) {
 					Map[Coord_Cell(coord)].Owner = House->Class->House;
 					Transmit_Message(RADIO_OVER_OUT);
-					delete this;
+					Limbo(); delete this;
 					return(true);
 				}
 			}
@@ -3712,7 +3712,7 @@ int BuildingClass::Mission_Deconstruction(void)
 						int ratio = Health_Ratio();
 						int money = Refund_Amount();
 
-						delete this;
+						Limbo(); delete this;
 
 						if (unit->Unlimbo(Coord_Snap(Adjacent_Cell(Coord, DIR_SE)), DIR_SW)) {
 							unit->Strength = Fixed_To_Cardinal(unit->Class_Of().MaxStrength, ratio);
@@ -3726,7 +3726,7 @@ int BuildingClass::Mission_Deconstruction(void)
 						}
 					} else {
 						House->Refund_Money(Refund_Amount());
-						delete this;
+						Limbo(); delete this;
 					}
 
 				} else {
@@ -3747,7 +3747,7 @@ int BuildingClass::Mission_Deconstruction(void)
 					/*
 					**	Finally, delete the building from the game.
 					*/
-					delete this;
+					Limbo(); delete this;
 				}
 				House->IsRecalcNeeded = true;
 			}

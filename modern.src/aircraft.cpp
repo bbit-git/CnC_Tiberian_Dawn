@@ -851,7 +851,7 @@ void AircraftClass::AI(void)
 				delete obj;
 			}
 			Stun();
-			delete this;
+			Limbo(); delete this;
 			return;
 		}
 	} else {
@@ -1565,7 +1565,7 @@ ResultType AircraftClass::Take_Damage(int & damage, int distance, WarheadType wa
 			Kill_Cargo(source);
 			Death_Announcement();
 			new AnimClass(ANIM_FBALL1, Target_Coord());
-			delete this;
+			Limbo(); delete this;
 			break;
 
 		default:

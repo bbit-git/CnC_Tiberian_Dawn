@@ -293,7 +293,7 @@ TerrainClass::TerrainClass(TerrainType type, CELL cell) :
 	Strength = Class->MaxStrength;
 	if (cell != -1) {
 		if (!Unlimbo(Cell_Coord(cell))) {
-			delete this;
+			Limbo(); delete this;
 		}
 	}
 	Set_Rate(0);	// turn off animation
@@ -553,7 +553,7 @@ void TerrainClass::AI(void)
 		**	last stage of the crumbling animation, delete the terrain object.
 		*/
 		if (IsCrumbling && Fetch_Stage() == Get_Build_Frame_Count(Class->Get_Image_Data())-1) {
-			delete this;
+			Limbo(); delete this;
 		}
 	}
 

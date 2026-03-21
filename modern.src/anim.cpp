@@ -681,7 +681,7 @@ void AnimClass::AI(void)
 	**	immediately.
 	*/
 	if (IsToDelete) {
-		delete this;
+		Limbo(); delete this;
 		return;
 	}
 
@@ -732,7 +732,7 @@ void AnimClass::AI(void)
 					int damage = accum >> 8;
 					if (Object->Take_Damage(damage, 0, WARHEAD_FIRE) == RESULT_DESTROYED) {
 						//Object = 0;
-						delete this;
+						Limbo(); delete this;
 						return;
 					}
 				}
@@ -781,7 +781,7 @@ void AnimClass::AI(void)
 						}
 						Set_Stage(Class->Start);
 					} else {
-						delete this;
+						Limbo(); delete this;
 					}
 				}
 			}
