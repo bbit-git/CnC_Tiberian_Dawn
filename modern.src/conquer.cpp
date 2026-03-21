@@ -2790,13 +2790,38 @@ void CC_Draw_Shape(void const * shapefile, int shapenum, int x, int y, WindowNum
 
 			DBG("CC_Draw_Shape: SHP type=%d %dx%d shpsize=%d datalen=%d comp=%d",
 				stype, sw, sh, shpsize, datalen, comp_size);
+
+			/* SHP pixel data is in shape RLE format (even after LCW decompression):
+			**   non-zero byte  → literal pixel
+			**   zero byte + N  → N transparent (zero) pixels
+			** Port of ASM_Set_Mouse_Cursor's ??normal_copy loop from WWMOUSE.ASM. */
+			auto shp_rle_decode = [](const unsigned char* src, char* dst, int pixel_count) {
+				char* dp = dst;
+				char* dp_end = dst + pixel_count;
+				while (dp < dp_end) {
+					unsigned char val = *src++;
+					if (val != 0) {
+						*dp++ = (char)val;
+					} else {
+						int count = *src++;
+						if (dp + count > dp_end) count = (int)(dp_end - dp);
+						memset(dp, 0, count);
+						dp += count;
+					}
+				}
+			};
+
 			if (stype == 0) {
-				/* LCW compressed → decompress to ShapeBuffer */
-				LCW_Uncompress(framedata, ShapeBuffer, comp_size, uncomp_size);
+				/* Type 0: LCW compressed → RLE data → raw pixels */
+				static unsigned char lcw_temp[65536];
+				int lcw_max = datalen ? datalen : (int)sizeof(lcw_temp);
+				LCW_Uncompress(framedata, lcw_temp, comp_size, lcw_max);
+				shp_rle_decode(lcw_temp, ShapeBuffer, uncomp_size);
 				shape_pointer = ShapeBuffer;
 			} else if (stype == 2) {
-				/* Uncompressed raw pixels */
-				shape_pointer = (char *)framedata;
+				/* Type 2: not LCW compressed, but still RLE encoded */
+				shp_rle_decode(framedata, ShapeBuffer, uncomp_size);
+				shape_pointer = ShapeBuffer;
 			} else {
 				/* Type 1/4 (compact) — not yet supported */
 				DBG("CC_Draw_Shape: unsupported SHP type %d", stype);
