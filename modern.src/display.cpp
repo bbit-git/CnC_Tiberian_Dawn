@@ -413,8 +413,10 @@ void DisplayClass::Init_Theater(TheaterType theater)
 	void const * ptr = MixFileClass::Retrieve(fullname);
 	if (ptr) {
 		Mem_Copy((void *)ptr, GamePalette, 768);
+		DBG("Init_Theater: %s loaded, pal[1]=%d,%d,%d", fullname,
+			GamePalette[3], GamePalette[4], GamePalette[5]);
 	} else {
-		fprintf(stderr, "Init_Theater: %s not found, using default palette\n", fullname);
+		DBG("Init_Theater: %s not found, using default palette", fullname);
 		memset(GamePalette, 0, 768);
 	}
 
