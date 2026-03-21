@@ -934,7 +934,7 @@ GraphicViewPortClass	SeenBuff(&VisiblePage, 0,0,640,480);
 GraphicBufferClass		ModeXBuff;
 GraphicViewPortClass	HidPage(&HiddenPage, 0,0,640,480);
 GraphicBufferClass		SysMemPage(DEFAULT_SCREEN_WIDTH, 200, (void*)NULL);
-int 						SoundOn;
+int 						SoundOn = TRUE; /* LP64: was uninitialized (0) → all SFX blocked */
 CountDownTimerClass	FrameTimer(BT_SYSTEM, 0L);
 CountDownTimerClass	DebugTimer(BT_SYSTEM, 0L);
 CountDownTimerClass	CountDownTimer(BT_SYSTEM, 0L);

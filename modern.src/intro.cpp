@@ -189,10 +189,11 @@ void Choose_Side(void)
 		SysMemPage.Blit(*PseudoSeenBuff,0,22, 0,22, 320,156);
 
 		/*
-		** If the sample has stopped or is about to then restart it
+		** If the sample has stopped then restart it for looping.
+		** LP64/SDL3: removed timer-based premature restart which caused
+		** audible gaps between stop and play.
 		*/
-		if (!Is_Sample_Playing(staticaud) || !sample_timer.Time()) {
-			Stop_Sample(statichandle);
+		if (!Is_Sample_Playing(staticaud)) {
 			statichandle = Play_Sample(staticaud,255,64);
 			sample_timer.Set(0x3f);
 		}
