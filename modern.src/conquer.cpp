@@ -328,8 +328,10 @@ void Main_Game(int argc, char *argv[])
 		/*
 		**	Scenario is done; fade palette to black
 		*/
+		DBG("Main_Game: game loop exited, fading to black");
 		Fade_Palette_To(BlackPalette, FADE_PALETTE_SLOW, NULL);
 		VisiblePage.Clear();
+		DBG("Main_Game: returning to Select_Game");
 
 #ifndef DEMO
 		/*
