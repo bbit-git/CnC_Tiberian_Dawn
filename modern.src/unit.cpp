@@ -1498,12 +1498,19 @@ bool UnitClass::Try_To_Deploy(void)
 	if (!Target_Legal(NavCom) && !IsRotating) {
 		if (*this == UNIT_MCV) {
 
+			fprintf(stderr, "MCV Deploy: Coord=0x%08X Center=0x%08X\n",
+				(unsigned)Coord, (unsigned)Center_Coord());
+			COORDINATE nw_coord = Adjacent_Cell(Center_Coord(), FACING_NW);
+			CELL nw_cell = Coord_Cell(nw_coord);
+			fprintf(stderr, "  NW coord=0x%08X cell=%d CellX=%d CellY=%d\n",
+				(unsigned)nw_coord, (int)nw_cell, Cell_X(nw_cell), Cell_Y(nw_cell));
+
 			/*
 			**	Determine if it is legal to deploy at this location. If not, tell the
 			**	player.
 			*/
 			Mark(MARK_UP);
-			if (!BuildingTypeClass::As_Reference(STRUCT_CONST).Legal_Placement(Coord_Cell(Adjacent_Cell(Center_Coord(), FACING_NW)))) {
+			if (!BuildingTypeClass::As_Reference(STRUCT_CONST).Legal_Placement(nw_cell)) {
 				if (PlayerPtr == House) {
 					Speak(VOX_DEPLOY);
 				}
@@ -1531,9 +1538,15 @@ bool UnitClass::Try_To_Deploy(void)
 			**	unit, just mark it as not deploying.
 			*/
 			Mark(MARK_UP);
+			fprintf(stderr, "  Creating BuildingClass STRUCT_CONST...\n");
 			BuildingClass * building = new BuildingClass(STRUCT_CONST, House->Class->House);
+			fprintf(stderr, "  building=%p\n", (void*)building);
 			if (building) {
-				if (building->Unlimbo(Adjacent_Cell(Coord, FACING_NW))) {
+				COORDINATE deploy_coord = Adjacent_Cell(Coord, FACING_NW);
+				fprintf(stderr, "  Unlimbo at coord=0x%08X cell=%d\n",
+					(unsigned)deploy_coord, (int)Coord_Cell(deploy_coord));
+				if (building->Unlimbo(deploy_coord)) {
+					fprintf(stderr, "  Unlimbo succeeded\n");
 
 					/*
 					**	Always reveal the construction yard to the player that owned the
@@ -1552,8 +1565,11 @@ bool UnitClass::Try_To_Deploy(void)
 					** the owner house's flag home cell (since the house's FlagHome is
 					** presumably 0 at this point).
 					*/
+					fprintf(stderr, "  Stun + Limbo MCV (no delete)\n");
 					Stun();
-					delete this;
+					Limbo();
+					//delete this;  // DISABLED — test if crash is from deletion
+					fprintf(stderr, "  MCV limbo'd OK\n");
 					return(true);
 				} else {
 
@@ -1702,7 +1718,9 @@ void UnitClass::Per_Cell_Process(bool center)
 	**	preparing to deploy. In this case, it should begin its deploy process.
 	*/
 	if (center && IsDeploying) {
-		Try_To_Deploy();
+		bool is_mcv = (*this == UNIT_MCV);
+		bool deployed = Try_To_Deploy();
+		if (is_mcv && deployed) return;	// MCV deployed (deleted) or rotating — bail either way.
 		if (!IsActive) return;			// Unit no longer exists -- bail.
 	}
 
@@ -2330,9 +2348,14 @@ int UnitClass::Mission_Unload(void)
 
 				case 1:
 					if (!IsDriving) {
-						Try_To_Deploy();
-						if (IsDeploying) {
-							Status = 2;
+						if (Try_To_Deploy()) {
+							/*
+							** Try_To_Deploy returns true when MCV deploys (deletes itself)
+							** or starts rotating. If deleted, 'this' is invalid — bail.
+							** Check return + IsDeploying would be use-after-free on delete,
+							** so just return. If only rotating, returning is harmless.
+							*/
+							return(MISSION_UNLOAD);
 						} else {
 							Assign_Mission(MISSION_GUARD);
 						}
@@ -2527,7 +2550,7 @@ int UnitClass::Mission_Hunt(void)
 			case 0:
 				if (Goto_Clear_Spot()) {
 					if (Try_To_Deploy()) {
-						Status = 1;
+						return(MISSION_HUNT); // May have deleted itself or started rotating
 					}
 				}
 				break;
