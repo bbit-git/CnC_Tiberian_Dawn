@@ -398,8 +398,12 @@ void GScreenClass::Render(void)
 
 	if (IsToUpdate || IsToRedraw) {
 
-		//WWMouse->Erase_Mouse(&HidPage, TRUE);
 		GraphicViewPortClass * oldpage= Set_Logic_Page(HidPage);
+
+		/* Force full redraw every frame to prevent ghosting.
+		** The original game used partial redraws + mouse erase,
+		** but our port needs full redraws until mouse erase works. */
+		IsToRedraw = true;
 
 		//if (IsToRedraw) {
 		//	Hide_Mouse();
