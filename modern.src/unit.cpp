@@ -397,9 +397,14 @@ void UnitClass::AI(void)
 		Commence();
 	}
 
-	//DBG("UnitClass::AI TarComClass::AI");
 	TarComClass::AI();
-	//DBG("UnitClass::AI TarCom done, checking map");
+
+	/* Check vtable after TarComClass::AI — something during parent AI may corrupt us */
+	if (*(void**)this != UnitClass::VTable) {
+		fprintf(stderr, "VTABLE CORRUPT AFTER TarComClass::AI! this=%p vtable=%p\n",
+			(void*)this, *(void**)this);
+		return;
+	}
 
 	/*
 	**	Delete this unit if it finds itself off the edge of the map and it is in
