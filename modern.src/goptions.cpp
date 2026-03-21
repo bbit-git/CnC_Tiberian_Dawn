@@ -82,6 +82,9 @@ void GameOptionsClass::Adjust_Variables_For_Resolution(void)
  *=============================================================================================*/
 void GameOptionsClass::Process(void)
 {
+	/* Recalculate dialog dimensions for current resolution */
+	Adjust_Variables_For_Resolution();
+
 	static struct {
 		int ID;				// Button ID to use.
 		int Text;			// Text number to use for this button.
