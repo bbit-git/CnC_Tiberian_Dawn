@@ -407,8 +407,9 @@ bool FootClass::Basic_Path(void)
 #endif
 
 		if (!skip_path) {
+			DBG("Basic_Path: Mark UP, cell=%d", (int)cell);
 			Mark(MARK_UP);
-			Path[0] = FACING_NONE;		// Probably not necessary, but...
+			Path[0] = FACING_NONE;
 
 			/*
 			**	Try to find a path to the destination. If a failure occurs, then keep trying
@@ -441,6 +442,7 @@ bool FootClass::Basic_Path(void)
 			**	aggressive case. If this fails, then no path will succeed. Further
 			**	scanning is unnecessary.
 			*/
+			DBG("Basic_Path: Find_Path cell=%d maxtype=%d", (int)cell, (int)maxtype);
 			path = Find_Path(cell, &workpath1[0], sizeof(workpath1), maxtype);
 			if (path && path->Cost) {
 				memcpy(&path1, path, sizeof(path1));

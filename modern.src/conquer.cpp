@@ -162,16 +162,12 @@ void Main_Game(int argc, char *argv[])
 	*/
 	while (Select_Game(fade)) {
 		ScenarioInit = 0;		// Kludge.
-//		Theme.Queue_Song(THEME_PICK_ANOTHER);
+		DBG("Main_Game: Select_Game returned true, fading palette");
 
 		fade = true;
 
-		/*
-		**	Make the game screen visible, clear the keyboard buffer of spurious
-		**	values, and then show the mouse.  This PRESUMES that Select_Game() has
-		**	told the map to draw itself.
-		*/
 		Fade_Palette_To(GamePalette, FADE_PALETTE_MEDIUM, NULL);
+		DBG("Main_Game: entering main loop");
 		Keyboard::Clear();
 
 		/*
@@ -207,7 +203,9 @@ void Main_Game(int argc, char *argv[])
 			*/
 			if (!Debug_Map) {
 				TotalLocks=0;
+				DBG("Main_Loop: calling");
 				if (Main_Loop()) {
+					DBG("Main_Loop: returned true (exit)");
 					break;
 				}
 
@@ -1473,17 +1471,12 @@ bool Main_Loop()
 	/*
 	** I think I'm gonna cry if this makes it work
 	*/
+	DBG("Main_Loop: enter");
 	if (Get_Mouse_State())Show_Mouse();
-
-	/*
-	** Call the focus loss handler
-	*/
 	Check_For_Focus_Loss();
-
-	/*
-	** Allocate extra memory for uncompressed shapes as needed
-	*/
+	DBG("Main_Loop: Reallocate_Big_Shape_Buffer");
 	Reallocate_Big_Shape_Buffer();
+	DBG("Main_Loop: timers");
 
 	/*
 	** Sync-bug trapping code
@@ -1538,13 +1531,14 @@ bool Main_Loop()
 		if (SpecialDialog == SDLG_NONE && GameInFocus) {
 
 			WWMouse->Erase_Mouse(HidPage, TRUE);
+			DBG("Main_Loop: Input");
 			Map.Input(input, x, y);
 			if (input) {
 				Keyboard_Process(input);
 			}
-//			HidPage.Lock();
+			DBG("Main_Loop: Render");
 			Map.Render();
-//			HidPage.Unlock();
+			DBG("Main_Loop: Render done");
 		}
 	}
 
@@ -1564,12 +1558,9 @@ bool Main_Loop()
 	*/
 	Map.Layer[LAYER_GROUND].Sort();
 
-//	Heap_Dump_Check( "Before Logic.AI" );
-
-	/*
-	**	AI logic operations are performed here.
-	*/
+	DBG("Main_Loop: Logic.AI");
 	Logic.AI();
+	DBG("Main_Loop: Logic.AI done");
 
 //	Heap_Dump_Check( "After Logic.AI" );
 
@@ -2548,14 +2539,12 @@ void const * Get_Radar_Icon(void const * shapefile, int shapenum, int frames, in
 
 	/* Sanity check — corrupted or unparseable shape data */
 	if (pixel_width <= 0 || pixel_height <= 0 || pixel_width > 1024 || pixel_height > 1024) {
-#ifdef DEBUG
-		fprintf(stderr, "Get_Radar_Icon: bad shape dims %dx%d, first bytes: %02X %02X %02X %02X %02X %02X %02X %02X\n",
+		DBG("Get_Radar_Icon: bad shape dims %dx%d, first bytes: %02X %02X %02X %02X %02X %02X %02X %02X",
 			pixel_width, pixel_height,
 			((unsigned char*)shapefile)[0], ((unsigned char*)shapefile)[1],
 			((unsigned char*)shapefile)[2], ((unsigned char*)shapefile)[3],
 			((unsigned char*)shapefile)[4], ((unsigned char*)shapefile)[5],
 			((unsigned char*)shapefile)[6], ((unsigned char*)shapefile)[7]);
-#endif
 		return(NULL);
 	}
 

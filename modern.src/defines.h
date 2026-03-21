@@ -1590,7 +1590,7 @@ typedef enum RadioMessageType {
 **	with cell resolution. The COORD type is used for map coordinates that
 **	have a lepton resolution.
 */
-typedef unsigned long	COORDINATE;
+typedef uint32_t	COORDINATE;  /* must be 32-bit: packed as [Xcell:8][Xlepton:8][Ycell:8][Ylepton:8] */
 typedef signed short		CELL;
 
 typedef unsigned short	TARGET;
@@ -2384,7 +2384,7 @@ typedef struct {
 	int				Cost;					// Accumulated terrain cost.
 	int				Length;				// Command string length.
 	FacingType		*Command;			// Pointer to command string.
-	unsigned long	*Overlap;			// Pointer to overlap list
+	uint32_t			*Overlap;			// Pointer to overlap list (32-bit for bit indexing)
 	CELL				LastOverlap;		// stores position of last overlap
 	CELL				LastFixup;			// stores position of last overlap
 } PathType;

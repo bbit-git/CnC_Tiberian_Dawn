@@ -10,6 +10,15 @@
 #include <cstring>
 #include <cstdio>
 
+/* Debug trace macro — matches td_platform.h definition */
+#ifndef DBG
+#ifdef DEBUG
+#define DBG(fmt, ...) do { fprintf(stderr, fmt "\n", ##__VA_ARGS__); fflush(stderr); } while(0)
+#else
+#define DBG(fmt, ...) ((void)0)
+#endif
+#endif
+
 /* LCW decompression (defined in td_stubs.cpp) */
 extern unsigned long LCW_Uncompress(void const* source, void* dest, unsigned long length, unsigned long dest_max = 0);
 
@@ -180,7 +189,7 @@ static bool vqa_parse_header(VQADecoder* dec) {
     /* Read FORM header */
     if (vqa_read(dec, &ch, 8) != 0) return false;
     if (ch.id != ID_FORM) {
-        fprintf(stderr, "VQA: not a FORM file\n");
+        DBG("VQA: not a FORM file");
         return false;
     }
 
@@ -188,7 +197,7 @@ static bool vqa_parse_header(VQADecoder* dec) {
     uint32_t form_type;
     if (vqa_read(dec, &form_type, 4) != 0) return false;
     if (form_type != ID_WVQA) {
-        fprintf(stderr, "VQA: not WVQA format\n");
+        DBG("VQA: not WVQA format");
         return false;
     }
 
@@ -205,7 +214,7 @@ static bool vqa_parse_header(VQADecoder* dec) {
             if (swap32(ch.size) > chunk_size)
                 vqa_seek(dec, swap32(ch.size) - chunk_size);
 
-            fprintf(stderr, "VQA: %dx%d, %d frames, %d fps, block %dx%d, %d cb entries, groupsize=%d\n",
+            DBG("VQA: %dx%d, %d frames, %d fps, block %dx%d, %d cb entries, groupsize=%d",
                     dec->header.ImageWidth, dec->header.ImageHeight,
                     dec->header.Frames, dec->header.FPS,
                     dec->header.BlockWidth, dec->header.BlockHeight,
@@ -279,7 +288,7 @@ static bool vqa_alloc_buffers(VQADecoder* dec) {
     dec->palette = (uint8_t*)calloc(1, dec->max_pal_size);
 
     if (!dec->codebook || !dec->cb_next || !dec->pointers || !dec->framebuf || !dec->palette) {
-        fprintf(stderr, "VQA: allocation failed\n");
+        DBG("VQA: allocation failed");
         return false;
     }
 
@@ -296,7 +305,7 @@ static bool vqa_alloc_buffers(VQADecoder* dec) {
     ADPCM_Init(&dec->audio_adpcm);
 
     if (dec->has_audio) {
-        fprintf(stderr, "VQA: audio %d Hz, %d ch, %d bit\n",
+        DBG("VQA: audio %d Hz, %d ch, %d bit",
                 dec->audio_rate, dec->audio_channels, dec->audio_bits);
     }
 
@@ -548,14 +557,14 @@ long VQA_Open(VQAHandle* handle, char const* filename, VQAConfig* config) {
     /* Open the file directly (bypass threaded MixFileHandler) */
     void* file = vqa_open_file(filename);
     if (!file) {
-        fprintf(stderr, "VQA: failed to open %s\n", filename);
+        DBG("VQA: failed to open %s", filename);
         return -1;
     }
     handle->VQAio = (unsigned long)(uintptr_t)file;
 
     /* Parse the VQA header */
     if (!vqa_parse_header(dec)) {
-        fprintf(stderr, "VQA: failed to parse header for %s\n", filename);
+        DBG("VQA: failed to parse header for %s", filename);
         return -1;
     }
 
@@ -564,7 +573,7 @@ long VQA_Open(VQAHandle* handle, char const* filename, VQAConfig* config) {
         return -1;
     }
 
-    fprintf(stderr, "VQA: opened %s (%d frames)\n", filename, dec->total_frames);
+    DBG("VQA: opened %s (%d frames)", filename, dec->total_frames);
     return 0;
 }
 
@@ -578,31 +587,25 @@ void VQA_Close(VQAHandle* handle) {
 
 long VQA_Play(VQAHandle* handle, int mode) {
     if (!handle || !handle->internal || !g_video_renderer) {
-#ifdef DEBUG
-        fprintf(stderr, "VQA_Play: null check failed handle=%p internal=%p renderer=%p\n",
+        DBG("VQA_Play: null check failed handle=%p internal=%p renderer=%p",
                 (void*)handle, handle ? handle->internal : nullptr, (void*)g_video_renderer);
-#endif
         return -1;
     }
     VQADecoder* dec = (VQADecoder*)handle->internal;
-#ifdef DEBUG
-    fprintf(stderr, "VQA_Play: dec=%p fps=%d frames=%d file=%lu\n",
+    DBG("VQA_Play: dec=%p fps=%d frames=%d file=%lu",
             (void*)dec, dec->fps, dec->total_frames, handle->VQAio);
-#endif
 
     g_video_renderer->on_playback_start();
     unsigned int frame_ms = 1000 / (dec->fps ? dec->fps : 15);
 
-#ifdef DEBUG
-    fprintf(stderr, "VQA: playing %d frames at %d fps (%dms/frame)\n",
+    DBG("VQA: playing %d frames at %d fps (%dms/frame)",
             dec->total_frames, dec->fps, frame_ms);
-#endif
 
     for (int f = 0; f < dec->total_frames && !dec->stopped; f++) {
         uint64_t t0 = g_video_renderer->get_ticks_ms();
 
         if (!vqa_load_frame(dec)) {
-            fprintf(stderr, "VQA: frame %d load failed\n", f);
+            DBG("VQA: frame %d load failed", f);
             break;
         }
 

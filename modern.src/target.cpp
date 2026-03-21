@@ -434,18 +434,14 @@ COORDINATE As_Coord(TARGET target)
 		**	for the center coordinate. Return the center coordinate as the target's coordinate.
 		*/
 		ObjectClass * obj = As_Object(target);
+		DBG("As_Coord: target=%d kind=%d val=%d obj=%p", (int)target, (int)Target_Kind(target), (int)Target_Value(target), (void*)obj);
 		if (obj) {
 
-			/*
-			** If this is invalid memory or the object is dead then return 0
-			** This is a kludge to fix the problem of team target objects being assigned after
-			** the object is already destroyed - 1/15/97 3:13PM
-			*/
 			if (IsBadReadPtr ((void*)obj, sizeof (ObjectClass) ) || !obj->IsActive){
-//OutputDebugString ("C&C95 - As_Coord called for invalid target object\m");
 				return(0x00000000L);
 			}
 
+			DBG("As_Coord: calling Target_Coord on obj=%p", (void*)obj);
 			return(obj->Target_Coord());
 		}
 	}

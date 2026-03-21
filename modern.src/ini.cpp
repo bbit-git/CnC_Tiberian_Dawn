@@ -335,15 +335,11 @@ bool Read_Scenario_Ini(char *root, bool fresh)
 	**	Read in the team-type data. The team types must be created before any
 	**	triggers can be created.
 	*/
-#ifdef DEBUG
-	fprintf(stderr, "INI: reading TeamTypes\n");
-#endif
+	DBG("INI: reading TeamTypes");
 	TeamTypeClass::Read_INI(buffer);
 	Call_Back();
 
-#ifdef DEBUG
-	fprintf(stderr, "INI: reading Houses\n");
-#endif
+	DBG("INI: reading Houses");
 	HouseClass::Read_INI(buffer);
 	Call_Back();
 
@@ -392,21 +388,15 @@ bool Read_Scenario_Ini(char *root, bool fresh)
 	**	Read in the trigger data. The triggers must be created before any other
 	**	objects can be initialized.
 	*/
-#ifdef DEBUG
-	fprintf(stderr, "INI: reading Triggers\n");
-#endif
+	DBG("INI: reading Triggers");
 	TriggerClass::Read_INI(buffer);
 	Call_Back();
 
-#ifdef DEBUG
-	fprintf(stderr, "INI: reading Map\n");
-#endif
+	DBG("INI: reading Map");
 	Map.Read_INI(buffer);
 	Call_Back();
 
-#ifdef DEBUG
-	fprintf(stderr, "INI: reading Binary/Templates\n");
-#endif
+	DBG("INI: reading Binary/Templates");
 	if (fresh) {
 		if (!Map.Read_Binary(root, &ScenarioCRC)) {
 			TemplateClass::Read_INI(buffer);
@@ -414,21 +404,15 @@ bool Read_Scenario_Ini(char *root, bool fresh)
 	}
 	Call_Back();
 
-#ifdef DEBUG
-	fprintf(stderr, "INI: reading Terrain\n");
-#endif
+	DBG("INI: reading Terrain");
 	TerrainClass::Read_INI(buffer);
 	Call_Back();
 
-#ifdef DEBUG
-	fprintf(stderr, "INI: reading Units\n");
-#endif
+	DBG("INI: reading Units");
 	UnitClass::Read_INI(buffer);
 	Call_Back();
 
-#ifdef DEBUG
-	fprintf(stderr, "INI: reading Infantry\n");
-#endif
+	DBG("INI: reading Infantry");
 	InfantryClass::Read_INI(buffer);
 	Call_Back();
 
@@ -447,15 +431,11 @@ bool Read_Scenario_Ini(char *root, bool fresh)
 	/*
 	**	Read in any normal overlay objects.
 	*/
-#ifdef DEBUG
-	fprintf(stderr, "INI: reading Overlays\n");
-#endif
+	DBG("INI: reading Overlays");
 	OverlayClass::Read_INI(buffer);
 	Call_Back();
 
-#ifdef DEBUG
-	fprintf(stderr, "INI: reading Smudges\n");
-#endif
+	DBG("INI: reading Smudges");
 	SmudgeClass::Read_INI(buffer);
 	Call_Back();
 

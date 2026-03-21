@@ -1337,6 +1337,7 @@ void RadarClass::AI(KeyNumType & input, int x, int y)
 		}
 	}
 
+	DBG("RadarClass::AI → DisplayClass::AI");
 	DisplayClass::AI(input, x, y);
 }
 

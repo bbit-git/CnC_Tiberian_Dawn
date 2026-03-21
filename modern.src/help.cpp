@@ -159,16 +159,13 @@ short const * HelpClass::Overlap_List(void) const
  *=============================================================================================*/
 void HelpClass::AI(KeyNumType &key, int x, int y)
 {
-	/*
-	**	If there is any keyboard input, then the help text goes away.
-	*/
-//	if (key) {
-//		Help_Text(TXT_NONE);
-//	}
+	DBG("HelpClass::AI enter");
 
 	if (!CountDownTimer.Time() && !IsRight && (x != X || y != Y)) {
 		Help_Text(TXT_NONE);
 	}
+	DBG("HelpClass::AI CDT=%ld Text=%d",
+		(long)CountDownTimer.Time(), Text);
 
 	/*
 	**	Process the countdown timer only if it hasn't already expired and there is
@@ -197,7 +194,9 @@ void HelpClass::AI(KeyNumType &key, int x, int y)
 		}
 	}
 
+	DBG("HelpClass::AI → TabClass::AI");
 	TabClass::AI(key, x, y);
+	DBG("HelpClass::AI done");
 }
 
 
@@ -315,6 +314,9 @@ void HelpClass::Draw_It(bool forced)
  *=============================================================================================*/
 void HelpClass::Set_Text(int text)
 {
+	/* TODO: Set_Text crashes during initial game frame — likely Text_Overlap_List
+	 * or Click_Cell_Calc has LP64 COORDINATE issues. Disabled until fixed. */
+	return;
 	if (text != TXT_NONE) {
 		Text = text;
 //		Fancy_Text_Print(TXT_NONE, 0, 0, 0, 0, TPF_6POINT|TPF_NOSHADOW);
