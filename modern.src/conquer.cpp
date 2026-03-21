@@ -2714,24 +2714,82 @@ void CC_Draw_Shape(void const * shapefile, int shapenum, int x, int y, WindowNum
 	unsigned	long	shape_size;
 
 	if (shapefile && shapenum != -1) {
+		DBG("CC_Draw_Shape: shape=%p num=%d x=%d y=%d flags=%x", shapefile, shapenum, x, y, flags);
+
+		int frame_w, frame_h;
 
 		/*
-		** Build frame returns a pointer now instead of the shapes length
+		** Try Build_Frame first (KeyFrame format). If it returns 0,
+		** fall back to SHP format via Extract_Shape.
 		*/
-		shape_size=Build_Frame(shapefile , shapenum , ShapeBuffer);
-		if (Get_Last_Frame_Length() > _ShapeBufferSize) {
-			Mono_Printf("Attempt to use shape buffer for size %d buffer is only size %d", shape_size, _ShapeBufferSize);
-			Get_Key();
+		shape_size = Build_Frame(shapefile, shapenum, ShapeBuffer);
+		DBG("CC_Draw_Shape: Build_Frame returned %lu", shape_size);
+		if (shape_size) {
+			shape_pointer = (char *)shape_size;
+			frame_w = Get_Build_Frame_Width(shapefile);
+			frame_h = Get_Build_Frame_Height(shapefile);
+			DBG("CC_Draw_Shape: KeyFrame %dx%d", frame_w, frame_h);
+		} else {
+			/*
+			** Build_Frame failed — try SHP format.
+			** SHP detection: first uint32 offset should be close to (NumShapes+1)*4
+			** (the offset table size). KeyFrame data has (x,y) at bytes 2-5 which
+			** produces a large uint32 that won't match this pattern.
+			*/
+			const uint8_t* raw = (const uint8_t*)shapefile;
+			uint16_t nshp = *(const uint16_t*)raw;
+			uint32_t off0 = *(const uint32_t*)(raw + 2);
+			uint32_t expected_off0 = (uint32_t)(nshp + 1) * 4; /* offset table ends here */
+			if (nshp == 0 || nshp > 4096 || off0 < expected_off0 || off0 > expected_off0 + 32) {
+				/* Not SHP format either — skip */
+				return;
+			}
+			void *frame = Extract_Shape(shapefile, shapenum);
+			DBG("CC_Draw_Shape: frame=%p", frame);
+			if (!frame) return;
+			unsigned char *fhdr = (unsigned char *)frame;
+			uint16_t stype    = *(uint16_t*)(fhdr);
+			uint8_t  sh       = fhdr[2];
+			uint16_t sw       = *(uint16_t*)(fhdr + 3);
+			/* uint8_t orig_h = fhdr[5]; */
+			uint16_t shpsize  = *(uint16_t*)(fhdr + 6);
+			uint16_t datalen  = *(uint16_t*)(fhdr + 8);
+			if (sw == 0 || sh == 0 || sw > 1024 || sh > 1024) return;
+			frame_w = sw;
+			frame_h = sh;
+
+			/* Header is 10 bytes for type 0/2; type 1/4 have a 16-byte color table after */
+			int hdr_size = (stype & 1) ? 10 + 16 : 10;
+			unsigned char *framedata = fhdr + hdr_size;
+			/* compressed data size = total shape size - header */
+			int comp_size = shpsize - hdr_size;
+			if (comp_size <= 0) return;
+
+			int uncomp_size = sw * sh;
+			if (uncomp_size > _ShapeBufferSize) return; /* won't fit in buffer */
+
+			DBG("CC_Draw_Shape: SHP type=%d %dx%d shpsize=%d datalen=%d comp=%d",
+				stype, sw, sh, shpsize, datalen, comp_size);
+			if (stype == 0) {
+				/* LCW compressed → decompress to ShapeBuffer */
+				LCW_Uncompress(framedata, ShapeBuffer, comp_size, uncomp_size);
+				shape_pointer = ShapeBuffer;
+			} else if (stype == 2) {
+				/* Uncompressed raw pixels */
+				shape_pointer = (char *)framedata;
+			} else {
+				/* Type 1/4 (compact) — not yet supported */
+				DBG("CC_Draw_Shape: unsupported SHP type %d", stype);
+				return;
+			}
 		}
 
-		if (shape_size) {
+		if (shape_pointer && frame_w > 0 && frame_h > 0) {
 			GraphicViewPortClass draw_window(LogicPage->Get_Graphic_Buffer(),
 														WindowList[window][WINDOWX] << 3 + LogicPage->Get_XPos(),
 														WindowList[window][WINDOWY] + LogicPage->Get_YPos(),
 														WindowList[window][WINDOWWIDTH] << 3,
 														WindowList[window][WINDOWHEIGHT]);
-
-			shape_pointer = (char *)shape_size;
 
 			/*
 			**	Special shadow drawing code (used for aircraft and bullets).
@@ -2750,18 +2808,18 @@ void CC_Draw_Shape(void const * shapefile, int shapenum, int x, int y, WindowNum
 
 			if (draw_window.Lock()){
 				if ((flags & (SHAPE_GHOST|SHAPE_FADING)) == (SHAPE_GHOST|SHAPE_FADING)) {
-					Buffer_Frame_To_Page(x, y, Get_Build_Frame_Width(shapefile), Get_Build_Frame_Height(shapefile),
+					Buffer_Frame_To_Page(x, y, frame_w, frame_h,
 						shape_pointer, draw_window, flags | SHAPE_TRANS, ghostdata, fadingdata, 1, predoffset);
 				} else {
 					if (flags & SHAPE_FADING) {
-						Buffer_Frame_To_Page(x, y, Get_Build_Frame_Width(shapefile), Get_Build_Frame_Height(shapefile),
+						Buffer_Frame_To_Page(x, y, frame_w, frame_h,
 							shape_pointer, draw_window, flags | SHAPE_TRANS, fadingdata, 1, predoffset);
 					} else {
 						if (flags & SHAPE_PREDATOR) {
-							Buffer_Frame_To_Page(x, y, Get_Build_Frame_Width(shapefile), Get_Build_Frame_Height(shapefile),
+							Buffer_Frame_To_Page(x, y, frame_w, frame_h,
 								shape_pointer, draw_window, flags | SHAPE_TRANS, predoffset);
 						} else {
-							Buffer_Frame_To_Page(x, y, Get_Build_Frame_Width(shapefile), Get_Build_Frame_Height(shapefile),
+							Buffer_Frame_To_Page(x, y, frame_w, frame_h,
 								shape_pointer, draw_window, flags | SHAPE_TRANS, ghostdata, predoffset);
 						}
 					}
