@@ -423,11 +423,13 @@ bool FootClass::Register_Cell(PathType *path, CELL cell, FacingType dir, int cos
 #ifdef OBSOLETE
 bool FootClass::Register_Cell(PathType *path, CELL cell, FacingType dir, int cost, MoveType threshhold)
 {
-	//DBG("Register_Cell: cell=%d dir=%d cost=%d len=%d", (int)cell, (int)dir, cost, path->Length);
 	FacingType  *list;
 	int 	pos  = cell >> 5;
 	int	bit  = (cell & 31); /* LP64: was (cell & 31) - 1, but shift by -1 is UB */
 	int	idx;
+
+	/* LP64 safety: bounds check */
+	if ((unsigned)cell >= MAP_CELL_TOTAL || pos >= (MAP_CELL_TOTAL/32)) return false;
 
 	/*
 	** See if this point has already been registered as on the list.  If so
@@ -529,8 +531,9 @@ bool FootClass::Register_Cell(PathType *path, CELL cell, FacingType dir, int cos
  *=============================================================================================*/
 PathType * FootClass::Find_Path(CELL dest, FacingType *final_moves, int maxlen, MoveType threshhold)
 {
-	//DBG("Find_Path: enter dest=%d Coord=%x maxlen=%d", (int)dest, Coord, maxlen);
 	CELL					source = Coord_Cell(Coord);		// Source expressed as cell
+	/* LP64 safety: validate source and dest */
+	if ((unsigned)source >= MAP_CELL_TOTAL || (unsigned)dest >= MAP_CELL_TOTAL) return NULL;
 	//DBG("Find_Path: source=%d", (int)source);
 	static PathType	path;										// Main path control.
 	CELL					next;										// Next cell to enter
@@ -645,6 +648,9 @@ top_of_list:
 		*/
 		direction	= CELL_FACING(startcell, dest);
 		next			= Adjacent_Cell(startcell, direction);
+		/* LP64 safety: reject out-of-bounds cells */
+		if ((unsigned)next >= MAP_CELL_TOTAL) break;
+		if (path.Length > 190) break; /* safety: prevent buffer overrun */
 		//DBG("Find_Path: start=%d(%d,%d) dest=%d(%d,%d) next=%d dir=%d",
 		//	(int)startcell, Cell_X(startcell), Cell_Y(startcell),
 		//	(int)dest, Cell_X(dest), Cell_Y(dest),
@@ -663,9 +669,8 @@ top_of_list:
 			Register_Cell(&path, next, direction, cost, threshhold);
 			//DBG("Find_Path: registered");
 		} else {
-			//DBG("Find_Path: obstacle at %d, skipping", (int)next);
-			break; /* TODO: Follow_Edge obstacle handling needs LP64 audit */
-			if (0) { /* disabled: Follow_Edge causes stack corruption on LP64 */
+			/* TODO: Follow_Edge still crashes — needs more LP64 audit */
+			break;
 			if (Debug_Find_Path && DrawPath) {
 				Debug_Draw_Map("Walk Through Obstacle", startcell, dest, true);
 			}
@@ -749,7 +754,7 @@ top_of_list:
 				Mem_Copy(&path, &pleft, sizeof(PathType));
 				pleft.Command 	= &moves_left[0];
 				pleft.Overlap 	= LeftOverlap;
-				Mem_Copy(path.Command, pleft.Command, path.Length);
+				Mem_Copy(path.Command, pleft.Command, path.Length * sizeof(FacingType)); /* LP64: was path.Length bytes, need *sizeof for 4-byte enum */
 				Mem_Copy(path.Overlap, pleft.Overlap, sizeof(LeftOverlap));
 				left = Follow_Edge(startcell, next, &pleft, COUNTERCLOCK, direction, threat, threat_stage, (sizeof(moves_left)/sizeof(moves_left[0])), threshhold);
 //				left = Follow_Edge(startcell, next, &pleft, COUNTERCLOCK, direction, threat, threat_stage, follow_len, threshhold);
@@ -776,7 +781,7 @@ top_of_list:
 				Mem_Copy(&path, &pright, sizeof(PathType));
 				pright.Command = &moves_right[0];
 				pright.Overlap = RightOverlap;
-				Mem_Copy(path.Command, pright.Command, path.Length);
+				Mem_Copy(path.Command, pright.Command, path.Length * sizeof(FacingType)); /* LP64: need *sizeof for 4-byte enum */
 				Mem_Copy(path.Overlap, pright.Overlap, sizeof(RightOverlap));
 				right = Follow_Edge(startcell, next, &pright, CLOCK, direction, threat, threat_stage, (sizeof(moves_right)/sizeof(moves_right[0])), threshhold);
 //				right = Follow_Edge(startcell, next, &pright, CLOCK, direction, threat, threat_stage, follow_len, threshhold);
@@ -870,7 +875,7 @@ top_of_list:
 			len = MIN(len, maxlen);
 			if (len > 0) {
 				memcpy(&path.Overlap[0], &which->Overlap[0], sizeof(LeftOverlap));
-				memcpy(&path.Command[0], &which->Command[0], len);
+				memcpy(&path.Command[0], &which->Command[0], len * sizeof(FacingType)); /* LP64: len is element count */
 				path.Length 		= len;
 				path.Cost   		= which->Cost;
 				path.LastOverlap 	= -1;
@@ -880,7 +885,6 @@ top_of_list:
 			}
 			Debug_Draw_Map("Walking to next obstacle", next, dest, true);
 		}
-		} /* end disabled Follow_Edge block */
 		startcell = next;
 	}
 
