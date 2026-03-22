@@ -1354,8 +1354,8 @@ void InfantryClass::AI(void)
 			Mark(MARK_UP);
 			if (Distance(Head_To_Coord()) < 0x0010) {
 
-				memcpy(&Path[0], &Path[1], sizeof(Path)-sizeof(Path[0]));
-				Path[(sizeof(Path)/sizeof(Path[0]))-1] = FACING_NONE;
+				memmove(&Path[0], &Path[1], sizeof(Path)-sizeof(Path[0]));
+				Path[CONQUER_PATH_MAX-1] = FACING_NONE;
 				Coord = Head_To_Coord();
 				Stop_Driver();
 				Per_Cell_Process(true);
@@ -2011,6 +2011,7 @@ void InfantryClass::Scatter(COORDINATE threat, bool forced)
 			if (Map.In_Radar(newcell) && Can_Enter_Cell(newcell) == MOVE_OK) {
 				Assign_Mission(MISSION_MOVE);
 				Assign_Destination(::As_Target(newcell));
+				break;
 			}
 		}
 	}

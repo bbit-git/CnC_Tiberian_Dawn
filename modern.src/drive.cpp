@@ -692,7 +692,7 @@ bool DriveClass::While_Moving(void)
 								Per_Cell_Process(true);
 								if (Start_Driver(c)) {
 									Set_Speed(oldspeed);
-									memcpy(&Path[0], &Path[1], CONQUER_PATH_MAX-1);
+									memmove(&Path[0], &Path[1], (CONQUER_PATH_MAX-1) * sizeof(Path[0]));
 									Path[CONQUER_PATH_MAX-1] = FACING_NONE;
 								} else {
 									Path[0] = FACING_NONE;
@@ -709,7 +709,7 @@ bool DriveClass::While_Moving(void)
 								if (*this == UNIT_HARVESTER || !House->IsHuman) {
 									bool old = Special.IsScatter;
 									Special.IsScatter = true;
-									Map[Coord_Cell(c)].Incoming(0, true);
+									Map[Coord_Cell(c)].Incoming(Center_Coord(), true);
 									Special.IsScatter = old;
 								}
 								break;
@@ -900,22 +900,27 @@ bool DriveClass::Start_Of_Move(void)
 			} else {
 
 				/*
-				**	If a basic path could be found, but the immediate move destination is
-				**	blocked by a friendly temporary blockage, then cause that blockage
-				**	to scatter.
+				**	If a basic path could not be found, scatter friendly blockages
+				**	in the immediate and next-adjacent cells along the facing direction.
 				*/
 				CELL cell = Adjacent_Cell(Coord_Cell(Center_Coord()), PrimaryFacing.Current());
-				if (Map.In_Radar(cell)) {
-					if (Can_Enter_Cell(cell) == MOVE_TEMP) {
-						CellClass * cellptr = &Map[cell];
-						TechnoClass * blockage = cellptr->Cell_Techno();
-						if (blockage && House->Is_Ally(blockage)) {
-							bool old = Special.IsScatter;
-							Special.IsScatter = true;
-							cellptr->Incoming(0, true);
-							Special.IsScatter = old;
+				for (int scatter_depth = 0; scatter_depth < 2; scatter_depth++) {
+					if (Map.In_Radar(cell)) {
+						MoveType mt = Can_Enter_Cell(cell);
+						if (mt == MOVE_TEMP || mt == MOVE_MOVING_BLOCK) {
+							CellClass * cellptr = &Map[cell];
+							TechnoClass * blockage = cellptr->Cell_Techno();
+							if (blockage && House->Is_Ally(blockage)) {
+								bool old = Special.IsScatter;
+								Special.IsScatter = true;
+								cellptr->Incoming(Center_Coord(), true);
+								Special.IsScatter = old;
+							}
+						} else {
+							break;
 						}
 					}
+					cell = Adjacent_Cell(cell, PrimaryFacing.Current());
 				}
 
 				if (TryTryAgain) {
@@ -945,7 +950,7 @@ bool DriveClass::Start_Of_Move(void)
 				if (blockage && House->Is_Ally(blockage)) {
 					bool old = Special.IsScatter;
 					Special.IsScatter = true;
-					cellptr->Incoming(0, true);
+					cellptr->Incoming(Center_Coord(), true);
 					Special.IsScatter = old;
 				}
 			}
@@ -1015,7 +1020,7 @@ bool DriveClass::Start_Of_Move(void)
 			if (cando == MOVE_TEMP) {
 				bool old = Special.IsScatter;
 				Special.IsScatter = true;
-				Map[destcell].Incoming(0, true);
+				Map[destcell].Incoming(Center_Coord(), true);
 				Special.IsScatter = old;
 			}
 
@@ -1029,6 +1034,7 @@ bool DriveClass::Start_Of_Move(void)
 			Stop_Driver();
 			if (cando != MOVE_MOVING_BLOCK) {
 			 	Path[0] = FACING_NONE;		// Path is blocked!
+				PathDelay = 0;				// Allow immediate re-path next tick.
 			}
 
 			/*
@@ -1172,12 +1178,12 @@ bool DriveClass::Start_Of_Move(void)
 							return(true);
 						}
 					} else {
-						memcpy(&Path[0], &Path[2], CONQUER_PATH_MAX-2);
+						memmove(&Path[0], &Path[2], (CONQUER_PATH_MAX-2) * sizeof(Path[0]));
 						Path[CONQUER_PATH_MAX-2] = FACING_NONE;
 						IsPlanningToLook = true;
 					}
 				} else {
-					memcpy(&Path[0], &Path[1], CONQUER_PATH_MAX-1);
+					memmove(&Path[0], &Path[1], (CONQUER_PATH_MAX-1) * sizeof(Path[0]));
 				}
 				Path[CONQUER_PATH_MAX-1] = FACING_NONE;
 			}

@@ -3383,15 +3383,59 @@ void DisplayClass::Mouse_Left_Release(CELL cell, int x, int y, ObjectClass * obj
 				**	what action that object should perform. This, seemingly redundant
 				**	process, is necessary since multiple objects could be selected and each
 				**	might perform a different action when the click occurs.
+				**
+				**	For move orders with multiple units, spread destinations in a spiral
+				**	around the target cell so units don't all jam into one spot.
 				*/
 				bool doflash = true;
 				AllowVoice = true;
+
+				/*
+				**	Build a spread table for group moves: cell 0 = target,
+				**	then spiral outward in rings.
+				*/
+				static CELL spread_cells[64];
+				int spread_count = 0;
+				bool do_spread = (!object && CurrentObject.Count() > 1);
+
+				if (do_spread) {
+					spread_cells[spread_count++] = cell;
+
+					for (int ring = 1; ring <= 3 && spread_count < 64; ring++) {
+						int cx = Cell_X(cell);
+						int cy = Cell_Y(cell);
+
+						for (int dx = -ring; dx <= ring && spread_count < 64; dx++) {
+							for (int dy = -ring; dy <= ring && spread_count < 64; dy++) {
+								if (abs(dx) != ring && abs(dy) != ring) continue;
+								int nx = cx + dx;
+								int ny = cy + dy;
+								if (nx < 0 || nx >= MAP_CELL_W || ny < 0 || ny >= MAP_CELL_H) continue;
+								CELL sc = (CELL)(ny * MAP_CELL_W + nx);
+								if (Map.In_Radar(sc)) {
+									spread_cells[spread_count++] = sc;
+								}
+							}
+						}
+					}
+				}
+
+				int spread_idx = 0;
+
 				for (int index = 0; index < CurrentObject.Count(); index++) {
 					ObjectClass * tobject = CurrentObject[index];
 					if (object) {
 						tobject->Active_Click_With(tobject->What_Action(object), object);
 					} else {
-						tobject->Active_Click_With(tobject->What_Action(cell), cell);
+						ActionType unit_action = tobject->What_Action(cell);
+
+						if (do_spread && (unit_action == ACTION_MOVE || unit_action == ACTION_NOMOVE) && spread_count > 0) {
+							CELL dest = spread_cells[spread_idx % spread_count];
+							spread_idx++;
+							tobject->Active_Click_With(unit_action, dest);
+						} else {
+							tobject->Active_Click_With(unit_action, cell);
+						}
 					}
 					AllowVoice = false;
 				}
