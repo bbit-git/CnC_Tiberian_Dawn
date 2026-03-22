@@ -1342,7 +1342,7 @@ void HouseClass::AI(void)
 	*/
 	if (PlayerPtr == this) {
 		if (Map.Is_Radar_Active()) {
-			if (BScan & (STRUCTF_RADAR|STRUCTF_EYE)) {
+			if (ActiveBScan & (STRUCTF_RADAR|STRUCTF_EYE)) {
 				if (Power_Fraction() < 0x0100) {
 					Map.Radar_Activate(0);
 				}
@@ -1350,7 +1350,7 @@ void HouseClass::AI(void)
 				Map.Radar_Activate(0);
 			}
 		} else {
-			if (BScan & (STRUCTF_RADAR|STRUCTF_EYE)) {
+			if (ActiveBScan & (STRUCTF_RADAR|STRUCTF_EYE)) {
 				if (Power_Fraction() >= 0x0100) {
 					Map.Radar_Activate(1);
 				}
