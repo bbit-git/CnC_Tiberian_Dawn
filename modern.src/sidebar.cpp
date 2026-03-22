@@ -705,16 +705,19 @@ bool SidebarClass::Scroll(bool up, int column)
 void SidebarClass::Draw_It(bool complete)
 {
 	/*
-	**	Render tactical map and radar first (skip power bar).
-	**	Then sidebar background shapes, then power bar on top.
-	**	This ensures the power bar is not overwritten by the shapes.
+	**	Render power bar, radar, and tactical map via the normal chain.
 	*/
-	RadarClass::Draw_It(complete);
+	PowerClass::Draw_It(complete);
 
 	if (IsSidebarActive && (IsToRedraw || complete) && !Debug_Map) {
 		IsToRedraw = false;
 
 		if (LogicPage->Lock()){
+			/*
+			**	Clear sidebar area and draw background shapes.
+			**	This overwrites the power bar column, so we redraw
+			**	just the power bar on top afterward.
+			*/
 			if (complete) {
 				LogicPage->Fill_Rect(SideX, SideY, SideX+SideWidth-1, SideY+SideHeight-1, BLACK);
 			}
@@ -724,15 +727,12 @@ void SidebarClass::Draw_It(bool complete)
 
 			LogicPage->Unlock();
 		}
-	}
 
-	/*
-	**	Draw power bar on top of sidebar background shapes.
-	**	PowerClass::Draw_It also chains to RadarClass::Draw_It which
-	**	re-renders the tactical map, but that only touches the tactical
-	**	viewport area (left of sidebar) so it won't overwrite the shapes.
-	*/
-	PowerClass::Draw_It(complete);
+		/*
+		**	Redraw power bar on top of sidebar shapes.
+		*/
+		Draw_Bar();
+	}
 
 	/*
 	**	Draw the side strip elements by calling their respective draw functions.

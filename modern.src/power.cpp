@@ -169,89 +169,65 @@ void PowerClass::One_Time(void)
  *   12/20/1994 JLB : Created.                                                                 *
  *   12/27/1994 JLB : Changes power bar color depending on amount of power.                    *
  *=============================================================================================*/
-void PowerClass::Draw_It(bool complete)
+/***********************************************************************************************
+ * PowerClass::Draw_Bar -- Renders just the power bar shapes (no parent chain).                *
+ *=============================================================================================*/
+void PowerClass::Draw_Bar(void)
 {
-	//DBG("PowerClass::Draw_It");
 	static int _modtable[]={
 		0, -1, 0, 1, 0, -1, -2, -1, 0, 1, 2, 1 ,0
 	};
 	int power_color;
 
-	if (complete || IsToRedraw) {
-//		PowX = TacPixelX + TacWidth*ICON_PIXEL_W;	// X position of upper left corner of power bar.
+	if (!Map.IsSidebarActive) return;
 
-		if (LogicPage->Lock()){
+	if (LogicPage->Lock()){
+		int bottom       = PowY + PowHeight - 1;
+		int power_height  = (PowerHeight == DesiredPowerHeight) ? PowerHeight + (_modtable[PowerBounce] * PowerDir) : PowerHeight;
+		int drain_height  = (DrainHeight == DesiredDrainHeight) ? DrainHeight + (_modtable[DrainBounce] * DrainDir) : DrainHeight;
+		power_height = Bound(power_height, 0, PowHeight - 2);
+		drain_height = Bound(drain_height, 0, PowHeight - 2);
 
-			if (Map.IsSidebarActive) {
-				IsToRedraw = false;
+		WindowList[WINDOW_CUSTOM][WINDOWX] = 0;
+		WindowList[WINDOW_CUSTOM][WINDOWY] = 0;
+		WindowList[WINDOW_CUSTOM][WINDOWWIDTH] = SeenBuff.Get_Width();
+		WindowList[WINDOW_CUSTOM][WINDOWHEIGHT] = bottom-power_height;
 
-				/*
-				** 1st get the height of the filled section of the power bar
-				*/
-				int bottom       = PowY + PowHeight - 1;
-				int power_height  = (PowerHeight == DesiredPowerHeight) ? PowerHeight + (_modtable[PowerBounce] * PowerDir) : PowerHeight;
-				int drain_height  = (DrainHeight == DesiredDrainHeight) ? DrainHeight + (_modtable[DrainBounce] * DrainDir) : DrainHeight;
-				power_height = Bound(power_height, 0, PowHeight - 2);
-				drain_height = Bound(drain_height, 0, PowHeight - 2);
+		CC_Draw_Shape(PowerBarShape, 0, PowX, PowY, WINDOW_CUSTOM, SHAPE_WIN_REL);
+		CC_Draw_Shape(PowerBarShape, 1 ,PowX, PowY+100, WINDOW_CUSTOM, SHAPE_WIN_REL);
 
-				/*
-				** Create a clip region to draw the unfilled section of the bar
-				*/
-				WindowList[WINDOW_CUSTOM][WINDOWX] = 0;
-				WindowList[WINDOW_CUSTOM][WINDOWY] = 0;
-				WindowList[WINDOW_CUSTOM][WINDOWWIDTH] = SeenBuff.Get_Width();
-				WindowList[WINDOW_CUSTOM][WINDOWHEIGHT] = bottom-power_height;
+		WindowList[WINDOW_CUSTOM][WINDOWY] = bottom-power_height;
+		WindowList[WINDOW_CUSTOM][WINDOWHEIGHT] = SeenBuff.Get_Height() - WindowList[WINDOW_CUSTOM][WINDOWY];
 
-				/*
-				** Draw the unfilled section
-				*/
-				CC_Draw_Shape(PowerBarShape, 0, PowX, PowY, WINDOW_CUSTOM, SHAPE_WIN_REL);
-				CC_Draw_Shape(PowerBarShape, 1 ,PowX, PowY+100, WINDOW_CUSTOM, SHAPE_WIN_REL);
-
-
-				/*
-				** Set up the clip region for the filled section
-				*/
-				WindowList[WINDOW_CUSTOM][WINDOWY] = bottom-power_height;
-				WindowList[WINDOW_CUSTOM][WINDOWHEIGHT] = SeenBuff.Get_Height() - WindowList[WINDOW_CUSTOM][WINDOWY];
-
-				/*
-				** What color is the filled section?
-				*/
-				if (power_height) {
-					power_color = 0;	//green
-
-					if (PlayerPtr->Drain > PlayerPtr->Power) {
-						power_color = 2;
-					}
-					if (PlayerPtr->Drain > (PlayerPtr->Power * 2)) {
-						power_color = 4;
-					}
-
-					/*
-					** Draw the filled section
-					*/
-					CC_Draw_Shape(PowerBarShape, 2+power_color,
-															PowX,
-															PowY - WindowList[WINDOW_CUSTOM][WINDOWY],
-															WINDOW_CUSTOM,
-															SHAPE_WIN_REL);
-
-					CC_Draw_Shape(PowerBarShape, 3+power_color,
-															PowX,
-															PowY - WindowList[WINDOW_CUSTOM][WINDOWY] + 100,
-															WINDOW_CUSTOM,
-															SHAPE_WIN_REL);
-				}
-
-				/*
-				**	Draw the power drain threshold marker.
-				*/
-				CC_Draw_Shape(PowerShape, 0, PowX, bottom - drain_height + 1, WINDOW_MAIN, SHAPE_NORMAL);
-
+		if (power_height) {
+			power_color = 0;
+			if (PlayerPtr->Drain > PlayerPtr->Power) {
+				power_color = 2;
 			}
-			LogicPage->Unlock();
+			if (PlayerPtr->Drain > (PlayerPtr->Power * 2)) {
+				power_color = 4;
+			}
+
+			CC_Draw_Shape(PowerBarShape, 2+power_color,
+				PowX, PowY - WindowList[WINDOW_CUSTOM][WINDOWY],
+				WINDOW_CUSTOM, SHAPE_WIN_REL);
+			CC_Draw_Shape(PowerBarShape, 3+power_color,
+				PowX, PowY - WindowList[WINDOW_CUSTOM][WINDOWY] + 100,
+				WINDOW_CUSTOM, SHAPE_WIN_REL);
 		}
+
+		CC_Draw_Shape(PowerShape, 0, PowX, bottom - drain_height + 1, WINDOW_MAIN, SHAPE_NORMAL);
+
+		LogicPage->Unlock();
+	}
+}
+
+
+void PowerClass::Draw_It(bool complete)
+{
+	if (complete || IsToRedraw) {
+		IsToRedraw = false;
+		Draw_Bar();
 	}
 	RadarClass::Draw_It(complete);
 }
