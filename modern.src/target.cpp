@@ -260,7 +260,6 @@ ObjectClass * As_Object(TARGET target)
 		default:
 			break;
 	}
-#if (0)
 	/*
 	**	Special check to ensure that a target value that references an
 	**	invalid object will not be converted back into an object pointer.
@@ -271,7 +270,6 @@ ObjectClass * As_Object(TARGET target)
 	if (object != NULL && !object->IsActive) {
 		object = NULL;
 	}
-#endif	//(0)
 
 	return(object);
 }
