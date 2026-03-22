@@ -411,7 +411,9 @@ int TFixedIHeapClass<T>::Save(FileClass &file)
 	/*
 	** Save the number of instances of this class
 	*/
+	fprintf(stderr, "  Heap::Save: ActiveCount=%d Size=%d\n", ActiveCount, Size);
 	if (file.Write(&ActiveCount, sizeof(ActiveCount)) != sizeof(ActiveCount)) {
+		fprintf(stderr, "  Heap::Save: FAILED writing ActiveCount\n");
 		return(false);
 	}
 
@@ -425,6 +427,7 @@ int TFixedIHeapClass<T>::Save(FileClass &file)
 		*/
 		idx = ID(Ptr(i));
 		if (file.Write(&idx, sizeof(idx)) != sizeof(idx)) {
+			fprintf(stderr, "  Heap::Save: FAILED writing idx for object %d\n", i);
 			return(false);
 		}
 
@@ -432,6 +435,7 @@ int TFixedIHeapClass<T>::Save(FileClass &file)
 		** Save the object itself
 		*/
 		if (!Ptr(i)->Save(file)) {
+			fprintf(stderr, "  Heap::Save: FAILED saving object %d (idx=%d)\n", i, idx);
 			return(false);
 		}
 	}

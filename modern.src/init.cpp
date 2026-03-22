@@ -945,7 +945,7 @@ bool Select_Game(bool fade)
 
 				Set_Logic_Page(SeenBuff);
 #ifdef VIRGIN_CHEAT_KEYS
-				Fancy_Text_Print("V.%d%s", SeenBuff.Get_Width() - 1, SeenBuff.Get_Height() - 10, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, Version_Number(), VersionText, FOREIGN_VERSION_NUMBER);
+				Version_Number(); Fancy_Text_Print("%s", SeenBuff.Get_Width() - 1, SeenBuff.Get_Height() - 10, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
 //				Fancy_Text_Print("V.%d%s%02d", 319, 190, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, Version_Number(), VersionText, FOREIGN_VERSION_NUMBER);
 #else
 
@@ -953,7 +953,7 @@ bool Select_Game(bool fade)
 				Version_Number();
 				Fancy_Text_Print("DEMO V%s", SeenBuff.Get_Width() - 1, SeenBuff.Get_Height() - 10, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
 #else
-				Fancy_Text_Print("V.%d%s", SeenBuff.Get_Width() - 1, SeenBuff.Get_Height() - 10, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, Version_Number(), VersionText);
+				Version_Number(); Fancy_Text_Print("%s", SeenBuff.Get_Width() - 1, SeenBuff.Get_Height() - 10, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
 #endif
 #endif
 				display = false;
@@ -2651,72 +2651,9 @@ int Version_Number(void)
 	return(version);
 #endif
 
-#ifdef WIN32
-
-#if (FRENCH)
-		sprintf(VersionText, ".02");            // Win95 french version number
-#endif	//FRENCH
-
-#if (GERMAN)
-		sprintf(VersionText, ".01");            // Win95 german version number
-#endif	//GERMAN
-
-#if (JAPANESE)
-		sprintf(VersionText, ".01");            // Win95 german version number
-#endif	//GERMAN
-
-#if !(FRENCH | GERMAN | JAPANESE)
-		sprintf(VersionText, ".07");            // Win95 USA version number
-#endif	//FRENCH | GERMAN
-
-		RawFileClass file("VERSION.TXT");
-		char version [16];
-		memset (version, 0, sizeof (version));
-		if (file.Is_Available()){
-			file.Read (version, sizeof (version));
-		}
-		strncat (VersionText, version, sizeof (VersionText) - strlen (VersionText) - 1);
-
-#if (FRENCH)
-		return (1);            						// Win95 french version number
-#endif	//FRENCH
-
-#if (GERMAN)
-		return (1);										// Win95 german version number
-#endif	//GERMAN
-
-#if (JAPANESE)
-		return (1);										// Win95 german version number
-#endif	//GERMAN
-
-#if !(FRENCH | GERMAN | JAPANESE)
-		return (1);										// Win95 USA version number
-#endif	//FRENCH | GERMAN
-
-#else
-
-
-#ifdef PATCH
-
-	#ifdef DEMO
-		sprintf(VersionText, " 1.0a");		// Demo version.
-	#else
-		strcpy(VersionText, ".34 ");
-	#endif
-	return(1);
-
-#else
-
-	#ifdef DEMO
-		sprintf(VersionText, " 1.0a");		// Demo version.
-	#else
-	//	sprintf(VersionText, ".%02dp", 13);			// Patch version.
-		sprintf(VersionText, ".%02d", 14);			// Master version.
-	#endif
-	return(1);
-#endif
-
-#endif	//WIN32
+	/* Blue Ops LP64 port */
+	sprintf(VersionText, "BO.0.1.0");
+	return (0);
 }
 
 

@@ -151,10 +151,13 @@ bool Save_Game(int id,char *descr)
 	/*
 	**	Open the file
 	*/
+	fprintf(stderr, "Save_Game: opening %s\n", name);
 	if (!file.Open(name, WRITE)) {
+		fprintf(stderr, "Save_Game: FAILED to open file\n");
 		Decode_All_Pointers();
 		return(false);
 	}
+	fprintf(stderr, "Save_Game: file opened OK\n");
 
 	/*
 	**	Save the description, scenario #, and house
@@ -204,37 +207,100 @@ bool Save_Game(int id,char *descr)
 	**	Save all game objects.  This code saves every object that's stored in a
 	**	TFixedIHeap class.
 	*/
-	if (!Houses.Save(file)			||
-		!TeamTypes.Save(file)		||
-		!Teams.Save(file)				||
-		!Triggers.Save(file)			||
-		!Aircraft.Save(file)			||
-		!Anims.Save(file)				||
-		!Buildings.Save(file)		||
-		!Bullets.Save(file)			||
-		!Infantry.Save(file)			||
-		!Overlays.Save(file)			||
-		!Smudges.Save(file)			||
-		!Templates.Save(file)		||
-		!Terrains.Save(file)			||
-		!Units.Save(file)				||
-		!Factories.Save(file)) {
-		file.Close();
-
-		Decode_All_Pointers();
-
-		return(false);
+	fprintf(stderr, "Save_Game: saving objects...\n");
+	fprintf(stderr, "  Houses: ActiveCount=%d, file pos=%ld\n", Houses.Count(), (long)file.Seek(0, SEEK_CUR));
+	#define SAVE_CHECK(name, expr) \
+		if (!(expr)) { fprintf(stderr, "Save_Game: FAILED at %s (file pos=%ld)\n", name, (long)file.Seek(0, SEEK_CUR)); file.Close(); Decode_All_Pointers(); return false; } \
+		else fprintf(stderr, "Save_Game: %s OK (file pos=%ld)\n", name, (long)file.Seek(0, SEEK_CUR));
+	/* Inline Houses.Save with tracing */
+	{
+		int hcount = Houses.Count();
+		fprintf(stderr, "  Houses: writing count=%d\n", hcount);
+		int wrote = file.Write(&hcount, sizeof(hcount));
+		fprintf(stderr, "  Houses: wrote count %d bytes (expected %zu)\n", wrote, sizeof(hcount));
+		if (wrote != sizeof(hcount)) {
+			fprintf(stderr, "Save_Game: FAILED writing Houses count\n");
+			file.Close(); Decode_All_Pointers(); return false;
+		}
+		for (int hi = 0; hi < hcount; hi++) {
+			int idx = Houses.ID(Houses.Ptr(hi));
+			wrote = file.Write(&idx, sizeof(idx));
+			if (wrote != sizeof(idx)) {
+				fprintf(stderr, "  Houses: FAILED writing idx for house %d\n", hi);
+				file.Close(); Decode_All_Pointers(); return false;
+			}
+			if (!Houses.Ptr(hi)->Save(file)) {
+				fprintf(stderr, "  Houses: FAILED saving house %d (idx=%d)\n", hi, idx);
+				file.Close(); Decode_All_Pointers(); return false;
+			}
+			fprintf(stderr, "  Houses: saved house %d OK\n", hi);
+		}
+		fprintf(stderr, "Save_Game: Houses OK\n");
 	}
+	/* Inline TeamTypes.Save with tracing */
+	{
+		int cnt = TeamTypes.Count();
+		fprintf(stderr, "  TeamTypes: count=%d\n", cnt);
+		if (file.Write(&cnt, sizeof(cnt)) != sizeof(cnt)) {
+			fprintf(stderr, "Save_Game: FAILED writing TeamTypes count\n");
+			file.Close(); Decode_All_Pointers(); return false;
+		}
+		for (int ti = 0; ti < cnt; ti++) {
+			int idx = TeamTypes.ID(TeamTypes.Ptr(ti));
+			if (file.Write(&idx, sizeof(idx)) != sizeof(idx)) {
+				fprintf(stderr, "  TeamTypes: FAILED writing idx %d\n", ti);
+				file.Close(); Decode_All_Pointers(); return false;
+			}
+			if (!TeamTypes.Ptr(ti)->Save(file)) {
+				fprintf(stderr, "  TeamTypes: FAILED saving item %d (idx=%d, sizeof=%zu)\n", ti, idx, sizeof(TeamTypeClass));
+				file.Close(); Decode_All_Pointers(); return false;
+			}
+		}
+		fprintf(stderr, "Save_Game: TeamTypes OK\n");
+	}
+	/*
+	** Inline pool saves — TFixedIHeapClass::Save virtual call is broken
+	** on LP64 (template instantiation issue). Use this macro instead.
+	*/
+	#define POOL_SAVE(label, pool) do { \
+		int _cnt = pool.Count(); \
+		if (file.Write(&_cnt, sizeof(_cnt)) != sizeof(_cnt)) { \
+			fprintf(stderr, "Save_Game: FAILED writing %s count\n", label); \
+			file.Close(); Decode_All_Pointers(); return false; \
+		} \
+		for (int _i = 0; _i < _cnt; _i++) { \
+			int _idx = pool.ID(pool.Ptr(_i)); \
+			if (file.Write(&_idx, sizeof(_idx)) != sizeof(_idx)) { \
+				fprintf(stderr, "Save_Game: FAILED writing %s idx %d\n", label, _i); \
+				file.Close(); Decode_All_Pointers(); return false; \
+			} \
+			if (!pool.Ptr(_i)->Save(file)) { \
+				fprintf(stderr, "Save_Game: FAILED saving %s item %d\n", label, _i); \
+				file.Close(); Decode_All_Pointers(); return false; \
+			} \
+		} \
+		fprintf(stderr, "Save_Game: %s OK (%d items)\n", label, _cnt); \
+	} while(0)
+
+	POOL_SAVE("Teams", Teams);
+	POOL_SAVE("Triggers", Triggers);
+	POOL_SAVE("Aircraft", Aircraft);
+	POOL_SAVE("Anims", Anims);
+	POOL_SAVE("Buildings", Buildings);
+	POOL_SAVE("Bullets", Bullets);
+	POOL_SAVE("Infantry", Infantry);
+	POOL_SAVE("Overlays", Overlays);
+	POOL_SAVE("Smudges", Smudges);
+	POOL_SAVE("Templates", Templates);
+	POOL_SAVE("Terrains", Terrains);
+	POOL_SAVE("Units", Units);
+	POOL_SAVE("Factories", Factories);
 
 	Call_Back();
 	/*
 	**	Save the Logic & Map layers
 	*/
-	if (!Logic.Save(file)) {
-		file.Close();
-		Decode_All_Pointers();
-		return(false);
-	}
+	SAVE_CHECK("Logic", Logic.Save(file));
 
 	for (i = 0; i < LAYER_COUNT; i++) {
 		if (!Map.Layer[i].Save(file)) {
@@ -1007,14 +1073,18 @@ bool Write_Object(void *ptr, int class_size, FileClass & file)
 	/*
 	**	Save size of this chunk.
 	*/
-	if (file.Write(&class_size,sizeof(class_size)) != sizeof(class_size)) {
+	int wrote = file.Write(&class_size,sizeof(class_size));
+	if (wrote != sizeof(class_size)) {
+		fprintf(stderr, "Write_Object: size write failed (wrote %d, expected %zu)\n", wrote, sizeof(class_size));
 		return(false);
 	}
 
 	/*
 	**	Save object data.
 	*/
-	if (file.Write(ptr, class_size) != (class_size)) {
+	wrote = file.Write(ptr, class_size);
+	if (wrote != class_size) {
+		fprintf(stderr, "Write_Object: data write failed (wrote %d, expected %d)\n", wrote, class_size);
 		return(false);
 	}
 
