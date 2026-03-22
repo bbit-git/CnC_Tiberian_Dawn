@@ -705,9 +705,12 @@ bool SidebarClass::Scroll(bool up, int column)
 void SidebarClass::Draw_It(bool complete)
 {
 	/*
-	**	Draw sidebar background BEFORE the power bar so that
-	**	PowerClass::Draw_It renders the power bar on top of the shapes.
+	**	Render tactical map and radar first (skip power bar).
+	**	Then sidebar background shapes, then power bar on top.
+	**	This ensures the power bar is not overwritten by the shapes.
 	*/
+	RadarClass::Draw_It(complete);
+
 	if (IsSidebarActive && (IsToRedraw || complete) && !Debug_Map) {
 		IsToRedraw = false;
 
@@ -724,8 +727,10 @@ void SidebarClass::Draw_It(bool complete)
 	}
 
 	/*
-	**	Power bar, radar, and tactical map. The power bar draws on top of
-	**	the sidebar background shapes in the power bar column.
+	**	Draw power bar on top of sidebar background shapes.
+	**	PowerClass::Draw_It also chains to RadarClass::Draw_It which
+	**	re-renders the tactical map, but that only touches the tactical
+	**	viewport area (left of sidebar) so it won't overwrite the shapes.
 	*/
 	PowerClass::Draw_It(complete);
 
