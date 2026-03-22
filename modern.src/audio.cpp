@@ -42,6 +42,7 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "function.h"
+extern void Audio_Log(const char* fmt, ...);
 
 
 /***************************************************************************
@@ -327,8 +328,14 @@ int Sound_Effect(VocType voc, VolType volume, int variation, signed short pan_va
 	**	If the sound data pointer is not null, then presume that it is valid.
 	*/
 	if (ptr) {
-		return(Play_Sample(ptr, Fixed_To_Cardinal(SoundEffectName[voc].Priority, (int)volume), (int)volume, pan_value));
+		int handle = Play_Sample(ptr, Fixed_To_Cardinal(SoundEffectName[voc].Priority, (int)volume), (int)volume, pan_value);
+		if (handle <= 0) {
+			Audio_Log("SFX FAIL: '%s' (voc=%d vol=%d pan=%d pri=%d)",
+				name, (int)voc, (int)volume, (int)pan_value, SoundEffectName[voc].Priority);
+		}
+		return handle;
 	}
+	Audio_Log("SFX MISSING: '%s' (voc=%d)", name, (int)voc);
 	return(-1);
 }
 
