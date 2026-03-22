@@ -24,6 +24,8 @@ class CDFileClass : public RawFileClass
 		void Searching(int on) { (void)on; }
 
 		static bool Is_There_Search_Drives(void) { return SearchPath[0][0] != '\0'; }
+		static int  Get_Search_Path_Count(void) { return SearchPathCount; }
+		static const char* Get_Search_Path(int i) { return (i >= 0 && i < SearchPathCount) ? SearchPath[i] : nullptr; }
 		static int Set_Search_Drives(char * pathlist);
 		static void Add_Search_Drive(char *path);
 		static void Clear_Search_Drives(void);

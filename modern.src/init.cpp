@@ -389,29 +389,59 @@ bool Init_Game(int , char *[])
 	/*
 	**	Before all else, cache any additional mixfiles.
 	*/
-	struct find_t ff;		// for _dos_findfirst
-	if (!_dos_findfirst("SC*.MIX", _A_NORMAL, &ff)) {
-		char * ptr;
-		do {
-			ptr = strdup(ff.name);
-			new MixFileClass(ptr);
-			MixFileClass::Cache(ptr);
-//			free(ptr);
-		} while(!_dos_findnext(&ff));
+	/*
+	**	Search all data paths for SC-*.MIX and SS*.MIX addon scenario packs.
+	**	Note: pattern must not match SCORES.MIX, hence SC-*.MIX not SC*.MIX.
+	*/
+	struct find_t ff;
+	static const char* sc_patterns[] = { "SC-*.MIX", "SS*.MIX", NULL };
+	for (int sp = 0; sp < CDFileClass::Get_Search_Path_Count(); sp++) {
+		const char* spath = CDFileClass::Get_Search_Path(sp);
+		for (int pi = 0; sc_patterns[pi]; pi++) {
+			char search_buf[600];
+			snprintf(search_buf, sizeof(search_buf), "%s%s", spath, sc_patterns[pi]);
+			if (!_dos_findfirst(search_buf, _A_NORMAL, &ff)) {
+				do {
+					char fullpath[600];
+					snprintf(fullpath, sizeof(fullpath), "%s%s", spath, ff.name);
+					char * ptr = strdup(fullpath);
+					new MixFileClass(ptr);
+					MixFileClass::Cache(ptr);
+				} while(!_dos_findnext(&ff));
+			}
+		}
 	}
-	if (!_dos_findfirst("SS*.MIX", _A_NORMAL, &ff)) {
-		char * ptr;
-		do {
-			ptr = strdup(ff.name);
-			new MixFileClass(ptr);
-//			free(ptr);
-		} while(!_dos_findnext(&ff));
+	/* Also check current directory */
+	for (int pi = 0; sc_patterns[pi]; pi++) {
+		if (!_dos_findfirst(sc_patterns[pi], _A_NORMAL, &ff)) {
+			do {
+				char * ptr = strdup(ff.name);
+				new MixFileClass(ptr);
+				MixFileClass::Cache(ptr);
+			} while(!_dos_findnext(&ff));
+		}
 	}
 #endif	//DEMO
 
+	/*
+	**	Register GENERAL.MIX from all search paths (GDI and Nod CDs have
+	**	different versions with different scenario sets inside).
+	*/
 	CCDebugString ("C&C95 - About to register GENERAL.MIX\n");
 	if (GeneralMix) delete GeneralMix;
-	GeneralMix = new MixFileClass("GENERAL.MIX");
+	GeneralMix = NULL;
+	for (int sp = 0; sp < CDFileClass::Get_Search_Path_Count(); sp++) {
+		const char* spath = CDFileClass::Get_Search_Path(sp);
+		char gpath[600];
+		snprintf(gpath, sizeof(gpath), "%sGENERAL.MIX", spath);
+		struct stat st;
+		if (stat(gpath, &st) == 0) {
+			char * ptr = strdup(gpath);
+			MixFileClass * mix = new MixFileClass(ptr);
+			if (!GeneralMix) GeneralMix = mix;
+		}
+	}
+	if (!GeneralMix) GeneralMix = new MixFileClass("GENERAL.MIX");
 
 //	if (!_dos_findfirst("SC*.MIX", _A_NORMAL, &ff)) {
 //		do {
