@@ -613,17 +613,20 @@ void LoadOptionsClass::Fill_List(ListClass *list)
 	** Find all savegame files
 	*/
 	int rc = _dos_findfirst("SAVEGAME.*", _A_NORMAL, &ff);
+	fprintf(stderr, "LoadDlg: _dos_findfirst rc=%d\n", rc);
 
 	while (!rc) {
 		/*
 		** Extract the game ID from the filename
 		*/
 		id = Num_From_Ext(ff.name);
+		fprintf(stderr, "LoadDlg: found '%s' -> id=%d\n", ff.name, id);
 
 		/*
 		** get the game's info; if success, add it to the list
 		*/
 		bool ok = Get_Savefile_Info(id, descr, &scenario, &house);
+		fprintf(stderr, "LoadDlg: Get_Savefile_Info returned %s\n", ok ? "true" : "false");
 
 		fdata = new FileEntryClass;
 
