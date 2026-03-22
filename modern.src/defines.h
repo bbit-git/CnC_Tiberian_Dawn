@@ -1853,9 +1853,9 @@ typedef enum TextPrintType {
 **	object class.
 */
 #define	AIRCRAFT_MAX			30			// Lasts for minutes.
-#define	ANIM_MAX					50			// Lasts only a few seconds.
+#define	ANIM_MAX					200		// Was 50; raised to avoid pool exhaustion in long combat.
 #define	BUILDING_MAX			300		// Lasts for hours.
-#define	BULLET_MAX				40			// Lasts several seconds.
+#define	BULLET_MAX				100		// Was 40; raised to avoid pool exhaustion in long combat.
 #define	FACTORY_MAX				20			// Lasts a few minutes.
 #define	HOUSE_MAX				12			// Lasts entire scenario.
 #define	INFANTRY_MAX			300		// Lasts for minutes.
