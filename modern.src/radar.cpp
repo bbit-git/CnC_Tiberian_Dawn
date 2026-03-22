@@ -456,9 +456,7 @@ void RadarClass::Draw_It(bool forced)
 						Show_Mouse();
 					}
 
-//					Set_Logic_Page(oldpage);
-
-//				}
+				Set_Logic_Page(oldpage);
 
 			}
 
@@ -712,7 +710,7 @@ void RadarClass::Zoom_Mode(CELL cell)
 	RadarCellWidth 	= map_c_width;
 	RadarCellHeight 	= map_c_height;
 	RadarWidth			= RadIWidth - rem_x;
-	RadarHeight			= RadIWidth - rem_y;
+	RadarHeight			= RadIHeight - rem_y;
 
 	/*
 	** Set the radar position to the current cell.
@@ -810,7 +808,6 @@ void RadarClass::Plot_Radar_Pixel(CELL cell)
 		if (color == TBLACK) {
 			if (ZoomFactor > 1) {
 				void const *ptr;
-				long offset;
 				int icon;
 
 				if (cellptr->TType != TEMPLATE_NONE) {
@@ -823,29 +820,28 @@ void RadarClass::Plot_Radar_Pixel(CELL cell)
 
 				/*
 				**	Convert the logical icon number into the actual icon number.
+				**	Use IControl_Map/IControl_Icons helpers for LP64-safe access
+				**	(the on-disk header fields are int32_t, not long).
 				*/
-				Mem_Copy(Add_Long_To_Pointer((void *)ptr, 28), &offset, sizeof(offset));
-				Mem_Copy(Add_Long_To_Pointer((void *)ptr, offset+icon), &icon, sizeof(char));
-				icon &= 0x00FF;
+				unsigned char *map_data = IControl_Map(ptr);
+				if (map_data) {
+					icon = map_data[icon] & 0x00FF;
+				}
 
-				Mem_Copy(Add_Long_To_Pointer((void *)ptr, 12), &offset, sizeof(offset));
-				ptr = Add_Long_To_Pointer((void *)ptr, offset + icon*(24*24));
-
-				unsigned char * data = (unsigned char *)ptr;
-				Buffer_To_Page(0, 0, 24, 24, data, _TileStage);
+				unsigned char *icon_data = IControl_Icons(ptr);
+				if (icon_data) {
+					icon_data += icon * (24 * 24);
+				} else {
+					icon_data = (unsigned char *)ptr;
+				}
+				Buffer_To_Page(0, 0, 24, 24, icon_data, _TileStage);
 				_TileStage.Scale(*LogicPage, 0, 0, x, y, 24, 24, ZoomFactor, ZoomFactor, TRUE);
 
 			} else {
-				if (LogicPage->Lock()){
-					Fat_Put_Pixel(x, y, cellptr->Cell_Color(false), ZoomFactor, *LogicPage);
-					LogicPage->Unlock();
-				}
+				Fat_Put_Pixel(x, y, cellptr->Cell_Color(false), ZoomFactor, *LogicPage);
 			}
 		} else {
-			if (LogicPage->Lock()){
-				Fat_Put_Pixel(x, y, color, ZoomFactor, *LogicPage);
-				LogicPage->Unlock();
-			}
+			Fat_Put_Pixel(x, y, color, ZoomFactor, *LogicPage);
 		}
 		if (color != BLACK) {
 			Render_Overlay(cell, x, y, ZoomFactor);
@@ -1674,7 +1670,7 @@ void RadarClass::Set_Radar_Position(CELL cell)
 						}
 					}
 				}
-				if ( newy != 0 ) {
+				if ( rady != 0 ) {
 					int min;
 					int max;
 					if ( rady < 0 ) {  								// this mean regen the bottom edge
