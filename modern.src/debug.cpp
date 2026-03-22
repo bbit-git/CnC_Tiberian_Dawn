@@ -597,12 +597,11 @@ void Debug_Key(unsigned input)
 				Map.Flag_To_Redraw(true);
 				break;
 
-#ifdef NEVER
 			case KN_F5:
 				Special.IsShowPath = (Special.IsShowPath == false);
-				//PlayerPtr->Credits += 1000;
 				break;
 
+#ifdef NEVER
 			case KN_F6:
 				if (Map.In_Radar(XY_Cell(Map.MapCellX+5, Map.MapCellY - 1))) {
 					Mono_Printf("Arrrggggghhhhh!");

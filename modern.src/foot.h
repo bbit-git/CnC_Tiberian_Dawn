@@ -181,7 +181,7 @@ class FootClass :	public TechnoClass
 		**	that a findpath won't be calculated until this timer expires.
 		*/
 		TCountDownTimerClass PathDelay;
-		enum {PATH_DELAY=15,PATH_RETRY=10};
+		enum {PATH_DELAY=15,PATH_RETRY=40};
 		int TryTryAgain;		// Number of retry attempts remaining.
 
 		/*
@@ -294,9 +294,7 @@ class FootClass :	public TechnoClass
 		PathType * Find_Path(CELL dest, FacingType *final_moves, int maxlen, MoveType threshhold);
 		void Debug_Draw_Map(char *txt, CELL start, CELL dest, bool pause);
 		void Debug_Draw_Path(PathType *path);
-		bool Follow_Edge(CELL start, CELL target, PathType *path, FacingType search, FacingType olddir, int threat, int threat_stage, int max_cells, MoveType threshhold);
-		bool Register_Cell(PathType *path, CELL cell, FacingType dir, int cost, MoveType threshhold);
-		bool Unravel_Loop(PathType *path, CELL &cell, FacingType &dir, int sx, int sy, int dx, int dy, MoveType threshhold);
+		// Legacy edge-following functions removed — replaced by A* in Find_Path.
 
 		/*
 		**	This is the coordinate that the unit is heading to
