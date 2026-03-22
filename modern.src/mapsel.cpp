@@ -282,21 +282,19 @@ void Map_Selection(void)
 	*/
 	greyearth  = Open_Animation("GREYERTH.WSA", NULL, 0, (WSAOpenType)(WSA_OPEN_FROM_MEM | WSA_OPEN_TO_PAGE), localpalette);
 	greyearth2 = Open_Animation("E-BWTOCL.WSA", NULL, 0, (WSAOpenType)(WSA_OPEN_FROM_MEM | WSA_OPEN_TO_PAGE), grey2palette);
+	DBG("MapSel: greyearth=%p greyearth2=%p", greyearth, greyearth2);
 
 	/*
 	** Load the spinning-globe anim
 	*/
 	if (house == HOUSE_GOOD) {
-		//anim     = Open_Animation("EARTH_E.WSA", NULL,0,(WSAOpenType)(WSA_OPEN_FROM_MEM | WSA_OPEN_TO_PAGE),Palette);
-		anim     = Open_Animation("HEARTH_E.WSA", NULL,0,(WSAOpenType)(WSA_OPEN_FROM_MEM | WSA_OPEN_TO_PAGE),Palette);
-		//progress = Open_Animation(lastscenario ? "BOSNIA.WSA" : "EUROPE.WSA",NULL,0,(WSAOpenType)(WSA_OPEN_FROM_MEM | WSA_OPEN_TO_PAGE),progresspalette);
-		progress = Open_Animation(lastscenario ? "HBOSNIA.WSA" : "EUROPE.WSA",NULL,0,(WSAOpenType)(WSA_OPEN_FROM_MEM | WSA_OPEN_TO_PAGE),progresspalette);
+		anim     = Open_Animation("EARTH_E.WSA", NULL,0,(WSAOpenType)(WSA_OPEN_FROM_MEM | WSA_OPEN_TO_PAGE),Palette);
+		progress = Open_Animation(lastscenario ? "BOSNIA.WSA" : "EUROPE.WSA",NULL,0,(WSAOpenType)(WSA_OPEN_FROM_MEM | WSA_OPEN_TO_PAGE),progresspalette);
 	} else {
-		//anim     = Open_Animation("EARTH_A.WSA", NULL,0,(WSAOpenType)(WSA_OPEN_FROM_MEM | WSA_OPEN_TO_PAGE),Palette);
-		anim     = Open_Animation("HEARTH_A.WSA", NULL,0,(WSAOpenType)(WSA_OPEN_FROM_MEM | WSA_OPEN_TO_PAGE),Palette);
-		//progress = Open_Animation(lastscenario ? "S_AFRICA.WSA" : "AFRICA.WSA",NULL,0,(WSAOpenType)(WSA_OPEN_FROM_MEM | WSA_OPEN_TO_PAGE),progresspalette);
-		progress = Open_Animation(lastscenario ? "HSAFRICA.WSA" : "AFRICA.WSA",NULL,0,(WSAOpenType)(WSA_OPEN_FROM_MEM | WSA_OPEN_TO_PAGE),progresspalette);
+		anim     = Open_Animation("EARTH_A.WSA", NULL,0,(WSAOpenType)(WSA_OPEN_FROM_MEM | WSA_OPEN_TO_PAGE),Palette);
+		progress = Open_Animation(lastscenario ? "S_AFRICA.WSA" : "AFRICA.WSA",NULL,0,(WSAOpenType)(WSA_OPEN_FROM_MEM | WSA_OPEN_TO_PAGE),progresspalette);
 	}
+	DBG("MapSel: anim=%p progress=%p (house=%d scenario=%d)", anim, progress, house, Scenario);
 
 	void const * appear1 = MixFileClass::Retrieve("APPEAR1.AUD");
 	void const * sfx4 = MixFileClass::Retrieve("SFX4.AUD");
