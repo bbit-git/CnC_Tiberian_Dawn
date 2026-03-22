@@ -312,20 +312,21 @@ int ThemeClass::Play_Song(ThemeType theme)
 	if (ScoresPresent && SampleType && !Debug_Quiet && Options.ScoreVolume) {
 		Stop();
 
-		/*
-		** Check if the requested theme is available. If not, pick another.
-		** This handles legacy data that doesn't have remastered-only themes.
-		*/
-		if (theme >= THEME_FIRST && !Is_Allowed(theme)) {
-			theme = Next_Song(THEME_PICK_ANOTHER);
-			if (theme < THEME_FIRST || !Is_Allowed(theme)) {
-				return(Current);
-			}
-		}
-
 		Score = theme;
 		if (theme >= THEME_FIRST) {
 			Current = File_Stream_Sample_Vol(Theme_File_Name(theme), 0xFF, true);
+
+			/*
+			** If the theme file wasn't found (legacy data missing remastered
+			** tracks like WIN1/MAP1), fall back to the next allowed song.
+			*/
+			if (!Current) {
+				theme = Next_Song(THEME_PICK_ANOTHER);
+				if (theme >= THEME_FIRST && Is_Allowed(theme)) {
+					Score = theme;
+					Current = File_Stream_Sample_Vol(Theme_File_Name(theme), 0xFF, true);
+				}
+			}
 		}
 	}
 	return(Current);
