@@ -60,6 +60,7 @@ class PowerClass : public RadarClass
 
 		virtual void Init_Clear(void);						// Clears all to known state
 		virtual void Draw_It(bool complete=false);
+		void Draw_Bar(void);
 		virtual void AI(KeyNumType &input, int x, int y);
 		virtual void Refresh_Cells(CELL cell, short const *list);
 //		virtual void Must_Redraw_Sidebar(void);
