@@ -716,7 +716,7 @@ void SidebarClass::Draw_It(bool complete)
 			**	then draw the sidebar background shapes on top.
 			*/
 			if (complete) {
-				LogicPage->Fill_Rect(SideX, SideY, SideX+SideWidth-1, SideY+SideHeight-1, BLACK);
+				LogicPage->Fill_Rect(SideX+Map.PowWidth, SideY, SideX+SideWidth-1, SideY+SideHeight-1, BLACK);
 			}
 			LogicPage->Draw_Line(SideX, 157, SeenBuff.Get_Width()-1, 157, 0);
 			CC_Draw_Shape(SidebarShape1, 0, SideX, 158, WINDOW_MAIN, SHAPE_WIN_REL);
