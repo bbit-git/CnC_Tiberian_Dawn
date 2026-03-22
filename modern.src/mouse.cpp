@@ -291,7 +291,7 @@ void MouseClass::One_Time(void)
 		MouseShapes = MixFileClass::Retrieve("MOUSE.SHP");
 	}
 
-	VTable = ((void **)(((char *)this) + sizeof(VectorClass<CellClass>) - 4))[0];
+	VTable = ((void **)this)[0];
 }
 
 
