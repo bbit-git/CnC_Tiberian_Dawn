@@ -617,6 +617,15 @@ bool Init_Game(int , char *[])
 	**	Perform one-time game system initializations.
 	*/
 	Call_Back();
+
+	/*
+	**	Update WINDOW_MAIN to match actual screen resolution.
+	**	The static initializer in globals.cpp sets it to 320x200 (40 bytes x 200 rows)
+	**	but hi-res mode uses 640x400 (80 bytes x 400 rows).
+	*/
+	WindowList[WINDOW_MAIN][WINDOWWIDTH]  = SeenBuff.Get_Width() >> 3;
+	WindowList[WINDOW_MAIN][WINDOWHEIGHT] = SeenBuff.Get_Height();
+
 //	malloc(3);
 	Map.One_Time();
 //	malloc(4);

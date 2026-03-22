@@ -712,21 +712,15 @@ void SidebarClass::Draw_It(bool complete)
 
 		if (LogicPage->Lock()){
 			/*
-			**	Draw the outline box around the sidebar buttons.
+			**	Clear sidebar area to prevent ghosting from old pixels,
+			**	then draw the sidebar background shapes on top.
 			*/
-			//CC_Draw_Shape(SidebarShape1, (int)complete, SideX, 158, WINDOW_MAIN, SHAPE_WIN_REL);
-			//CC_Draw_Shape(SidebarShape2, (int)complete, SideX, 158+118, WINDOW_MAIN, SHAPE_WIN_REL);
+			if (complete) {
+				LogicPage->Fill_Rect(SideX, SideY, SideX+SideWidth-1, SideY+SideHeight-1, BLACK);
+			}
 			LogicPage->Draw_Line(SideX, 157, SeenBuff.Get_Width()-1, 157, 0);
 			CC_Draw_Shape(SidebarShape1, 0, SideX, 158, WINDOW_MAIN, SHAPE_WIN_REL);
 			CC_Draw_Shape(SidebarShape2, 0, SideX, 158+118, WINDOW_MAIN, SHAPE_WIN_REL);
-
-	#if (0)
-			if ( complete ) {
-				LogicPage->Fill_Rect(SideX+Map.PowWidth, SideY, SideX+SideWidth-1, SideY+SideHeight-1, LTGREY);
-			}
-			LogicPage->Fill_Rect(SideX, SideY, SideX+SideWidth-1, SideY+TopHeight-1, LTGREY);
-			Draw_Box(SideX+Map.PowWidth, SideY+TopHeight, SideWidth-Map.PowWidth, SideHeight-TopHeight, BOXSTYLE_RAISED, false);
-	#endif	//(0)
 			//Repair.Draw_Me(true);
 			//Upgrade.Draw_Me(true);
 			//Zoom.Draw_Me(true);
