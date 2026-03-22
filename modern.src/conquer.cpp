@@ -412,6 +412,7 @@ void Main_Game(int argc, char *argv[])
 	Uninit_Game();
 #endif
 
+	GameActive = false;
 }
 
 
@@ -1841,7 +1842,7 @@ void Cleanup_VQ_Threading(void)
 {
 	while (ThreadReading){}
 	if (VQThreadBuffer){
-		delete VQThreadBuffer;
+		delete[] VQThreadBuffer;
 		VQThreadBuffer = NULL;
 	}
 }
@@ -2752,7 +2753,7 @@ void CC_Draw_Shape(void const * shapefile, int shapenum, int x, int y, WindowNum
 		}
 		//DBG("CC_Draw_Shape: is_shp=%d size=%lu", is_shp, shape_size);
 		if (!is_shp && shape_size) {
-			shape_pointer = (char *)shape_size;
+			shape_pointer = (char *)Get_Shape_Header_Data((void *)shape_size);
 			frame_w = Get_Build_Frame_Width(shapefile);
 			frame_h = Get_Build_Frame_Height(shapefile);
 			if (frame_w <= 0 || frame_h <= 0 || frame_w > 1024 || frame_h > 1024) return;

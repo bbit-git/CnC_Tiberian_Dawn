@@ -200,7 +200,7 @@ void Nod_Ending(void)
 	}
 	if (mouseshown) Hide_Mouse();
 #ifdef NOT_FOR_WIN95
-	delete satpic;
+	delete[] satpic;
 #else
 	delete PseudoSeenBuff;
 #endif //NOT_FOR_WIN95

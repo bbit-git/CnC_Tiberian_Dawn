@@ -407,7 +407,7 @@ bool FootClass::Basic_Path(void)
 #endif
 
 		if (!skip_path) {
-			DBG("Basic_Path: Mark UP, cell=%d", (int)cell);
+			// DBG("Basic_Path: Mark UP, cell=%d", (int)cell);
 			Mark(MARK_UP);
 			Path[0] = FACING_NONE;
 
@@ -442,7 +442,7 @@ bool FootClass::Basic_Path(void)
 			**	1. Try clean path (MOVE_CLOAK) — avoids all blockages
 			**	2. If that fails or is too costly, use aggressive path (maxtype)
 			*/
-			DBG("Basic_Path: Find_Path cell=%d maxtype=%d", (int)cell, (int)maxtype);
+			// DBG("Basic_Path: Find_Path cell=%d maxtype=%d", (int)cell, (int)maxtype);
 
 			/*
 			**	First try the clean path that avoids friendly units.

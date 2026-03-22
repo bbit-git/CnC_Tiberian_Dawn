@@ -200,16 +200,14 @@ void CellClass::Code_Pointers(void)
 		OccupierPtr = (ObjectClass *)(intptr_t)OccupierPtr->As_Target();
 	}
 
-	if (Overlapper[0]) {
-		Overlapper[0] = (ObjectClass *)(intptr_t)Overlapper[0]->As_Target();
-	}
-
-	if (Overlapper[1]) {
-		Overlapper[1] = (ObjectClass *)(intptr_t)Overlapper[1]->As_Target();
-	}
-
-	if (Overlapper[2]) {
-		Overlapper[2] = (ObjectClass *)(intptr_t)Overlapper[2]->As_Target();
+	for (int i = 0; i < 3; i++) {
+		if (Overlapper[i]) {
+			if (!Overlapper[i]->IsActive || Overlapper[i]->IsInLimbo) {
+				Overlapper[i] = NULL;
+			} else {
+				Overlapper[i] = (ObjectClass *)(intptr_t)Overlapper[i]->As_Target();
+			}
+		}
 	}
 
 	/*
