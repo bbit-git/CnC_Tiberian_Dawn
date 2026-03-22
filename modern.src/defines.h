@@ -1876,7 +1876,7 @@ typedef enum TextPrintType {
 
 #define  OBUTTON_HEIGHT       9			// Is defined in mapedit.h, need for buttons
 
-#define	CONQUER_PATH_MAX		9			// Number of cells to look ahead for movement.
+#define	CONQUER_PATH_MAX		24			// Number of cells to look ahead for movement.
 
 #define	EACH_UNIT_MAX			(UNIT_MAX/4)			// Default maximum any one player can have.
 #define	EACH_BUILDING_MAX		(BUILDING_MAX/4)		// Default maximum any one player can build.

@@ -438,37 +438,32 @@ bool FootClass::Basic_Path(void)
 			}
 
 			/*
-			**	Determine if ANY path could be calculated by first examining the most
-			**	aggressive case. If this fails, then no path will succeed. Further
-			**	scanning is unnecessary.
+			**	With A* finding optimal paths, we only need two passes:
+			**	1. Try clean path (MOVE_CLOAK) — avoids all blockages
+			**	2. If that fails or is too costly, use aggressive path (maxtype)
 			*/
 			DBG("Basic_Path: Find_Path cell=%d maxtype=%d", (int)cell, (int)maxtype);
-			path = Find_Path(cell, &workpath1[0], (sizeof(workpath1)/sizeof(workpath1[0])), maxtype);
+
+			/*
+			**	First try the clean path that avoids friendly units.
+			*/
+			path = Find_Path(cell, &workpath1[0], (sizeof(workpath1)/sizeof(workpath1[0])), MOVE_CLOAK);
 			if (path && path->Cost) {
 				memcpy(&path1, path, sizeof(path1));
 				found1 = true;
+			}
 
-				/*
-				**	Scan for the best path possible. If this succeeds, then do a simple
-				**	comparison with the most agressive path. If they are very close, then
-				**	go with the best (easiest) path method.
-				*/
-				path = Find_Path(cell, &workpath2[0], (sizeof(workpath2)/sizeof(workpath2[0])), MOVE_CLOAK);
-				if (path && path->Cost && path->Cost < MAX((path1.Cost + (path1.Cost/2)), 3)) {
-					memcpy(&path1, path, sizeof(path1));
-					memcpy(workpath1, workpath2, (sizeof(workpath1)/sizeof(workpath1[0])));
-				} else {
-
-					/*
-					**	The easiest path method didn't result in a satisfactory path. Scan through
-					**	the rest of the path options, looking for the best one.
-					*/
-					for (MoveType move = MOVE_MOVING_BLOCK; move < maxtype; move++) {
-						path = Find_Path(cell, &workpath2[0], (sizeof(workpath2)/sizeof(workpath2[0])), move);
-						if (path && path->Cost && path->Cost < MAX((path1.Cost + (path1.Cost/2)), 3)) {
-							memcpy(&path1, path, sizeof(path1));
-							memcpy(workpath1, workpath2, (sizeof(workpath1)/sizeof(workpath1[0])));
-						}
+			/*
+			**	If clean path failed or was expensive, try aggressive path
+			**	that treats friendly units as passable.
+			*/
+			if (!found1 || path1.Cost > 3) {
+				path = Find_Path(cell, &workpath2[0], (sizeof(workpath2)/sizeof(workpath2[0])), maxtype);
+				if (path && path->Cost) {
+					if (!found1 || path->Cost < MAX((path1.Cost + (path1.Cost/2)), 3)) {
+						memcpy(&path1, path, sizeof(path1));
+						memcpy(workpath1, workpath2, sizeof(workpath1));
+						found1 = true;
 					}
 				}
 			}
@@ -488,7 +483,7 @@ bool FootClass::Basic_Path(void)
 					if (path) {
 						if (path->Cost && path->Cost <= path1.Cost/2) {
 							memcpy(&path1, path, sizeof(path1));
-							memcpy(workpath1, workpath2, (sizeof(workpath1)/sizeof(workpath1[0])));
+							memcpy(workpath1, workpath2, sizeof(workpath1));
 						}
 					}
 				}
@@ -501,7 +496,9 @@ bool FootClass::Basic_Path(void)
 			*/
 			if (found1) {
 				Fixup_Path(&path1);
-				memcpy(&Path[0], &workpath1[0], MIN(path->Length, (int)(sizeof(Path)/sizeof(Path[0]))) * sizeof(Path[0])); /* LP64: length is in elements, memcpy needs bytes */
+				int copy_len = MIN(path1.Length, CONQUER_PATH_MAX);
+				memcpy(&Path[0], &workpath1[0], copy_len * sizeof(Path[0]));
+				if (copy_len < CONQUER_PATH_MAX) Path[copy_len] = FACING_NONE;
 			}
 
 			Mark(MARK_DOWN);
