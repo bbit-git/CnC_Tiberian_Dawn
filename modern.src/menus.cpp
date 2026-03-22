@@ -772,7 +772,7 @@ int Main_Menu(unsigned long timeout)
 			Version_Number();
 			Fancy_Text_Print("Demo%s", D_DIALOG_X+D_DIALOG_W-5*2, D_DIALOG_Y+D_DIALOG_H-10*2, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
 #else
-			Fancy_Text_Print("V.%d%s", D_DIALOG_X+D_DIALOG_W-5*2, D_DIALOG_Y+D_DIALOG_H-10*2, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, Version_Number(), VersionText, FOREIGN_VERSION_NUMBER);
+			Version_Number(); Fancy_Text_Print("%s", D_DIALOG_X+D_DIALOG_W-5*2, D_DIALOG_Y+D_DIALOG_H-10*2, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
 #endif
 //			Fancy_Text_Print("V.%d%s%02d", D_DIALOG_X+D_DIALOG_W-5, D_DIALOG_Y+D_DIALOG_H-10, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, Version_Number(), VersionText, FOREIGN_VERSION_NUMBER);
 #else
@@ -780,7 +780,7 @@ int Main_Menu(unsigned long timeout)
 			Version_Number();
 			Fancy_Text_Print("Demo%s", D_DIALOG_X+D_DIALOG_W-5*2, D_DIALOG_Y+D_DIALOG_H-10*2, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
 #else
-			Fancy_Text_Print("V.%d%s", D_DIALOG_X+D_DIALOG_W-5*2, D_DIALOG_Y+D_DIALOG_H-10*2, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, Version_Number(), VersionText);
+			Version_Number(); Fancy_Text_Print("%s", D_DIALOG_X+D_DIALOG_W-5*2, D_DIALOG_Y+D_DIALOG_H-10*2, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
 #endif
 #endif
 

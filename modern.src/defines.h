@@ -227,8 +227,9 @@ typedef enum RTTIType {
 #define SHAPE_BUFFER_SIZE		40000L
 
 // Use this to allow keep track of versions as they affect saved games.
-#define	VERSION_NUMBER		1
-#define	RELEASE_NUMBER	01
+// BO.0.1.0 — LP64 port, not compatible with original 32-bit saves
+#define	VERSION_NUMBER		0
+#define	RELEASE_NUMBER	10
 
 #define FAME_FILE_NAME					"HALLFAME.DAT"
 
