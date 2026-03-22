@@ -64,6 +64,9 @@ class FixedHeapClass
 		virtual int Free(void * pointer);
 		virtual int Free_All(void);
 
+		/* Load_Game needs direct access to heap internals for inline pool loading */
+		friend bool Load_Game(int id);
+
 	protected:
 		void * operator[](int index) {return ((char *)Buffer) + (index * Size);};
 

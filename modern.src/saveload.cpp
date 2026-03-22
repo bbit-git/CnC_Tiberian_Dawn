@@ -405,54 +405,58 @@ bool Load_Game(int id)
 	/*
 	**	Open the file
 	*/
+	fprintf(stderr, "Load_Game: opening '%s'\n", name);
 	if (!file.Open(name, READ)) {
+		fprintf(stderr, "Load_Game: FAILED to open file\n");
 		return(false);
 	}
+	fprintf(stderr, "Load_Game: file opened OK\n");
 
 	/*
 	**	Read & discard the save-game's header info
 	*/
 	if (file.Read(descr_buf, DESCRIP_MAX) != DESCRIP_MAX) {
+		fprintf(stderr, "Load_Game: FAILED reading description\n");
 		file.Close();
 		return(false);
 	}
+	fprintf(stderr, "Load_Game: descr='%.40s'\n", descr_buf);
 
 	if (file.Read(&scenario, sizeof(scenario)) != sizeof(scenario)) {
+		fprintf(stderr, "Load_Game: FAILED reading scenario\n");
 		file.Close();
 		return(false);
 	}
+	fprintf(stderr, "Load_Game: scenario=%u\n", scenario);
 
 	if (file.Read(&house, sizeof(house)) != sizeof(house)) {
+		fprintf(stderr, "Load_Game: FAILED reading house\n");
 		file.Close();
 		return(false);
 	}
+	fprintf(stderr, "Load_Game: house=%d\n", (int)house);
 
 	Call_Back();
-	/*
-	**	Clear the scenario so we start fresh; this calls the Init_Clear() routine
-	**	for the Map, and all object arrays.  It has the following important
-	**	effects:
-	**	- Every cell is cleared to 0's, via MapClass::Init_Clear()
-	**	- All heap elements' are cleared
-	**	- The Houses are Initialized, which also clears their HouseTriggers
-	**	  array
-	**	- The map's Layers & Logic Layer are cleared to empty
-	**	- The list of currently-selected objects is cleared
-	*/
 	Clear_Scenario();
 
 	/*
 	**	Read in & verify the save-game ID code
 	*/
 	if (file.Read(&version,sizeof(version)) != sizeof(version)) {
+		fprintf(stderr, "Load_Game: FAILED reading version\n");
 		file.Close();
 		return(false);
 	}
 
+	fprintf(stderr, "Load_Game: file_version=0x%lx, expected=0x%lx\n",
+		version, (unsigned long)SAVEGAME_VERSION);
+
 	if (version != SAVEGAME_VERSION) {
+		fprintf(stderr, "Load_Game: VERSION MISMATCH!\n");
 		file.Close();
 		return(false);
 	}
+	fprintf(stderr, "Load_Game: version OK\n");
 
 	Call_Back();
 	/*
@@ -490,75 +494,121 @@ bool Load_Game(int id)
 	**	what the Theater is; this must be done before any objects are created, so
 	**	they'll be properly created.
 	*/
+	fprintf(stderr, "Load_Game: loading map (file pos=%ld)...\n", (long)file.Seek(0, SEEK_CUR));
 	Map.Load(file);
+	fprintf(stderr, "Load_Game: map loaded (file pos=%ld)\n", (long)file.Seek(0, SEEK_CUR));
 
 	Call_Back();
 	/*
-	**	Load the object data.
+	** Inline pool loads — TFixedIHeapClass::Load virtual call is broken
+	** on LP64 (same template instantiation issue as Save had).
+	** This macro replicates the heap Load logic with correct typing.
 	*/
-	if (!Houses.Load(file)			||
-		!TeamTypes.Load(file)		||
-		!Teams.Load(file)				||
-		!Triggers.Load(file)			||
-		!Aircraft.Load(file)			||
-		!Anims.Load(file)				||
-		!Buildings.Load(file)		||
-		!Bullets.Load(file)			||
-		!Infantry.Load(file)			||
-		!Overlays.Load(file)			||
-		!Smudges.Load(file)			||
-		!Templates.Load(file)		||
-		!Terrains.Load(file)			||
-		!Units.Load(file)				||
-		!Factories.Load(file)) {
-		file.Close();
-		return(false);
-	}
+	#define POOL_LOAD(label, pool, type) do { \
+		int _cnt; \
+		fprintf(stderr, "Load_Game: loading %s (file pos=%ld)...\n", label, (long)file.Seek(0, SEEK_CUR)); \
+		if (file.Read(&_cnt, sizeof(_cnt)) != sizeof(_cnt)) { \
+			fprintf(stderr, "Load_Game: FAILED reading %s count\n", label); \
+			file.Close(); return false; \
+		} \
+		fprintf(stderr, "  %s: count=%d\n", label, _cnt); \
+		for (int _i = 0; _i < _cnt; _i++) { \
+			int _idx; \
+			if (file.Read(&_idx, sizeof(_idx)) != sizeof(_idx)) { \
+				fprintf(stderr, "  %s: FAILED reading idx for item %d\n", label, _i); \
+				file.Close(); return false; \
+			} \
+			type *_ptr = (type *)((char *)pool.Buffer + (_idx * pool.Size)); \
+			pool.FreeFlag[_idx] = true; \
+			pool.ActiveCount++; \
+			pool.ActivePointers.Add(_ptr); \
+			if (!_ptr->Load(file)) { \
+				fprintf(stderr, "  %s: FAILED loading item %d (idx=%d)\n", label, _i, _idx); \
+				file.Close(); return false; \
+			} \
+		} \
+		fprintf(stderr, "Load_Game: %s OK (%d items)\n", label, _cnt); \
+	} while(0)
+
+	POOL_LOAD("Houses", Houses, HouseClass);
+	POOL_LOAD("TeamTypes", TeamTypes, TeamTypeClass);
+	POOL_LOAD("Teams", Teams, TeamClass);
+	POOL_LOAD("Triggers", Triggers, TriggerClass);
+	POOL_LOAD("Aircraft", Aircraft, AircraftClass);
+	POOL_LOAD("Anims", Anims, AnimClass);
+	POOL_LOAD("Buildings", Buildings, BuildingClass);
+	POOL_LOAD("Bullets", Bullets, BulletClass);
+	POOL_LOAD("Infantry", Infantry, InfantryClass);
+	POOL_LOAD("Overlays", Overlays, OverlayClass);
+	POOL_LOAD("Smudges", Smudges, SmudgeClass);
+	POOL_LOAD("Templates", Templates, TemplateClass);
+	POOL_LOAD("Terrains", Terrains, TerrainClass);
+	POOL_LOAD("Units", Units, UnitClass);
+	POOL_LOAD("Factories", Factories, FactoryClass);
 
 	Call_Back();
 	/*
 	**	Load the Logic & Map Layers
 	*/
+	fprintf(stderr, "Load_Game: loading Logic (file pos=%ld)...\n", (long)file.Seek(0, SEEK_CUR));
 	if (!Logic.Load(file)) {
+		fprintf(stderr, "Load_Game: FAILED loading Logic\n");
 		file.Close();
 		return(false);
 	}
+	fprintf(stderr, "Load_Game: Logic OK\n");
 	for (i = 0; i < LAYER_COUNT; i++) {
+		fprintf(stderr, "Load_Game: loading Layer[%d] (file pos=%ld)...\n", i, (long)file.Seek(0, SEEK_CUR));
 		if (!Map.Layer[i].Load(file)) {
+			fprintf(stderr, "Load_Game: FAILED loading Layer[%d]\n", i);
 			file.Close();
 			return(false);
 		}
 	}
+	fprintf(stderr, "Load_Game: Layers OK\n");
 
 	Call_Back();
 	/*
 	**	Load the Score
 	*/
+	fprintf(stderr, "Load_Game: loading Score (file pos=%ld)...\n", (long)file.Seek(0, SEEK_CUR));
 	if (!Score.Load(file)) {
+		fprintf(stderr, "Load_Game: FAILED loading Score\n");
 		file.Close();
 		return(false);
 	}
+	fprintf(stderr, "Load_Game: Score OK\n");
 
 	/*
 	**	Load the AI Base
 	*/
+	fprintf(stderr, "Load_Game: loading Base (file pos=%ld)...\n", (long)file.Seek(0, SEEK_CUR));
 	if (!Base.Load(file)) {
+		fprintf(stderr, "Load_Game: FAILED loading Base\n");
 		file.Close();
 		return(false);
 	}
+	fprintf(stderr, "Load_Game: Base OK\n");
 
 	/*
 	**	Load miscellaneous variables, including the map size & the Theater
 	*/
+	fprintf(stderr, "Load_Game: loading Misc (file pos=%ld)...\n", (long)file.Seek(0, SEEK_CUR));
 	if (!Load_Misc_Values(file)) {
+		fprintf(stderr, "Load_Game: FAILED loading Misc\n");
 		file.Close();
 		return(false);
 	}
+	fprintf(stderr, "Load_Game: Misc OK\n");
 
 	file.Close();
+	fprintf(stderr, "Load_Game: file closed, calling Decode_All_Pointers...\n");
 	Decode_All_Pointers();
+	fprintf(stderr, "Load_Game: Decode_All_Pointers OK, calling Init_IO...\n");
 	Map.Init_IO();
+	fprintf(stderr, "Load_Game: Init_IO OK, calling Flag_To_Redraw...\n");
 	Map.Flag_To_Redraw(true);
+	fprintf(stderr, "Load_Game: Flag_To_Redraw OK\n");
 
 	ScenarioInit = 0;
 
@@ -780,6 +830,16 @@ void Code_All_Pointers(void)
 	int i;
 
 	/*
+	** Inline pool Code_Pointers — TFixedIHeapClass template virtual is broken on LP64.
+	** Each object's Code_Pointers() is a regular virtual call that works fine.
+	*/
+	#define POOL_CODE(pool, type) do { \
+		for (int _i = 0; _i < pool.Count(); _i++) { \
+			((type *)pool.ActivePointers[_i])->Code_Pointers(); \
+		} \
+	} while(0)
+
+	/*
 	**	The Map.
 	*/
 	Map.Code_Pointers();
@@ -787,20 +847,20 @@ void Code_All_Pointers(void)
 	/*
 	**	The ArrayOf's.
 	*/
-	TeamTypes.Code_Pointers();
-	Teams.Code_Pointers();
-	Triggers.Code_Pointers();
-	Aircraft.Code_Pointers();
-	Anims.Code_Pointers();
-	Buildings.Code_Pointers();
-	Bullets.Code_Pointers();
-	Infantry.Code_Pointers();
-	Overlays.Code_Pointers();
-	Smudges.Code_Pointers();
-	Templates.Code_Pointers();
-	Terrains.Code_Pointers();
-	Units.Code_Pointers();
-	Factories.Code_Pointers();
+	POOL_CODE(TeamTypes, TeamTypeClass);
+	POOL_CODE(Teams, TeamClass);
+	POOL_CODE(Triggers, TriggerClass);
+	POOL_CODE(Aircraft, AircraftClass);
+	POOL_CODE(Anims, AnimClass);
+	POOL_CODE(Buildings, BuildingClass);
+	POOL_CODE(Bullets, BulletClass);
+	POOL_CODE(Infantry, InfantryClass);
+	POOL_CODE(Overlays, OverlayClass);
+	POOL_CODE(Smudges, SmudgeClass);
+	POOL_CODE(Templates, TemplateClass);
+	POOL_CODE(Terrains, TerrainClass);
+	POOL_CODE(Units, UnitClass);
+	POOL_CODE(Factories, FactoryClass);
 
 	/*
 	**	The Layers.
@@ -837,7 +897,7 @@ void Code_All_Pointers(void)
 	** is used to code HouseClass pointers for all other objects, and if Class is
 	** coded, it will point to a meaningless value.
 	*/
-	Houses.Code_Pointers();
+	POOL_CODE(Houses, HouseClass);
 }
 
 
@@ -858,86 +918,96 @@ void Decode_All_Pointers(void)
 	int i;
 
 	/*
-	**	The Map.
+	** Inline pool Decode_Pointers — TFixedIHeapClass template virtual is broken on LP64.
 	*/
+	#define POOL_DECODE(label, pool, type) do { \
+		fprintf(stderr, "  Decode: %s (%d items)...\n", label, pool.Count()); \
+		for (int _i = 0; _i < pool.Count(); _i++) { \
+			((type *)pool.ActivePointers[_i])->Decode_Pointers(); \
+		} \
+		fprintf(stderr, "  Decode: %s OK\n", label); \
+	} while(0)
+
 	Map.Decode_Pointers();
+	fprintf(stderr, "  Decode: Map OK\n");
 
-	/*
-	** Decode houses first, so we can properly decode all other objects'
-	** House pointers
-	*/
-	Houses.Decode_Pointers();
+	POOL_DECODE("Houses", Houses, HouseClass);
+	POOL_DECODE("TeamTypes", TeamTypes, TeamTypeClass);
+	POOL_DECODE("Teams", Teams, TeamClass);
+	POOL_DECODE("Triggers", Triggers, TriggerClass);
+	POOL_DECODE("Aircraft", Aircraft, AircraftClass);
+	POOL_DECODE("Anims", Anims, AnimClass);
+	POOL_DECODE("Buildings", Buildings, BuildingClass);
+	POOL_DECODE("Bullets", Bullets, BulletClass);
+	POOL_DECODE("Infantry", Infantry, InfantryClass);
+	POOL_DECODE("Overlays", Overlays, OverlayClass);
+	POOL_DECODE("Smudges", Smudges, SmudgeClass);
+	POOL_DECODE("Templates", Templates, TemplateClass);
+	POOL_DECODE("Terrains", Terrains, TerrainClass);
+	POOL_DECODE("Units", Units, UnitClass);
+	POOL_DECODE("Factories", Factories, FactoryClass);
 
-	/*
-	**	The ArrayOf's.
-	*/
-	TeamTypes.Decode_Pointers();
-	Teams.Decode_Pointers();
-	Triggers.Decode_Pointers();
-	Aircraft.Decode_Pointers();
-	Anims.Decode_Pointers();
-	Buildings.Decode_Pointers();
-	Bullets.Decode_Pointers();
-	Infantry.Decode_Pointers();
-	Overlays.Decode_Pointers();
-	Smudges.Decode_Pointers();
-	Templates.Decode_Pointers();
-	Terrains.Decode_Pointers();
-	Units.Decode_Pointers();
-	Factories.Decode_Pointers();
-
-	/*
-	**	The Layers.
-	*/
 	Logic.Decode_Pointers();
+	fprintf(stderr, "  Decode: Logic OK\n");
 	for (i = 0; i < LAYER_COUNT; i++) {
 		Map.Layer[i].Decode_Pointers();
 	}
+	fprintf(stderr, "  Decode: Layers OK\n");
 
-	/*
-	**	The Score.
-	*/
 	Score.Decode_Pointers();
-
-	/*
-	**	The Base.
-	*/
+	fprintf(stderr, "  Decode: Score OK\n");
 	Base.Decode_Pointers();
+	fprintf(stderr, "  Decode: Base OK\n");
 
 	/*
 	**	PlayerPtr.
 	*/
+	fprintf(stderr, "  Decode: PlayerPtr raw=%p (as HousesType=%d)...\n",
+		(void*)PlayerPtr, (int)(intptr_t)PlayerPtr);
 	PlayerPtr = HouseClass::As_Pointer((HousesType)(intptr_t)PlayerPtr);
-	Whom = PlayerPtr->Class->House;
-	switch (PlayerPtr->Class->House) {
-		case HOUSE_GOOD:
-			ScenPlayer = SCEN_PLAYER_GDI;
-			break;
+	fprintf(stderr, "  Decode: PlayerPtr decoded=%p\n", (void*)PlayerPtr);
+	if (!PlayerPtr) {
+		fprintf(stderr, "  Decode: ERROR PlayerPtr is NULL!\n");
+	} else {
+		fprintf(stderr, "  Decode: PlayerPtr->Class=%p\n", (void*)PlayerPtr->Class);
+		Whom = PlayerPtr->Class->House;
+		switch (PlayerPtr->Class->House) {
+			case HOUSE_GOOD:
+				ScenPlayer = SCEN_PLAYER_GDI;
+				break;
 
-		case HOUSE_BAD:
-			ScenPlayer = SCEN_PLAYER_NOD;
-			break;
+			case HOUSE_BAD:
+				ScenPlayer = SCEN_PLAYER_NOD;
+				break;
 
-		case HOUSE_JP:
-			ScenPlayer = SCEN_PLAYER_JP;
-			break;
+			case HOUSE_JP:
+				ScenPlayer = SCEN_PLAYER_JP;
+				break;
+		}
 	}
 	Check_Ptr(PlayerPtr,__FILE__,__LINE__);
+	fprintf(stderr, "  Decode: PlayerPtr OK\n");
 
 	Set_Scenario_Name(ScenarioName, Scenario, ScenPlayer, ScenDir, ScenVar);
+	fprintf(stderr, "  Decode: ScenarioName OK\n");
 
 	/*
 	**	Currently-selected objects.
 	*/
+	fprintf(stderr, "  Decode: CurrentObject count=%d\n", CurrentObject.Count());
 	for (i = 0; i < CurrentObject.Count(); i++) {
+		fprintf(stderr, "  Decode: CurrentObject[%d] raw=%p\n", i, (void*)CurrentObject[i]);
 		CurrentObject[i] = As_Object((TARGET)(intptr_t)CurrentObject[i]);
+		fprintf(stderr, "  Decode: CurrentObject[%d] decoded=%p\n", i, (void*)CurrentObject[i]);
 		Check_Ptr(CurrentObject[i],__FILE__,__LINE__);
 	}
+	fprintf(stderr, "  Decode: CurrentObject OK\n");
 
 	/*
 	**	Last-Minute Fixups; to resolve these pointers properly requires all other
 	**	pointers to be loaded & decoded.
 	*/
+	fprintf(stderr, "  Decode: PendingObjectPtr=%p\n", (void*)Map.PendingObjectPtr);
 	if (Map.PendingObjectPtr) {
 		Map.PendingObject = &Map.PendingObjectPtr->Class_Of();
 		Check_Ptr((void *)Map.PendingObject, __FILE__, __LINE__);
@@ -946,6 +1016,7 @@ void Decode_All_Pointers(void)
 		Map.PendingObject = 0;
 		Map.Set_Cursor_Shape(0);
 	}
+	fprintf(stderr, "  Decode: PendingObject OK\n");
 }
 
 
@@ -1035,9 +1106,11 @@ bool Read_Object(void *ptr, int base_size, int class_size, FileClass & file, voi
 
 	/*
 	**	Fill in VTable.
+	**	Original code: vtable at base_size - 4 (Watcom/32-bit layout).
+	**	GCC/Clang LP64: vtable pointer is at offset 0 of the object.
 	*/
 	if (vtable) {
-		((void **)(((char *)ptr) + base_size - 4))[0] = vtable;
+		((void **)ptr)[0] = vtable;
 	}
 
 	return(true);
@@ -1121,50 +1194,65 @@ bool Get_Savefile_Info(int id, char *buf, unsigned *scenp, HousesType *housep)
 	**	Generate the filename to load
 	*/
 	sprintf(name, "SAVEGAME.%03d", id);
+	fprintf(stderr, "Get_Savefile_Info: trying '%s'\n", name);
 
 	/*
 	**	If the file opens OK, read the file
 	*/
 	if (file.Open(name, READ)) {
+		fprintf(stderr, "Get_Savefile_Info: file opened OK\n");
 
 		/*
 		**	Read in the description, scenario #, and the house
 		*/
 		if (file.Read(descr_buf, DESCRIP_MAX) != DESCRIP_MAX) {
+			fprintf(stderr, "Get_Savefile_Info: FAILED reading description\n");
 			file.Close();
 			return(false);
 		}
 
 		descr_buf[strlen(descr_buf) - 2] = '\0';	// trim off CR/LF
 		strcpy(buf, descr_buf);
+		fprintf(stderr, "Get_Savefile_Info: descr='%s'\n", buf);
 
 		if (file.Read(scenp, sizeof(unsigned)) != sizeof(unsigned)) {
+			fprintf(stderr, "Get_Savefile_Info: FAILED reading scenario\n");
 			file.Close();
 			return(false);
 		}
+		fprintf(stderr, "Get_Savefile_Info: scenario=%u\n", *scenp);
 
 		if (file.Read(housep, sizeof(HousesType)) != sizeof(HousesType)) {
+			fprintf(stderr, "Get_Savefile_Info: FAILED reading house\n");
 			file.Close();
 			return(false);
 		}
+		fprintf(stderr, "Get_Savefile_Info: house=%d\n", (int)*housep);
 
 		/*
 		**	Read & verify the save-game version #
 		*/
 		if (file.Read(&version,sizeof(version)) != sizeof(version)) {
+			fprintf(stderr, "Get_Savefile_Info: FAILED reading version\n");
 			file.Close();
 			return(false);
 		}
 
+		fprintf(stderr, "Get_Savefile_Info: file_version=0x%lx, expected=0x%lx, sizeof(ulong)=%zu\n",
+			version, (unsigned long)SAVEGAME_VERSION, sizeof(unsigned long));
+
 		if (version!=SAVEGAME_VERSION) {
+			fprintf(stderr, "Get_Savefile_Info: VERSION MISMATCH!\n");
 			file.Close();
 			return(false);
 		}
 
 		file.Close();
+		fprintf(stderr, "Get_Savefile_Info: SUCCESS\n");
 
 		return(true);
 	}
+	fprintf(stderr, "Get_Savefile_Info: FAILED to open file\n");
 	return(false);
 }
 
