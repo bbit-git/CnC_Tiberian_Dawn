@@ -704,35 +704,31 @@ bool SidebarClass::Scroll(bool up, int column)
  *=============================================================================================*/
 void SidebarClass::Draw_It(bool complete)
 {
-	//DBG("SidebarClass::Draw_It");
-	PowerClass::Draw_It(complete);
-
+	/*
+	**	Draw sidebar background BEFORE the power bar so that
+	**	PowerClass::Draw_It renders the power bar on top of the shapes.
+	*/
 	if (IsSidebarActive && (IsToRedraw || complete) && !Debug_Map) {
 		IsToRedraw = false;
 
 		if (LogicPage->Lock()){
-			/*
-			**	Clear sidebar area to prevent ghosting from old pixels,
-			**	then draw the sidebar background shapes on top.
-			*/
 			if (complete) {
-				LogicPage->Fill_Rect(SideX+Map.PowWidth, SideY, SideX+SideWidth-1, SideY+SideHeight-1, BLACK);
+				LogicPage->Fill_Rect(SideX, SideY, SideX+SideWidth-1, SideY+SideHeight-1, BLACK);
 			}
 			LogicPage->Draw_Line(SideX, 157, SeenBuff.Get_Width()-1, 157, 0);
 			CC_Draw_Shape(SidebarShape1, 0, SideX, 158, WINDOW_MAIN, SHAPE_WIN_REL);
 			CC_Draw_Shape(SidebarShape2, 0, SideX, 158+118, WINDOW_MAIN, SHAPE_WIN_REL);
-			//Repair.Draw_Me(true);
-			//Upgrade.Draw_Me(true);
-			//Zoom.Draw_Me(true);
-	//	} else {
-	//		if (IsToRedraw || complete) {
-	//			LogicPage->Fill_Rect(TacPixelX + Lepton_To_Pixel(TacLeptonWidth), SIDE_Y, 319, SIDE_Y+TOP_HEIGHT, BLACK);
-	//		}
 
 			LogicPage->Unlock();
 		}
-
 	}
+
+	/*
+	**	Power bar, radar, and tactical map. The power bar draws on top of
+	**	the sidebar background shapes in the power bar column.
+	*/
+	PowerClass::Draw_It(complete);
+
 	/*
 	**	Draw the side strip elements by calling their respective draw functions.
 	*/
