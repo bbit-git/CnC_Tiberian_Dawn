@@ -1284,7 +1284,7 @@ bool Select_Game(bool fade)
 
 									}
 									CCDebugString ("C&C95 - About to delete scrap memory.\n");
-									delete temp_buffer;
+									delete[] temp_buffer;
 //#endif	//(0)
 
 

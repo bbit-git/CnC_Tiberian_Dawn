@@ -3586,10 +3586,10 @@ void DisplayClass::Set_Tactical_Position(COORDINATE coord)
 	int xx = Coord_X(coord) - Cell_To_Lepton(MapCellX);
 	int yy = Coord_Y(coord) - Cell_To_Lepton(MapCellY);
 
-	DBG("Set_Tactical: xx=%d yy=%d TacW=%d TacH=%d MapW=%d MapH=%d MapX=%d MapY=%d",
-		xx, yy, (int)TacLeptonWidth, (int)TacLeptonHeight,
-		Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight),
-		MapCellX, MapCellY);
+	// DBG("Set_Tactical: xx=%d yy=%d TacW=%d TacH=%d MapW=%d MapH=%d MapX=%d MapY=%d",
+	// 	xx, yy, (int)TacLeptonWidth, (int)TacLeptonHeight,
+	// 	Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight),
+	// 	MapCellX, MapCellY);
 	Confine_Rect(&xx, &yy, TacLeptonWidth, TacLeptonHeight, Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight));
 	coord = XY_Coord(xx + Cell_To_Lepton(MapCellX), yy + Cell_To_Lepton(MapCellY));
 

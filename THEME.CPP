@@ -197,12 +197,14 @@ void ThemeClass::AI(void)
 			*/
 			if (Pending == THEME_PICK_ANOTHER) {
 				Pending = Next_Song(Score);
+				DBG("Theme::AI -- picked next song: %s (theme %d)", Base_Name(Pending), (int)Pending);
 			}
 
 			/*
 			**	Start the song playing and then flag it so that a new song will
 			**	be picked when this one ends.
 			*/
+			DBG("Theme::AI -- starting pending song: %s (theme %d)", Base_Name(Pending), (int)Pending);
 			Play_Song(Pending);
 			Pending = THEME_PICK_ANOTHER;
 		}
@@ -282,11 +284,13 @@ ThemeType ThemeClass::Next_Song(ThemeType theme)
  *=============================================================================================*/
 void ThemeClass::Queue_Song(ThemeType theme)
 {
+	DBG("Theme::Queue_Song -- queuing: %s (theme %d), current pending: %d", Base_Name(theme), (int)theme, (int)Pending);
 	if (ScoresPresent && SampleType && !Debug_Quiet && (Pending == THEME_NONE || Pending == THEME_PICK_ANOTHER)) {
 		if (!Options.ScoreVolume && theme != THEME_NONE) return;
 
 		Pending = theme;
 		Fade_Sample(Current, THEME_DELAY);
+		DBG("Theme::Queue_Song -- accepted, fading current (handle %d)", Current);
 	}
 }
 
@@ -309,6 +313,7 @@ void ThemeClass::Queue_Song(ThemeType theme)
  *=============================================================================================*/
 int ThemeClass::Play_Song(ThemeType theme)
 {
+	DBG("Theme::Play_Song -- playing: %s (theme %d)", Base_Name(theme), (int)theme);
 	if (ScoresPresent && SampleType && !Debug_Quiet && Options.ScoreVolume) {
 		Stop();
 		Score = theme;
@@ -329,6 +334,7 @@ int ThemeClass::Play_Song(ThemeType theme)
 			Current = File_Stream_Sample_Vol(Theme_File_Name(theme), 0xFF, true);
 #endif
 		}
+		DBG("Theme::Play_Song -- started, handle=%d, file=%s", Current, theme >= THEME_FIRST ? Theme_File_Name(theme) : "none");
 	}
 	return(Current);
 }
@@ -411,6 +417,7 @@ void ThemeClass::Stop(void)
 {
 	if (ScoresPresent && SampleType && !Debug_Quiet) {
 		if (Current != -1) {
+			DBG("Theme::Stop -- stopping current theme (handle %d, score %d)", Current, (int)Score);
 			Stop_Sample(Current);
 			Current = -1;
 			Score = THEME_NONE;
