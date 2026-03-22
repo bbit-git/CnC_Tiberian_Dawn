@@ -44,7 +44,7 @@ class StageClass {
 		**	This handles the animation stage of the object. This includes smoke, walking,
 		**	flapping, and rocket flames.
 		*/
-		unsigned short Stage;
+		unsigned int Stage;
 
 		/*
 		**	This is the countdown timer for stage animation. When this counts down

@@ -74,6 +74,7 @@ void LogicClass::Debug_Dump(MonoClass *mono) const
 
 	TotalFrames+= FramesPerSecond;
 	AverageFramesPerSecond = TotalFrames/FPSDivider++;
+	if (FPSDivider > 3600) { TotalFrames = AverageFramesPerSecond; FPSDivider = 1; }
 
 	mono->Set_Cursor(21, 9);
 	mono->Print(
