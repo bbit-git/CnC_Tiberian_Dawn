@@ -1566,10 +1566,10 @@ void ScoreClass::Input_Name(char str[], int xpos, int ypos, char const pal[])
 			** If they hit 'backspace' when they're on the last letter,
 			** turn it into a space instead.
 			*/
-			if ((key == KA_BACKSPACE) && (index == MAX_FAMENAME_LENGTH-2) ) {
-				if (str[index] && str[index]!=32) key = 32;
+			if ((key == KN_BACKSPACE) && (index == MAX_FAMENAME_LENGTH-2) ) {
+				if (str[index] && str[index]!=32) key = KN_SPACE;
 			}
-			if (key == KA_BACKSPACE) {							//if (key == KN_BACKSPACE) {
+			if (key == KN_BACKSPACE) {
 				if (index) {
 					str[--index] = 0;
 
@@ -1580,8 +1580,8 @@ void ScoreClass::Input_Name(char str[], int xpos, int ypos, char const pal[])
 					TextPrintBuffer->Fill_Rect(xposindex6*2,ypos*2,(xposindex6+6)*2,(ypos+6)*2, BLACK);
 				}
 
-			} else if (key!=KA_RETURN) {				//else if (key != KN_RETURN && key!=KN_KEYPAD_RETURN) {
-				ascii = key;					//ascii = KN_To_KA(key);
+			} else if (key != KN_RETURN) {
+				ascii = KN_To_KA(key);
 				if (ascii >= 'a' && ascii <= 'z') ascii -= ('a' - 'A');
 //if (ascii >='A' && ascii<='Z' || ascii == ' ') {
 if ( (ascii >= '!' && ascii <= KA_TILDA) || ascii == ' ') {
@@ -1600,7 +1600,7 @@ if ( (ascii >= '!' && ascii <= KA_TILDA) || ascii == ' ') {
 				}
 			}
 		}
-	} while(key!=KA_RETURN);							//	} while(key != KN_RETURN && key!=KN_KEYPAD_RETURN);
+	} while(key != KN_RETURN);
 }
 
 
