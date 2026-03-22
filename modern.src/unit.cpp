@@ -2816,10 +2816,14 @@ MoveType UnitClass::Can_Enter_Cell(CELL cell, FacingType ) const
 	if ((unsigned)cell >= MAP_CELL_TOTAL) return(MOVE_NO);
 
 	/*
-	**	The gunboat can always move. This prevents it from trying to move around possible hover
-	**	craft blockage.
+	**	The gunboat ignores unit blockage but must stay on water.
 	*/
-	if (*this == UNIT_GUNBOAT) return(MOVE_OK);
+	if (*this == UNIT_GUNBOAT) {
+		if (cellptr->Land_Type() != LAND_WATER && cellptr->Land_Type() != LAND_BEACH) {
+			return(MOVE_NO);
+		}
+		return(MOVE_OK);
+	}
 
 	/*
 	**	Moving off the edge of the map is not allowed unless
@@ -2898,8 +2902,12 @@ MoveType UnitClass::Can_Enter_Cell(CELL cell, FacingType ) const
 					int face 		= Dir_Facing(PrimaryFacing);
 					int techface	= Dir_Facing(((FootClass const *)obj)->PrimaryFacing) ^4;
 					if (face == techface && Distance((AbstractClass const *)obj) <= 0x1FF) {
-						return(MOVE_NO);
-					}
+						/*
+						**	Head-on collision with allied unit. Use MOVE_TEMP instead
+						**	of MOVE_NO so the scatter mechanism can resolve the deadlock.
+						*/
+						if (retval < MOVE_TEMP) retval = MOVE_TEMP;
+					} else
 					if (retval < MOVE_MOVING_BLOCK) retval = MOVE_MOVING_BLOCK;
 				} else {
 					if (obj->What_Am_I() == RTTI_BUILDING) return(MOVE_NO);
@@ -3098,7 +3106,7 @@ void UnitClass::Scatter(COORDINATE threat, bool forced)
 {
 	Validate();
 	if (*this != UNIT_GUNBOAT && *this != UNIT_HOVER) {
-		if ((!Target_Legal(TarCom) && !Target_Legal(NavCom)) || forced || Random_Pick(1, 4) == 1) {
+		if ((!Target_Legal(TarCom) && !Target_Legal(NavCom)) || forced || Random_Pick(1, 2) == 1) {
 			FacingType	toface;
 			FacingType	newface;
 			CELL			newcell;
@@ -3116,6 +3124,7 @@ void UnitClass::Scatter(COORDINATE threat, bool forced)
 
 				if (Map.In_Radar(newcell) && Can_Enter_Cell(newcell) == MOVE_OK) {
 					Assign_Destination(::As_Target(newcell));
+					break;
 				}
 			}
 		}
