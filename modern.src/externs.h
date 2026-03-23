@@ -88,6 +88,7 @@ extern char							OverridePath[128];
 extern bool							SlowPalette;
 extern char							VersionText[16];
 extern bool							ScoresPresent;
+extern bool							RemasteredData;
 extern int							CrateCount;
 extern TCountDownTimerClass	CrateTimer;
 extern bool							CrateMaker;
