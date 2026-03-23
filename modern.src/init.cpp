@@ -198,6 +198,13 @@ bool Init_Game(int , char *[])
 
 	RequiredCD = temp;
 
+	/*
+	** Detect remastered data by probing for UPDATEC.MIX (only in remastered).
+	** This gates hi-res theater assets (ICNH MIX files) later.
+	*/
+	RemasteredData = CCFileClass("UPDATEC.MIX").Is_Available();
+	DBG("Remastered data: %s", RemasteredData ? "YES" : "NO");
+
 #endif
 	CCDebugString ("C&C95 - About to load fonts\n");
 	Green12FontPtr = Load_Alloc_Data(CCFileClass("12GREEN.FNT"));

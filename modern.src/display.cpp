@@ -390,17 +390,25 @@ void DisplayClass::Init_Theater(TheaterType theater)
 
 #endif
 	/*
-	** Register the hi-res icons mix file now since it is theater specific
+	** Register the hi-res icons mix file (theater specific).
+	** Only load when remastered data is available and we're in hi-res mode;
+	** legacy 320x200 rendering uses the base theater MIX exclusively.
 	*/
-	sprintf(fullname, "%s.MIX", Theaters[Theater].Root);
-	strcpy (iconname, fullname);
-	strcpy (&iconname[4], "ICNH.MIX");
-	if (Theater != LastTheater){
-		if (TheaterIcons) {
-			delete TheaterIcons;
+	if (RemasteredData && SeenBuff.Get_Width() != 320) {
+		sprintf(fullname, "%s.MIX", Theaters[Theater].Root);
+		strcpy (iconname, fullname);
+		strcpy (&iconname[4], "ICNH.MIX");
+		if (Theater != LastTheater){
+			if (TheaterIcons) {
+				delete TheaterIcons;
+				TheaterIcons = NULL;
+			}
+			TheaterIcons = new MixFileClass(iconname);
+			TheaterIcons->Cache();
 		}
-		TheaterIcons = new MixFileClass(iconname);
-		TheaterIcons->Cache();
+	} else if (Theater != LastTheater && TheaterIcons) {
+		delete TheaterIcons;
+		TheaterIcons = NULL;
 	}
 
 

@@ -145,6 +145,12 @@ VoxType SpeakQueue = VOX_NONE;
 */
 bool ScoresPresent;
 
+/*
+**	True when remastered data is detected (UPDATEC.MIX present).
+**	Used to gate hi-res asset loading (theater ICNH MIX files, etc.).
+*/
+bool RemasteredData;
+
 
 /***************************************************************************
 **	This flag will control whether there is a response from game units.
