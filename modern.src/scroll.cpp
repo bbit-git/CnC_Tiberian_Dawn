@@ -116,22 +116,30 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 		} else {
 			int dx = x - MidDragAnchorX;
 			int dy = y - MidDragAnchorY;
-			int adx = (dx < 0) ? -dx : dx;
-			int ady = (dy < 0) ? -dy : dy;
-			int deadzone = 4;
-			if (adx > deadzone || ady > deadzone) {
-				DirType dir = (DirType)Desired_Facing256(MidDragAnchorX, MidDragAnchorY, x, y);
-				if (!Options.IsFreeScroll) {
-					dir = Facing_Dir(Dir_Facing(dir));
-				}
+			if (dx != 0 || dy != 0) {
 				/*
-				**	Scale scroll speed by distance from anchor.
-				**	Use octagonal distance approximation, clamp to reasonable range.
+				**	Grab-and-drag: move map opposite to mouse delta so
+				**	the point under the cursor follows the hand.
 				*/
-				int dist = MAX(adx, ady) + MIN(adx, ady) / 2;
-				int speed = Bound(dist / 4, 0x10, 0x1C0);
-				Scroll_Map(dir, speed, true);
-				Override_Mouse_Shape((MouseType)(MOUSE_N + Dir_Facing(dir)), false);
+				int cur_x = (int)Coord_X(TacticalCoord) - Pixel_To_Lepton(dx);
+				int cur_y = (int)Coord_Y(TacticalCoord) - Pixel_To_Lepton(dy);
+
+				/*
+				**	Clamp to map bounds.
+				*/
+				int min_x = Cell_To_Lepton(MapCellX);
+				int min_y = Cell_To_Lepton(MapCellY);
+				int max_x = Cell_To_Lepton(MapCellX + MapCellWidth) - TacLeptonWidth;
+				int max_y = Cell_To_Lepton(MapCellY + MapCellHeight) - TacLeptonHeight;
+				cur_x = Bound(cur_x, min_x, max_x);
+				cur_y = Bound(cur_y, min_y, max_y);
+
+				Set_Tactical_Position(XY_Coord(cur_x, cur_y));
+				IsToRedraw = true;
+				Flag_To_Redraw(false);
+
+				MidDragAnchorX = x;
+				MidDragAnchorY = y;
 			}
 		}
 		HelpClass::AI(input, x, y);
