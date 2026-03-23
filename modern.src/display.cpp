@@ -1498,7 +1498,7 @@ int DisplayClass::Cell_Shadow(CELL cell)
 	**	problem of accessing cells off the top or bottom of the map and into
 	**	who-knows-what memory.
 	*/
-	if ((unsigned)(Cell_Y(cell)-1) > MAP_CELL_H-2) return(-2);
+	if ((unsigned)(Cell_Y(cell)-1) >= MAP_CELL_H-2) return(-2);
 
 	cellptr = &(*this)[cell];
 	if (!cellptr->IsMapped) {
@@ -3432,7 +3432,8 @@ void DisplayClass::Mouse_Left_Release(CELL cell, int x, int y, ObjectClass * obj
 
 				for (int index = 0; index < CurrentObject.Count(); index++) {
 					ObjectClass * tobject = CurrentObject[index];
-					if (object) {
+					if (!tobject || !tobject->IsActive) continue;
+					if (object && object->IsActive) {
 						tobject->Active_Click_With(tobject->What_Action(object), object);
 					} else {
 						ActionType unit_action = tobject->What_Action(cell);
@@ -3449,7 +3450,7 @@ void DisplayClass::Mouse_Left_Release(CELL cell, int x, int y, ObjectClass * obj
 				}
 				AllowVoice = true;
 
-				if (action == ACTION_REPAIR && object->What_Am_I() == RTTI_BUILDING) {
+				if (action == ACTION_REPAIR && object && object->IsActive && object->What_Am_I() == RTTI_BUILDING) {
 					OutList.Add(EventClass(EventClass::REPAIR, object->As_Target()));
 				}
 				if (action == ACTION_SELL_UNIT && object) {
