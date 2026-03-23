@@ -1157,6 +1157,14 @@ ObjectClass * MapClass::Close_Object(COORDINATE coord) const
 			while (o) {
 
 				/*
+				**	Skip inactive (freed) objects still lingering in the occupier list.
+				*/
+				if (!o->IsActive) {
+					o = o->Next;
+					continue;
+				}
+
+				/*
 				**	Special case check to ignore cloaked object if not owned by the player.
 				*/
 				if (!o->Is_Techno() || ((TechnoClass *)o)->IsOwnedByPlayer || ((TechnoClass *)o)->Cloak != CLOAKED) {
