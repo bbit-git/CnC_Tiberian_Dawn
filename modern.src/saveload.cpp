@@ -48,6 +48,7 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "function.h"
+#include <dbg.h>
 
 /*
 ********************************** Defines **********************************
@@ -612,6 +613,96 @@ bool Load_Game(int id)
 
 	ScenarioInit = 0;
 
+	/*
+	**	Post-load fixup: verify all terrain objects are properly linked.
+	**	The cell occupier chain is rebuilt from coded TARGET pointers during
+	**	Decode_All_Pointers. If any link decodes to NULL the chain breaks
+	**	and Cell_Terrain() can no longer find the object.  Walk each
+	**	terrain's actual occupy-list cells to verify linkage, and re-place
+	**	any that are missing.  Also ensure every terrain is in the Logic
+	**	layer for AI processing.
+	*/
+	{
+		int logic_fixed = 0;
+		int cell_fixed = 0;
+		int blossom_count = 0;
+		for (int ti = 0; ti < Terrains.Count(); ti++) {
+			TerrainClass *tp = Terrains.Ptr(ti);
+			if (!tp->IsActive || tp->IsInLimbo) continue;
+
+			if (tp->Class->IsTiberiumSpawn) blossom_count++;
+
+			/*
+			** Ensure terrain is in the Logic layer for AI processing.
+			*/
+			bool in_logic = false;
+			for (int li = 0; li < Logic.Count(); li++) {
+				if (Logic[li] == tp) { in_logic = true; break; }
+			}
+			if (!in_logic) {
+				Logic.Submit(tp);
+				logic_fixed++;
+				DBG("Load_Game: terrain %s at cell %d re-added to Logic",
+					tp->Class->IniName, (int)Coord_Cell(tp->Coord));
+			}
+
+			/*
+			** Walk the occupy list to find the actual cells this terrain
+			** should be in, and verify it appears in each cell's occupier
+			** chain.  If missing from any, pick up and re-place.
+			*/
+			CELL base = Coord_Cell(tp->Coord);
+			short const *olist = tp->Occupy_List();
+			bool in_cell = true;
+			while (*olist != REFRESH_EOL) {
+				CELL ocell = base + *olist++;
+				if ((unsigned)ocell >= MAP_CELL_TOTAL) continue;
+				bool found = false;
+				ObjectClass *occ = Map[ocell].Cell_Occupier();
+				while (occ) {
+					if (occ == tp) { found = true; break; }
+					occ = occ->Next;
+				}
+				if (!found) { in_cell = false; break; }
+			}
+			if (!in_cell) {
+				if (tp->IsDown) {
+					tp->Mark(MARK_UP);
+				}
+				tp->Mark(MARK_DOWN);
+				cell_fixed++;
+				DBG("Load_Game: terrain %s at cell %d re-placed on map",
+					tp->Class->IniName, (int)base);
+			}
+		}
+		DBG("Load_Game: terrain=%d blossom=%d fixup Logic:%d Cell:%d",
+			Terrains.Count(), blossom_count, logic_fixed, cell_fixed);
+
+		/*
+		** Diagnostic: for each blossom tree, verify Cell_Terrain() finds it
+		** and report its animation state.
+		*/
+		for (int ti = 0; ti < Terrains.Count(); ti++) {
+			TerrainClass *tp = Terrains.Ptr(ti);
+			if (!tp->IsActive || tp->IsInLimbo) continue;
+			if (!tp->Class->IsTiberiumSpawn) continue;
+
+			CELL base = Coord_Cell(tp->Coord);
+			short const *olist = tp->Occupy_List();
+			CELL ocell = base + olist[0];
+			TerrainClass *found = (ocell < MAP_CELL_TOTAL) ? Map[ocell].Cell_Terrain() : NULL;
+
+			DBG("Load_Game: blossom %s base=%d occupy=%d found=%s "
+				"down=%d stage=%d rate=%d",
+				tp->Class->IniName, (int)base, (int)ocell,
+				found == tp ? "YES" : (found ? "WRONG" : "NULL"),
+				(int)tp->IsDown,
+				(int)tp->Fetch_Stage(), (int)tp->Fetch_Rate());
+		}
+		DBG("Load_Game: IsTGrowth=%d IsTSpread=%d",
+			(int)Special.IsTGrowth, (int)Special.IsTSpread);
+	}
+
 #ifdef DEMO
 	if (Scenario != 10 && Scenario != 1 && Scenario != 6) {
 		Clear_Scenario();
@@ -716,6 +807,8 @@ bool Save_Misc_Values(FileClass &file)
 	// This is new...
 	file.Write(ActionMovie, sizeof(ActionMovie));
 
+	file.Write(&Special, sizeof(Special));
+
 	return(true);
 }
 
@@ -807,6 +900,16 @@ bool Load_Misc_Values(FileClass &file)
 
 	if (file.Seek(0, SEEK_CUR) < file.Size()) {
 		file.Read(ActionMovie, sizeof(ActionMovie));
+	}
+
+	/*
+	**	Special flags (IsTGrowth, IsTSpread, etc.) were not saved in
+	**	the original game.  Read them if present, otherwise default.
+	*/
+	if (file.Seek(0, SEEK_CUR) < file.Size()) {
+		file.Read(&Special, sizeof(Special));
+	} else {
+		Special.Init();
 	}
 
 	return(true);
