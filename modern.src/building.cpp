@@ -285,13 +285,13 @@ RadioMessageType BuildingClass::Receive_Message(RadioClass * from, RadioMessageT
 
 			if (Transmit_Message(RADIO_NEED_TO_MOVE, from) == RADIO_ROGER) {
 				if (*this == STRUCT_HELIPAD) {
-					param = As_Target();
+					param = (long)As_Target();
 				} else {
 					if (*this == STRUCT_REPAIR) {
 						Transmit_Message(RADIO_TETHER);
-						param = ::As_Target(Coord_Cell(Center_Coord()));
+						param = (long)::As_Target(Coord_Cell(Center_Coord()));
 					} else {
-						param = ::As_Target(Coord_Cell(Adjacent_Cell(Center_Coord(), DIR_SW)));
+						param = (long)::As_Target(Coord_Cell(Adjacent_Cell(Center_Coord(), DIR_SW)));
 					}
 				}
 
@@ -950,6 +950,20 @@ void BuildingClass::AI(void)
 	**	be displayed.
 	*/
 	TechnoClass::AI();
+
+	/*
+	** Guard: if vptr was corrupted during TechnoClass::AI (radio/mission
+	** processing can destroy objects), bail before any more virtual calls.
+	*/
+	{
+		static void* building_vtable = nullptr;
+		if (!building_vtable) building_vtable = *(void**)this;
+		if (*(void**)this != building_vtable) {
+			DBG_AI("BuildingClass::AI: vptr corrupted this=%p expected=%p got=%p — bailing",
+					(void*)this, building_vtable, *(void**)this);
+			return;
+		}
+	}
 
 	/*
 	**	If now is a good time to act on a new mission, then do so. This occurs here because

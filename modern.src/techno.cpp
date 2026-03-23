@@ -1588,9 +1588,25 @@ void TechnoClass::Clicked_As_Target(int count)
  *=============================================================================================*/
 void TechnoClass::AI(void)
 {
+	void* vptr_entry = *(void**)this;
+
 	CargoClass::AI();
+	if (vptr_entry != *(void**)this) {
+		DBG_AI("VPTR STOMPED after CargoClass::AI! this=%p before=%p after=%p",
+				(void*)this, vptr_entry, *(void**)this); return;
+	}
+
 	RadioClass::AI();
+	if (vptr_entry != *(void**)this) {
+		DBG_AI("VPTR STOMPED after RadioClass::AI! this=%p before=%p after=%p",
+				(void*)this, vptr_entry, *(void**)this); return;
+	}
+
 	DoorClass::AI();
+	if (vptr_entry != *(void**)this) {
+		DBG_AI("VPTR STOMPED after DoorClass::AI! this=%p before=%p after=%p",
+				(void*)this, vptr_entry, *(void**)this); return;
+	}
 
 	/*
 	** Handle decision to re-cloak here. Process the cloaking/decloaking operation.
@@ -1707,6 +1723,10 @@ void TechnoClass::AI(void)
 	**	changes, then flag the object to be redrawn as well as  determine
 	**	if the current animation process needs to change.
 	*/
+	if (vptr_entry != *(void**)this) {
+		DBG_AI("VPTR STOMPED before What_Am_I! this=%p entry=%p now=%p",
+				(void*)this, vptr_entry, *(void**)this); return;
+	}
 	if (What_Am_I() != RTTI_BUILDING) {
 		if (StageClass::Graphic_Logic() || Time_To_Redraw()) {
 			Mark(MARK_CHANGE);

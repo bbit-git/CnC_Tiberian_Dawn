@@ -247,6 +247,16 @@ ObjectClass * CellClass::Cell_Find_Object(RTTIType rtti) const
 	ObjectClass * object = Cell_Occupier();
 
 	while (object) {
+		/*
+		** Guard: skip objects with corrupted vtables. During RadioClass::AI,
+		** vptrs can get stomped to AbstractClass vtable. Check IsActive as a
+		** secondary sanity check — destroyed objects clear this flag.
+		*/
+		if (!object->IsActive) {
+			DBG_AI("Cell_Find_Object: inactive object %p in occupier chain — skipping", (void*)object);
+			object = object->Next;
+			continue;
+		}
 		if (object->What_Am_I() == rtti) {
 			return(object);
 		}

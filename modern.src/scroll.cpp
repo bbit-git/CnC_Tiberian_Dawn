@@ -66,6 +66,9 @@ ScrollClass::ScrollClass(void)
 	Counter.Set(SCROLL_DELAY);
 	Inertia = 0;
 	Counter.Start();
+	IsMidDragging = false;
+	MidDragAnchorX = 0;
+	MidDragAnchorY = 0;
 }
 
 
@@ -92,6 +95,48 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 {
 	static DirType direction;
 	bool				player_scrolled=false;
+
+	/*
+	**	Middle mouse button drag scrolling.
+	**	Press middle button to set anchor, drag to scroll map proportionally.
+	*/
+	if ((input & ~KN_RLSE_BIT) == KN_MMOUSE) {
+		if (input & KN_RLSE_BIT) {
+			IsMidDragging = false;
+		} else {
+			IsMidDragging = true;
+			MidDragAnchorX = x;
+			MidDragAnchorY = y;
+		}
+		input = KN_NONE;
+	}
+	if (IsMidDragging) {
+		if (!Keyboard::Down(KN_MMOUSE)) {
+			IsMidDragging = false;
+		} else {
+			int dx = x - MidDragAnchorX;
+			int dy = y - MidDragAnchorY;
+			int adx = (dx < 0) ? -dx : dx;
+			int ady = (dy < 0) ? -dy : dy;
+			int deadzone = 4;
+			if (adx > deadzone || ady > deadzone) {
+				DirType dir = (DirType)Desired_Facing256(MidDragAnchorX, MidDragAnchorY, x, y);
+				if (!Options.IsFreeScroll) {
+					dir = Facing_Dir(Dir_Facing(dir));
+				}
+				/*
+				**	Scale scroll speed by distance from anchor.
+				**	Use octagonal distance approximation, clamp to reasonable range.
+				*/
+				int dist = MAX(adx, ady) + MIN(adx, ady) / 2;
+				int speed = Bound(dist / 4, 0x10, 0x1C0);
+				Scroll_Map(dir, speed, true);
+				Override_Mouse_Shape((MouseType)(MOUSE_N + Dir_Facing(dir)), false);
+			}
+		}
+		HelpClass::AI(input, x, y);
+		return;
+	}
 
 	/*
 	**	If rubber band mode is in progress, then don't allow scrolling of the tactical map.
