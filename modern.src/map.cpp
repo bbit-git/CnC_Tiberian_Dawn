@@ -821,8 +821,8 @@ void MapClass::Logic(void)
 		*/
 		TerrainClass * terrain = ptr->Cell_Terrain();
 		if (Special.IsTSpread &&
-			(ptr->Land_Type() == LAND_TIBERIUM && ptr->OverlayData > 6) ||
-			(terrain && terrain->Class->IsTiberiumSpawn)) {
+			((ptr->Land_Type() == LAND_TIBERIUM && ptr->OverlayData > 6) ||
+			(terrain && terrain->Class->IsTiberiumSpawn))) {
 
 			int tries = 1;
 			if (terrain) tries = 3;
@@ -834,10 +834,9 @@ void MapClass::Logic(void)
 				}
 			}
 		}
-		subcount--;
-		if (!subcount) break;
+		if (!--subcount) break;
 	}
-	TiberiumScan = idx;
+	TiberiumScan = idx + 1;
 
 	if (TiberiumScan >= MAP_CELL_TOTAL) {
 		int tries = 1;
