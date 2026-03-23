@@ -1595,7 +1595,7 @@ bool DisplayClass::Map_Cell(CELL cell, HouseClass * house)
 
 		c = Adjacent_Cell(cell, dir);
 
-		if (c != cell && !(*this)[c].IsMapped) {
+		if (c != cell && (unsigned)c < (unsigned)MAP_CELL_TOTAL && !(*this)[c].IsMapped) {
 			shadow = Cell_Shadow(c);
 
 			/*

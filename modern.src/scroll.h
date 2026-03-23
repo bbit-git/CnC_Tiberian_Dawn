@@ -67,6 +67,12 @@ class ScrollClass: public HelpClass
 
 		int	Inertia;
 
+		/*
+		**	Middle-mouse-button drag scrolling state.
+		*/
+		unsigned IsMidDragging:1;
+		int MidDragAnchorX;
+		int MidDragAnchorY;
 
 	public:
 		ScrollClass(void);
