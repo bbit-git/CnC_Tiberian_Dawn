@@ -36,6 +36,11 @@
 
 #include "function.h"
 
+/* ---- Platform event pump callback (registered by platform layer) ---- */
+static void (*g_platform_pump_events)(void) = nullptr;
+void Platform_Set_PumpEvents(void (*fn)(void)) { g_platform_pump_events = fn; }
+void Platform_PumpEvents(void) { if (g_platform_pump_events) g_platform_pump_events(); }
+
 #ifdef JAPANESE
 bool ForceEnglish = false;
 #endif
