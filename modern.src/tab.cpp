@@ -125,7 +125,7 @@ void TabClass::Draw_It(bool complete)
 
 void TabClass::Draw_Credits_Tab(void)
 {
-	CC_Draw_Shape(TabShape, 0, 320, 0, WINDOW_MAIN, SHAPE_NORMAL);
+	CC_Draw_Shape(TabShape, 0, SeenBuff.Get_Width() / 2, 0, WINDOW_MAIN, SHAPE_NORMAL);
 }
 
 

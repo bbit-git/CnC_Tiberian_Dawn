@@ -1469,7 +1469,7 @@ bool Select_Game(bool fade)
 						VisiblePage.Clear();
 						if (CCFileClass("ATTRACT2.CPS").Is_Available()){
 							Load_Uncompress(CCFileClass("ATTRACT2.CPS"), SysMemPage, SysMemPage, Palette);
-							SysMemPage.Scale(SeenBuff, 0, 0, 0, 0, 320, 199, 640, 398);
+							{ int _f=(SeenBuff.Get_Width()==320)?1:2; SysMemPage.Scale(SeenBuff, 0, 0, (SeenBuff.Get_Width()-320*_f)/2, 0, 320, 199, 320*_f, 199*_f); }
 							Fade_Palette_To(Palette, FADE_PALETTE_MEDIUM, Call_Back);
 						}
 						Clear_KeyBuffer();
@@ -1487,7 +1487,7 @@ bool Select_Game(bool fade)
 						VisiblePage.Clear();
 						if (CCFileClass("ATTRACT2.CPS").Is_Available()){
 							Load_Uncompress(CCFileClass("ATTRACT2.CPS"), SysMemPage, SysMemPage, Palette);
-							SysMemPage.Scale(SeenBuff, 0, 0, 0, 0, 320, 199, 640, 398);
+							{ int _f=(SeenBuff.Get_Width()==320)?1:2; SysMemPage.Scale(SeenBuff, 0, 0, (SeenBuff.Get_Width()-320*_f)/2, 0, 320, 199, 320*_f, 199*_f); }
 							Fade_Palette_To(Palette, FADE_PALETTE_MEDIUM, Call_Back);
 						}
 						Clear_KeyBuffer();
@@ -1505,7 +1505,7 @@ bool Select_Game(bool fade)
 						VisiblePage.Clear();
 						if (CCFileClass("ATTRACT2.CPS").Is_Available()){
 							Load_Uncompress(CCFileClass("ATTRACT2.CPS"), SysMemPage, SysMemPage, Palette);
-							SysMemPage.Scale(SeenBuff, 0, 0, 0, 0, 320, 199, 640, 398);
+							{ int _f=(SeenBuff.Get_Width()==320)?1:2; SysMemPage.Scale(SeenBuff, 0, 0, (SeenBuff.Get_Width()-320*_f)/2, 0, 320, 199, 320*_f, 199*_f); }
 							Fade_Palette_To(Palette, FADE_PALETTE_MEDIUM, Call_Back);
 						}
 						Clear_KeyBuffer();
@@ -1522,7 +1522,7 @@ bool Select_Game(bool fade)
 					VisiblePage.Clear();
 					if (CCFileClass("ATTRACT2.CPS").Is_Available()){
 						Load_Uncompress(CCFileClass("ATTRACT2.CPS"), SysMemPage, SysMemPage, Palette);
-						SysMemPage.Scale(SeenBuff, 0, 0, 0, 0, 320, 199, 640, 398);
+						{ int _f=(SeenBuff.Get_Width()==320)?1:2; SysMemPage.Scale(SeenBuff, 0, 0, (SeenBuff.Get_Width()-320*_f)/2, 0, 320, 199, 320*_f, 199*_f); }
 						Fade_Palette_To(Palette, FADE_PALETTE_MEDIUM, Call_Back);
 					}
 					Clear_KeyBuffer();
