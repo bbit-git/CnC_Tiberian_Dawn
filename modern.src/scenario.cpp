@@ -199,10 +199,6 @@ bool Read_Scenario(char *root)
 	}
 	ScenarioInit--;
 
-	/* Dump the full map to BMP for rendering diagnostics */
-	extern void Dump_Map_BMP(const char* filename);
-	Dump_Map_BMP("map_dump.bmp");
-
 	CCDebugString ("C&C95 - Leaving Read_Scenario.\n");
 	return(true);
 }
