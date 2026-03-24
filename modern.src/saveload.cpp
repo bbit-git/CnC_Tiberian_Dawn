@@ -605,6 +605,14 @@ bool Load_Game(int id)
 	file.Close();
 	fprintf(stderr, "Load_Game: file closed, calling Decode_All_Pointers...\n");
 	Decode_All_Pointers();
+
+	/*
+	** Recalculate UI positions for the current screen width.
+	** Map.Load() restores member variables from the save file which may
+	** have been saved at a different resolution.
+	*/
+	Map.Recalc_Positions();
+
 	fprintf(stderr, "Load_Game: Decode_All_Pointers OK, calling Init_IO...\n");
 	Map.Init_IO();
 	fprintf(stderr, "Load_Game: Init_IO OK, calling Flag_To_Redraw...\n");

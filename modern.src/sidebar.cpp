@@ -220,8 +220,82 @@ void SidebarClass::One_Time(void)
 
 	SidebarShape1 = Hires_Retrieve("SIDE1.SHP");
 	SidebarShape2 = Hires_Retrieve("SIDE2.SHP");
+}
 
 
+/***********************************************************************************************
+ * SidebarClass::Recalc_Positions -- Recalculate UI positions for the current screen resolution *
+ *                                                                                             *
+ *    Called after loading a save game to fix positions that were serialized from a different   *
+ *    resolution. Recalculates radar, power bar, sidebar, strip columns, tab bar, tactical     *
+ *    display, and all windowing rectangles.                                                   *
+ *=============================================================================================*/
+void SidebarClass::Recalc_Positions(void)
+{
+	int factor  = Get_Resolution_Factor();
+	int sfactor = (SeenBuff.Get_Width() == 320) ? 1 : 2;
+
+	/* Radar */
+	RadWidth  = 80 << factor;
+	RadHeight = 70 << factor;
+	RadX      = SeenBuff.Get_Width() - RadWidth;
+	RadY      = Map.Get_Tab_Height() - (1 << factor);
+	if (factor) {
+		RadOffX = 16; RadOffY = 7; RadIWidth = 128; RadIHeight = 128;
+	} else {
+		RadOffX = 4 << factor; RadOffY = 1 << factor;
+		RadIWidth = 72 << factor; RadIHeight = 69 << factor;
+	}
+	RadarButton.X      = RadX + RadOffX;
+	RadarButton.Y      = RadY + RadOffY;
+	RadarButton.Width  = RadIWidth;
+	RadarButton.Height = RadIHeight;
+
+	/* Power bar */
+	PowX      = SeenBuff.Get_Width() - RadWidth;
+	PowY      = RadY + RadHeight + (13 << factor);
+	PowWidth  = 8 << factor;
+	PowHeight = SeenBuff.Get_Height() - PowY;
+	PowerButton.X      = PowX;
+	PowerButton.Y      = PowY;
+	PowerButton.Width  = PowWidth - 1;
+	PowerButton.Height = PowHeight;
+
+	/* Sidebar */
+	SideBarWidth  = SIDEBARWIDTH * sfactor;
+	SideX         = SeenBuff.Get_Width() - SideBarWidth;
+	SideY         = RadY + RadHeight + 1;
+	SideWidth     = SeenBuff.Get_Width() - SideX;
+	SideHeight    = SeenBuff.Get_Height() - SideY;
+	ButtonHeight  = 9 * sfactor;
+	TopHeight     = ButtonHeight + (4 * sfactor);
+	Background.X      = SideX + 8 * sfactor;
+	Background.Y      = SideY;
+	Background.Width   = SideWidth - 1;
+	Background.Height  = SideHeight - 1;
+
+	WindowList[WINDOW_SIDEBAR][WINDOWX]      = (SideX + PowWidth) >> 3;
+	WindowList[WINDOW_SIDEBAR][WINDOWY]      = SideY + 1 + TopHeight;
+	WindowList[WINDOW_SIDEBAR][WINDOWWIDTH]  = SideWidth >> 3;
+	WindowList[WINDOW_SIDEBAR][WINDOWHEIGHT] = (MaxVisible * (StripClass::OBJECT_HEIGHT * sfactor)) - 1;
+
+	/* Strip columns */
+	int width   = (SideWidth - PowWidth) - (((StripClass::STRIP_WIDTH) * sfactor) << 1);
+	int spacing = width / 3;
+	Column[0].X = SideX + PowWidth + spacing;
+	Column[0].Y = SideY + TopHeight + 1;
+	Column[1].X = Column[0].X + (StripClass::STRIP_WIDTH * sfactor) + spacing - 1;
+	Column[1].Y = SideY + TopHeight + 1;
+
+	/* Tactical display (Tab_Height = 8*factor, unchanged across resolutions at same factor) */
+	Set_View_Dimensions(0, 8 * sfactor);
+
+	/* Full-screen window */
+	WindowList[WINDOW_MAIN][WINDOWWIDTH]  = SeenBuff.Get_Width() >> 3;
+	WindowList[WINDOW_MAIN][WINDOWHEIGHT] = SeenBuff.Get_Height();
+
+	DBG("Recalc_Positions: %dx%d SideX=%d RadX=%d PowX=%d",
+		SeenBuff.Get_Width(), SeenBuff.Get_Height(), SideX, RadX, PowX);
 }
 
 
