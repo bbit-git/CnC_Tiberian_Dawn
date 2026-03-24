@@ -124,6 +124,7 @@ EditClass::~EditClass(void)
 {
 	if (Has_Focus()) {
 		Clear_Focus();
+		Platform_Show_Keyboard(false);
 	}
 }
 
@@ -233,6 +234,7 @@ int EditClass::Action(unsigned flags, KeyNumType & key)
 	if ((flags & LEFTPRESS)) {
 		flags &= ~LEFTPRESS;
 		Set_Focus();
+		Platform_Show_Keyboard(true);
 		Flag_To_Redraw();		// force to draw cursor
 	}
 
@@ -250,6 +252,7 @@ int EditClass::Action(unsigned flags, KeyNumType & key)
 		if (key == KN_ESC) {
 
 			Clear_Focus();
+			Platform_Show_Keyboard(false);
 			flags = 0;
 
 		} else {
@@ -403,6 +406,7 @@ bool EditClass::Handle_Key(KeyASCIIType ascii)
 		*/
 		case KA_RETURN:
 			Clear_Focus();
+			Platform_Show_Keyboard(false);
 			return(false);
 
 		/*
