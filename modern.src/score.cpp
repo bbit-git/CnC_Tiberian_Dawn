@@ -1535,6 +1535,7 @@ void ScoreClass::Input_Name(char str[], int xpos, int ypos, char const pal[])
 {
 	int key, ascii, index=0;
 
+	Platform_Show_Keyboard(true);
 	void const * keystrok = MixFileClass::Retrieve("KEYSTROK.AUD");
 
 	/*
@@ -1601,6 +1602,7 @@ if ( (ascii >= '!' && ascii <= KA_TILDA) || ascii == ' ') {
 			}
 		}
 	} while(key != KN_RETURN);
+	Platform_Show_Keyboard(false);
 }
 
 
