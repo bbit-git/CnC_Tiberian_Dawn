@@ -355,11 +355,18 @@ int AUD_Decode_Memory(const void* aud_data, int aud_size,
     case AUD_COMP_WS_ADPCM: {
         /*
          * Westwood proprietary delta codec (AUDUNCMP.ASM).
-         * 8-bit unsigned audio. Code byte: top 2 bits = mode, bottom 6 = subcode.
-         * Mode 0 (2BIT): (subcode+1) pairs of 2-bit deltas from lookup table
-         * Mode 1 (4BIT): (subcode+1) pairs of 4-bit deltas from lookup table
-         * Mode 2 (RAW):  if bit5 set → 5-bit signed delta; else (subcode+1) raw bytes
-         * Mode 3 (SILENCE): (subcode+1) bytes of repeated previous sample
+         *
+         * The compressed data is framed in chunks, identical to SOS_CODEC:
+         *   [uint16 fsize][uint16 dsize][uint32 0xDEAF][fsize bytes of data]
+         * Each chunk decompresses to dsize bytes of 8-bit unsigned PCM.
+         * If fsize == dsize the frame is uncompressed (raw copy).
+         *
+         * Code byte format (within each compressed frame):
+         *   top 2 bits = mode, bottom 6 = subcode.
+         *   Mode 0 (2BIT): (subcode+1) groups of 4 x 2-bit deltas
+         *   Mode 1 (4BIT): (subcode+1) groups of 2 x 4-bit deltas
+         *   Mode 2 (RAW):  if bit5 set -> 5-bit signed delta; else (subcode+1) raw bytes
+         *   Mode 3 (SILENCE): (subcode+1) bytes of repeated previous sample
          */
         static const int8_t _2bitdecode[4] = {-2, -1, 0, 1};
         static const int8_t _4bitdecode[16] = {-9,-8,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,8};
@@ -367,61 +374,92 @@ int AUD_Decode_Memory(const void* aud_data, int aud_size,
         const uint8_t* src = audio_data;
         const uint8_t* src_end = audio_data + compressed_size;
         int out_pos = 0;
-        uint8_t prev = 0x80; /* starting sample value */
+        uint8_t prev = 0x80; /* starting sample value (unsigned 8-bit midpoint) */
 
-        while (out_pos < out_max && src < src_end) {
-            uint8_t code = *src++;
-            int mode = (code >> 6) & 3;
-            int count = (code & 0x3F);
+        while (out_pos < out_max && src + 8 <= src_end) {
+            /* Read chunk header: fsize(2) + dsize(2) + magic(4) = 8 bytes */
+            uint16_t fsize = src[0] | (src[1] << 8);
+            uint16_t dsize = src[2] | (src[3] << 8);
+            uint32_t magic = src[4] | (src[5] << 8) | (src[6] << 16) | (src[7] << 24);
+            src += 8;
 
-            if (mode == 2) { /* RAW */
-                if (count & 0x20) {
-                    /* 5-bit signed delta */
-                    int8_t delta = (int8_t)((count & 0x1F) << 3) >> 3;
-                    int val = (int)prev + delta;
-                    if (val < 0) val = 0; if (val > 255) val = 255;
-                    prev = (uint8_t)val;
+            if (magic != 0x0000DEAF && magic != 0xDEAF) {
+                /* Not a valid chunk — stop decoding */
+                break;
+            }
+
+            const uint8_t* chunk_end = src + fsize;
+            if (chunk_end > src_end) chunk_end = src_end;
+
+            if (fsize == dsize) {
+                /* Uncompressed frame — raw 8-bit unsigned PCM bytes */
+                int n = (int)fsize;
+                if (out_pos + n > out_max) n = out_max - out_pos;
+                for (int i = 0; i < n && src < chunk_end; i++) {
+                    prev = *src++;
                     out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
-                } else {
-                    /* Raw byte dump: count+1 bytes follow */
-                    int n = count + 1;
-                    for (int i = 0; i < n && out_pos < out_max && src < src_end; i++) {
-                        prev = *src++;
-                        out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
+                }
+            } else {
+                /* Compressed frame — decode WS ADPCM codes */
+                int chunk_out_limit = out_pos + (int)dsize;
+                if (chunk_out_limit > out_max) chunk_out_limit = out_max;
+
+                while (out_pos < chunk_out_limit && src < chunk_end) {
+                    uint8_t code = *src++;
+                    int mode = (code >> 6) & 3;
+                    int count = (code & 0x3F);
+
+                    if (mode == 2) { /* RAW */
+                        if (count & 0x20) {
+                            /* 5-bit signed delta */
+                            int8_t delta = (int8_t)((count & 0x1F) << 3) >> 3;
+                            int val = (int)prev + delta;
+                            if (val < 0) val = 0; if (val > 255) val = 255;
+                            prev = (uint8_t)val;
+                            if (out_pos < chunk_out_limit)
+                                out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
+                        } else {
+                            /* Raw byte dump: count+1 bytes follow */
+                            int n = count + 1;
+                            for (int i = 0; i < n && out_pos < chunk_out_limit && src < chunk_end; i++) {
+                                prev = *src++;
+                                out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
+                            }
+                        }
+                    } else if (mode == 1) { /* 4BIT */
+                        int n = count + 1;
+                        for (int i = 0; i < n && out_pos + 1 < chunk_out_limit && src < chunk_end; i++) {
+                            uint8_t nibbles = *src++;
+                            int val = (int)prev + _4bitdecode[nibbles & 0x0F];
+                            if (val < 0) val = 0; if (val > 255) val = 255;
+                            prev = (uint8_t)val;
+                            out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
+                            val = (int)prev + _4bitdecode[(nibbles >> 4) & 0x0F];
+                            if (val < 0) val = 0; if (val > 255) val = 255;
+                            prev = (uint8_t)val;
+                            out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
+                        }
+                    } else if (mode == 0) { /* 2BIT */
+                        int n = count + 1;
+                        for (int i = 0; i < n && out_pos + 3 < chunk_out_limit && src < chunk_end; i++) {
+                            uint8_t packed = *src++;
+                            for (int b = 0; b < 4; b++) {
+                                int val = (int)prev + _2bitdecode[(packed >> (b * 2)) & 3];
+                                if (val < 0) val = 0; if (val > 255) val = 255;
+                                prev = (uint8_t)val;
+                                out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
+                            }
+                        }
+                    } else { /* SILENCE */
+                        int n = count + 1;
+                        for (int i = 0; i < n && out_pos < chunk_out_limit; i++) {
+                            out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
+                        }
                     }
-                }
-            } else if (mode == 1) { /* 4BIT */
-                int n = count + 1;
-                for (int i = 0; i < n && out_pos + 1 < out_max && src < src_end; i++) {
-                    uint8_t nibbles = *src++;
-                    /* Low nibble */
-                    int val = (int)prev + _4bitdecode[nibbles & 0x0F];
-                    if (val < 0) val = 0; if (val > 255) val = 255;
-                    prev = (uint8_t)val;
-                    out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
-                    /* High nibble */
-                    val = (int)prev + _4bitdecode[(nibbles >> 4) & 0x0F];
-                    if (val < 0) val = 0; if (val > 255) val = 255;
-                    prev = (uint8_t)val;
-                    out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
-                }
-            } else if (mode == 0) { /* 2BIT */
-                int n = count + 1;
-                for (int i = 0; i < n && out_pos + 3 < out_max && src < src_end; i++) {
-                    uint8_t packed = *src++;
-                    for (int b = 0; b < 4; b++) {
-                        int val = (int)prev + _2bitdecode[(packed >> (b * 2)) & 3];
-                        if (val < 0) val = 0; if (val > 255) val = 255;
-                        prev = (uint8_t)val;
-                        out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
-                    }
-                }
-            } else { /* SILENCE */
-                int n = count + 1;
-                for (int i = 0; i < n && out_pos < out_max; i++) {
-                    out_pcm[out_pos++] = (int16_t)((prev - 128) * 256);
                 }
             }
+            /* Advance past the chunk even if decoder didn't consume all of it */
+            src = chunk_end;
         }
         return out_pos;
     }
