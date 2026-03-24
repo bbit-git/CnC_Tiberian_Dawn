@@ -71,7 +71,8 @@ void GDI_Ending(void)
 	if (CCFileClass("TRAILER.VQA").Is_Available()) {
 		Fade_Palette_To(BlackPalette, FADE_PALETTE_MEDIUM, Call_Back);
 		Load_Uncompress(CCFileClass("ATTRACT2.CPS"), SysMemPage, SysMemPage, Palette);
-		SysMemPage.Scale(SeenBuff, 0, 0, 0, 0, 320, 199, 640, 398);
+		SeenBuff.Clear();
+		{ int _f=(SeenBuff.Get_Width()==320)?1:2; SysMemPage.Scale(SeenBuff, 0, 0, (SeenBuff.Get_Width()-320*_f)/2, 0, 320, 199, 320*_f, 199*_f); }
 		Fade_Palette_To(Palette, FADE_PALETTE_MEDIUM, Call_Back);
 		Clear_KeyBuffer();
 		count.Set(TIMER_SECOND*3);
@@ -85,7 +86,8 @@ void GDI_Ending(void)
 
 	Fade_Palette_To(BlackPalette, FADE_PALETTE_MEDIUM, Call_Back);
 	Load_Uncompress(CCFileClass("ATTRACT2.CPS"), SysMemPage, SysMemPage, Palette);
-	SysMemPage.Scale(SeenBuff, 0, 0, 0, 0, 320, 199, 640, 398);
+	SeenBuff.Clear();
+	{ int _f=(SeenBuff.Get_Width()==320)?1:2; SysMemPage.Scale(SeenBuff, 0, 0, (SeenBuff.Get_Width()-320*_f)/2, 0, 320, 199, 320*_f, 199*_f); }
 	Fade_Palette_To(Palette, FADE_PALETTE_MEDIUM, Call_Back);
 	Clear_KeyBuffer();
 //	CountDownTimerClass count;
@@ -230,7 +232,8 @@ void Nod_Ending(void)
 	if (CCFileClass("TRAILER.VQA").Is_Available()) {
 		Fade_Palette_To(BlackPalette, FADE_PALETTE_MEDIUM, Call_Back);
 		Load_Uncompress(CCFileClass("ATTRACT2.CPS"), SysMemPage, SysMemPage, Palette);
-		SysMemPage.Scale(SeenBuff, 0, 0, 0, 0, 320, 199, 640, 398);
+		SeenBuff.Clear();
+		{ int _f=(SeenBuff.Get_Width()==320)?1:2; SysMemPage.Scale(SeenBuff, 0, 0, (SeenBuff.Get_Width()-320*_f)/2, 0, 320, 199, 320*_f, 199*_f); }
 		Fade_Palette_To(Palette, FADE_PALETTE_MEDIUM, Call_Back);
 		Clear_KeyBuffer();
 		count.Set(TIMER_SECOND*3);
@@ -244,7 +247,8 @@ void Nod_Ending(void)
 
 	Fade_Palette_To(BlackPalette, FADE_PALETTE_MEDIUM, Call_Back);
 	Load_Uncompress(CCFileClass("ATTRACT2.CPS"), SysMemPage, SysMemPage, Palette);
-	SysMemPage.Scale(SeenBuff, 0, 0, 0, 0, 320, 199, 640, 398);
+	SeenBuff.Clear();
+	{ int _f=(SeenBuff.Get_Width()==320)?1:2; SysMemPage.Scale(SeenBuff, 0, 0, (SeenBuff.Get_Width()-320*_f)/2, 0, 320, 199, 320*_f, 199*_f); }
 	Fade_Palette_To(Palette, FADE_PALETTE_MEDIUM, Call_Back);
 	Clear_KeyBuffer();
 //	CountDownTimerClass count;

@@ -390,6 +390,24 @@ void Interpolate_2X_Scale( GraphicBufferClass *source, GraphicViewPortClass *des
 	dest_width = 2*(dest->Get_Width() + dest->Get_XAdd() + dest->Get_Pitch());
 	last_dest_ptr = dest_ptr;
 
+	//
+	// Center the 2x-scaled output horizontally if dest is wider than src*2.
+	// Clear the side margins so no artifacts remain from previous content.
+	//
+	int scaled_w = src_width * 2;
+	int x_offset = (dest->Get_Width() > scaled_w) ? (dest->Get_Width() - scaled_w) / 2 : 0;
+	if (x_offset > 0) {
+		int dest_h = source->Get_Height() * 2;
+		int row_stride = dest_width / 2;
+		unsigned char *base = (unsigned char *)dest->Get_Offset();
+		for (int r = 0; r < dest_h && r < dest->Get_Height(); r++) {
+			memset(base + r * row_stride, 0, x_offset);
+			memset(base + r * row_stride + x_offset + scaled_w, 0,
+			       dest->Get_Width() - x_offset - scaled_w);
+		}
+	}
+	dest_ptr += x_offset;
+
 	/*
 	** Call the appropriate assembly language copy routine
 	*/

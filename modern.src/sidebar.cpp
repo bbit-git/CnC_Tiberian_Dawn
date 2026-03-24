@@ -303,8 +303,8 @@ void SidebarClass::Init_IO(void)
 
 		Repair.IsSticky = true;
 		Repair.ID = BUTTON_REPAIR;
-		Repair.X = 484;
-		Repair.Y = 160;
+		Repair.X = SideX + 4;
+		Repair.Y = SideY + 5;
 		Repair.IsPressed = false;
 		Repair.IsToggleType = true;
 		Repair.ReflectButtonState = true;
@@ -320,8 +320,8 @@ void SidebarClass::Init_IO(void)
 
 		Upgrade.IsSticky = true;
 		Upgrade.ID = BUTTON_UPGRADE;
-		Upgrade.X = 480+57;
-		Upgrade.Y = 160;
+		Upgrade.X = SideX + 57;
+		Upgrade.Y = SideY + 5;
 		Upgrade.IsPressed = false;
 		Upgrade.IsToggleType = true;
 		Upgrade.ReflectButtonState = true;
@@ -337,8 +337,8 @@ void SidebarClass::Init_IO(void)
 
 		Zoom.IsSticky = true;
 		Zoom.ID = BUTTON_ZOOM;
-		Zoom.X = 480 + 110;
-		Zoom.Y = 160;
+		Zoom.X = SideX + 110;
+		Zoom.Y = SideY + 5;
 		Zoom.IsPressed = false;
 #if (FRENCH)
 		Zoom.Set_Shape(Hires_Retrieve("MAPF.SHP"));
@@ -721,9 +721,9 @@ void SidebarClass::Draw_It(bool complete)
 			if (complete) {
 				LogicPage->Fill_Rect(SideX, SideY, SideX+SideWidth-1, SideY+SideHeight-1, BLACK);
 			}
-			LogicPage->Draw_Line(SideX, 157, SeenBuff.Get_Width()-1, 157, 0);
-			CC_Draw_Shape(SidebarShape1, 0, SideX, 158, WINDOW_MAIN, SHAPE_WIN_REL);
-			CC_Draw_Shape(SidebarShape2, 0, SideX, 158+118, WINDOW_MAIN, SHAPE_WIN_REL);
+			LogicPage->Draw_Line(SideX, SideY + 2, SeenBuff.Get_Width()-1, SideY + 2, 0);
+			CC_Draw_Shape(SidebarShape1, 0, SideX, SideY + 3, WINDOW_MAIN, SHAPE_WIN_REL);
+			CC_Draw_Shape(SidebarShape2, 0, SideX, SideY + 3 + 118, WINDOW_MAIN, SHAPE_WIN_REL);
 
 			LogicPage->Unlock();
 		}
