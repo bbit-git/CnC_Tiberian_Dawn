@@ -78,13 +78,6 @@ CCMessageBox::CCMessageBox(int caption, bool pict) : Caption(caption), IsPicture
 #define	BUTTON_FLAG	0x8000
 int CCMessageBox::Process(const char *msg, const char *b1txt, const char *b2txt, const char *b3txt, bool preserve)
 {
-	/* SDL port: print message to stderr instead of drawing dialog */
-	fprintf(stderr, "[MessageBox] %s", msg ? msg : "(null)");
-	if (b1txt) fprintf(stderr, " [%s]", b1txt);
-	if (b2txt) fprintf(stderr, " [%s]", b2txt);
-	fprintf(stderr, "\n");
-	return 0;
-
 #define BUFFSIZE (511)
 //#define BUFFSIZE (255)
 	char buffer[BUFFSIZE];
