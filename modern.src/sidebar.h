@@ -112,6 +112,7 @@ class SidebarClass: public PowerClass
 		** Initialization
 		*/
 		virtual void One_Time(void);							// One-time inits
+		void Recalc_Positions(void);						// Recalc UI positions for current resolution
 		virtual void Init_Clear(void);						// Clears all to known state
 		virtual void Init_IO(void);							// Inits button list
 		virtual void Init_Theater(TheaterType theater);	// Theater-specific inits
