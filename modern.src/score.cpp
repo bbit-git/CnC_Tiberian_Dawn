@@ -1155,7 +1155,7 @@ void ScoreClass::Do_Nod_Buildings_Graph(void)
 		Interpolate_2X_Scale(PseudoSeenBuff , &HidPage ,NULL);
 		BlitList.Update();
 		WWMouse->Draw_Mouse(HidPage);
-		HidPage.Blit(SeenBuff);
+		Centered_Blit_To_Screen(HidPage);
 		WWMouse->Erase_Mouse(HidPage, TRUE);
 		//Interpolate_2X_Scale( PseudoSeenBuff , &SeenBuff , NULL);
 
@@ -1331,7 +1331,7 @@ void ScoreClass::Do_Nod_Casualties_Graph(void)
 	Interpolate_2X_Scale(PseudoSeenBuff , &HidPage ,NULL);
 	BlitList.Update();
 	WWMouse->Draw_Mouse(HidPage);
-	HidPage.Blit(SeenBuff);
+	Centered_Blit_To_Screen(HidPage);
 	WWMouse->Erase_Mouse(HidPage, TRUE);
 
 	Call_Back_Delay(40);
@@ -1552,7 +1552,7 @@ void ScoreClass::Input_Name(char str[], int xpos, int ypos, char const pal[])
 		*/
 		Interpolate_2X_Scale (PseudoSeenBuff , &HidPage ,NULL);
 		BlitList.Update();
-		HidPage.Blit(SeenBuff);
+		Centered_Blit_To_Screen(HidPage);
 
 		if (Check_Key()) {						//if (Keyboard::Check()) {
 			key = Get_Key();						//key = Keyboard::Get();
@@ -1858,7 +1858,7 @@ void Call_Back_Delay(int time)
 			Interpolate_2X_Scale(PseudoSeenBuff , &HidPage ,NULL);
 			BlitList.Update();
 			WWMouse->Draw_Mouse(HidPage);
-			HidPage.Blit(SeenBuff);
+			Centered_Blit_To_Screen(HidPage);
 			WWMouse->Erase_Mouse(HidPage, TRUE);
 		//}
 	} while(cd.Time());

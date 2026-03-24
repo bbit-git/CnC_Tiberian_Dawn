@@ -219,6 +219,8 @@ int Get_Resolution_Factor(void);
 extern	"C" unsigned char *InterpolationPalette;
 extern	BOOL	InterpolationPaletteChanged;
 extern	void 	Interpolate_2X_Scale( GraphicBufferClass *source, GraphicViewPortClass *dest ,char const *palette_file_name);
+extern	int		Pseudo_Screen_X_Offset(void);
+extern	void	Centered_Blit_To_Screen(GraphicViewPortClass &src);
 void Read_Interpolation_Palette (char const *palette_file_name);
 void Write_Interpolation_Palette (char const *palette_file_name);
 void Increase_Palette_Luminance(unsigned char *InterpolationPalette ,	int RedPercentage ,int GreenPercentage ,int BluePercentage ,int cap);
