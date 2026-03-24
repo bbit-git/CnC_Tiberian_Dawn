@@ -391,19 +391,23 @@ void Interpolate_2X_Scale( GraphicBufferClass *source, GraphicViewPortClass *des
 	last_dest_ptr = dest_ptr;
 
 	//
-	// Center the 2x-scaled output horizontally if dest is wider than src*2.
-	// Clear the side margins so no artifacts remain from previous content.
+	// Center the 2x-scaled output horizontally only when rendering directly
+	// to the screen (SeenBuff). For intermediate buffers (HidPage), write at
+	// (0,0) so overlays (TextPrintBuffer, BlitList) align without offset.
 	//
 	int scaled_w = src_width * 2;
-	int x_offset = (dest->Get_Width() > scaled_w) ? (dest->Get_Width() - scaled_w) / 2 : 0;
-	if (x_offset > 0) {
-		int dest_h = source->Get_Height() * 2;
-		int row_stride = dest_width / 2;
-		unsigned char *base = (unsigned char *)dest->Get_Offset();
-		for (int r = 0; r < dest_h && r < dest->Get_Height(); r++) {
-			memset(base + r * row_stride, 0, x_offset);
-			memset(base + r * row_stride + x_offset + scaled_w, 0,
-			       dest->Get_Width() - x_offset - scaled_w);
+	int x_offset = 0;
+	if (dest == &SeenBuff) {
+		x_offset = (dest->Get_Width() > scaled_w) ? (dest->Get_Width() - scaled_w) / 2 : 0;
+		if (x_offset > 0) {
+			int dest_h = source->Get_Height() * 2;
+			int row_stride = dest_width / 2;
+			unsigned char *base = (unsigned char *)dest->Get_Offset();
+			for (int r = 0; r < dest_h && r < dest->Get_Height(); r++) {
+				memset(base + r * row_stride, 0, x_offset);
+				memset(base + r * row_stride + x_offset + scaled_w, 0,
+				       dest->Get_Width() - x_offset - scaled_w);
+			}
 		}
 	}
 	dest_ptr += x_offset;
@@ -472,5 +476,34 @@ void Interpolate_2X_Scale( GraphicBufferClass *source, GraphicViewPortClass *des
 #endif
 
 
+/*=========================================================================
+ * Pseudo_Screen_X_Offset -- Returns the horizontal centering offset for
+ *   the 2x-scaled 320x200 content within the actual screen buffer.
+ *=========================================================================*/
+int Pseudo_Screen_X_Offset(void)
+{
+	int scaled_w = 640;
+	int screen_w = SeenBuff.Get_Width();
+	return (screen_w > scaled_w) ? (screen_w - scaled_w) / 2 : 0;
+}
+
+
+/*=========================================================================
+ * Centered_Blit_To_Screen -- Blits 640-wide content from an intermediate
+ *   buffer (e.g. HidPage) to SeenBuff, centered horizontally.
+ *   Clears the side margins to black.
+ *=========================================================================*/
+void Centered_Blit_To_Screen(GraphicViewPortClass &src)
+{
+	int x_off = Pseudo_Screen_X_Offset();
+	int content_w = 640;
+	int h = src.Get_Height();
+
+	if (x_off > 0) {
+		SeenBuff.Fill_Rect(0, 0, x_off - 1, h - 1, BLACK);
+		SeenBuff.Fill_Rect(x_off + content_w, 0, SeenBuff.Get_Width() - 1, h - 1, BLACK);
+	}
+	src.Blit(SeenBuff, 0, 0, x_off, 0, content_w, h, FALSE);
+}
 
 

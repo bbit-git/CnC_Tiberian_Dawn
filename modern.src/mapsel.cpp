@@ -693,7 +693,7 @@ void Map_Selection(void)
 		if (Keyboard::Check()) {
 			if ((Keyboard::Get() & 0x10FF) == KN_LMOUSE) {
 				for (selection = 0; selection < CountryArray[scenario].Choices[ScenDir]; selection++) {
-					color = SysMemPage.Get_Pixel(Get_Mouse_X()/2,Get_Mouse_Y()/2);
+					color = SysMemPage.Get_Pixel((Get_Mouse_X() - Pseudo_Screen_X_Offset())/2,Get_Mouse_Y()/2);
 
 					/*
 					** Special hack for Egypt the second time through

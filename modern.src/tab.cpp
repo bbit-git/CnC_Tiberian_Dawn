@@ -125,7 +125,10 @@ void TabClass::Draw_It(bool complete)
 
 void TabClass::Draw_Credits_Tab(void)
 {
-	CC_Draw_Shape(TabShape, 0, SeenBuff.Get_Width() / 2, 0, WINDOW_MAIN, SHAPE_NORMAL);
+	int factor = Get_Resolution_Factor();
+	int eva_w = 80 * (factor + 1);
+	int xx = SeenBuff.Get_Width() - (120 << factor);
+	CC_Draw_Shape(TabShape, 0, xx - eva_w/2, 0, WINDOW_MAIN, SHAPE_NORMAL);
 }
 
 
