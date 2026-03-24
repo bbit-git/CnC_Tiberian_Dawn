@@ -1134,11 +1134,10 @@ void Call_Back(void)
 #endif
 
 	/*
-	**	Pump SDL events so the window stays responsive and
-	**	TD_SDL_Present() fires to update the display.
+	**	Pump platform events so the window stays responsive and
+	**	the display updates.
 	*/
-	extern void TD_SDL_PumpEvents(void);
-	TD_SDL_PumpEvents();
+	Platform_PumpEvents();
 
 	/*
 	**	Score maintenance
