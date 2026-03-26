@@ -530,8 +530,32 @@ int Main_Menu(unsigned long timeout)
 		BUTTON_EXIT,
 	};
 
+	enum {
 #ifdef NEWMENU
-	bool expansions = Expansion_Present();
+		RET_NEW_SCENARIO = 0,
+		RET_START_NEW_GAME,
+#ifdef BONUS_MISSIONS
+		RET_BONUS_MISSIONS,
+#endif	//BONUS_MISSIONS
+		RET_INTERNET,
+		RET_LOAD_MISSION,
+		RET_MULTIPLAYER_GAME,
+		RET_INTRO,
+		RET_EXIT
+#else
+		RET_START_NEW_GAME = 0,
+		RET_LOAD_MISSION,
+		RET_MULTIPLAYER_GAME,
+		RET_INTRO,
+		RET_EXIT
+#endif
+	};
+
+#ifdef NEWMENU
+	bool expansions_present = Expansion_Present();
+#ifdef BONUS_MISSIONS
+	bool bonus_missions_present = Bonus_Missions_Present();
+#endif	//BONUS_MISSIONS
 #endif
 	KeyNumType input;								// input from user
 	int retval;										// return value
@@ -539,13 +563,17 @@ int Main_Menu(unsigned long timeout)
 #ifdef NEWMENU
 #ifdef BONUS_MISSIONS
 	TextButtonClass *buttons[8];
+	int button_selection[8];
 #else
-	TextButtonClass *buttons[7];
+	TextButtonClass *buttons[8];
+	int button_selection[8];
 #endif	//BONUS_MISSIONS
 #else
-	TextButtonClass *buttons[5];
+	TextButtonClass *buttons[8];
+	int button_selection[8];
 #endif
 	unsigned long starttime;
+	int button_count = 0;
 
 	ControlClass *commands = NULL;				// the button list
 
@@ -556,11 +584,11 @@ int Main_Menu(unsigned long timeout)
 	int ystep = 15*2;
 #endif	//BONUS_MISSIONS
 
-	if (expansions) ystep -= 2*2;
+	if (expansions_present) ystep -= 2*2;
 	TextButtonClass expandbtn (BUTTON_EXPAND, TXT_NEW_MISSIONS,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
 		D_START_X + menu_xoff, starty, D_START_W, D_START_H);
-	if (expansions) starty += ystep;
+	if (expansions_present) starty += ystep;
 
 	TextButtonClass startbtn (BUTTON_START, TXT_START_NEW_GAME,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
@@ -571,13 +599,8 @@ int Main_Menu(unsigned long timeout)
 	TextButtonClass bonusbtn (BUTTON_BONUS, TXT_BONUS_MISSIONS,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
 		D_BONUS_X + menu_xoff, starty, D_BONUS_W, D_BONUS_H);
-	starty += ystep;
+	if (bonus_missions_present) starty += ystep;
 #endif	//BONUS_MISSIONS
-
-	TextButtonClass internetbutton(BUTTON_INTERNET, TXT_INTERNET,
-		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_INTERNET_X + menu_xoff, starty, D_INTERNET_W, D_INTERNET_H);
-	starty += ystep;
 
 	TextButtonClass loadbtn (BUTTON_LOAD, TXT_LOAD_MISSION,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
@@ -600,31 +623,8 @@ int Main_Menu(unsigned long timeout)
 	TextButtonClass multibtn (BUTTON_MULTI, TXT_ORDER_INFO,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
 		D_MULTI_X + menu_xoff, D_MULTI_Y, D_MULTI_W, D_MULTI_H);
-#else
-
 #ifdef NEWMENU
-	TextButtonClass multibtn (BUTTON_MULTI, TXT_MULTIPLAYER_GAME,
-		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_MULTI_X + menu_xoff, starty, D_MULTI_W, D_MULTI_H);
-	starty += ystep;
-
-	//TextButtonClass internetbutton(BUTTON_INTERNET, TXT_INTERNET,
-	//	TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-	//	D_INTERNET_X, starty, D_INTERNET_W, D_INTERNET_H);
-	//starty += ystep;
-#else
-	TextButtonClass multibtn (BUTTON_MULTI, TXT_MULTIPLAYER_GAME,
-		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_MULTI_X + menu_xoff, D_MULTI_Y, D_MULTI_W, D_MULTI_H);
-#endif
-#endif
-
-#ifdef NEWMENU
-#ifdef DEMO
 	TextButtonClass introbtn (BUTTON_INTRO, TXT_JUST_INTRO,
-#else	//DEMO
-	TextButtonClass introbtn (BUTTON_INTRO, TXT_INTRO,
-#endif	//DEMO
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
 		D_INTRO_X + menu_xoff, starty, D_INTRO_W, D_INTRO_H);
 	starty += ystep;
@@ -632,30 +632,58 @@ int Main_Menu(unsigned long timeout)
 	TextButtonClass exitbtn (BUTTON_EXIT, TXT_EXIT_GAME,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
 #if (GERMAN | FRENCH)
-		//D_EXIT_X, starty);
 		D_EXIT_X + menu_xoff, starty, D_EXIT_W, D_EXIT_H);
 #else
 		D_EXIT_X + menu_xoff, starty, D_EXIT_W, D_EXIT_H);
 #endif
-	starty += ystep;
-
 #else
-
-#ifdef DEMO
 	TextButtonClass introbtn (BUTTON_INTRO, TXT_JUST_INTRO,
-#else	//DEMO
-	TextButtonClass introbtn (BUTTON_INTRO, TXT_INTRO,
-#endif	//DEMO
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
 		D_INTRO_X, D_INTRO_Y, D_INTRO_W, D_INTRO_H);
 
 	TextButtonClass exitbtn (BUTTON_EXIT, TXT_EXIT_GAME,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
 #if (GERMAN | FRENCH)
-		//D_EXIT_X, D_EXIT_Y);
 		D_EXIT_X + menu_xoff, D_EXIT_Y, D_EXIT_W, D_EXIT_H);
 #else
 		D_EXIT_X + menu_xoff, D_EXIT_Y, D_EXIT_W, D_EXIT_H);
+#endif
+#endif
+#else
+#ifdef NEWMENU
+	TextButtonClass multibtn (BUTTON_MULTI, TXT_MULTIPLAYER_GAME,
+		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
+		D_MULTI_X + menu_xoff, starty, D_MULTI_W, D_MULTI_H);
+	starty += ystep;
+
+	TextButtonClass introbtn (BUTTON_INTRO, TXT_INTRO,
+		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
+		D_INTRO_X + menu_xoff, starty, D_INTRO_W, D_INTRO_H);
+	starty += ystep;
+
+	TextButtonClass exitbtn (BUTTON_EXIT, TXT_EXIT_GAME,
+		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
+#if (GERMAN | FRENCH)
+		D_EXIT_X + menu_xoff, starty, D_EXIT_W, D_EXIT_H);
+#else
+		D_EXIT_X + menu_xoff, starty, D_EXIT_W, D_EXIT_H);
+#endif
+#else
+	TextButtonClass multibtn (BUTTON_MULTI, TXT_MULTIPLAYER_GAME,
+		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
+		D_MULTI_X + menu_xoff, D_MULTI_Y, D_MULTI_W, D_MULTI_H);
+
+	TextButtonClass introbtn (BUTTON_INTRO, TXT_INTRO,
+		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
+		D_INTRO_X, D_INTRO_Y, D_INTRO_W, D_INTRO_H);
+
+	TextButtonClass exitbtn (BUTTON_EXIT, TXT_EXIT_GAME,
+		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
+#if (GERMAN | FRENCH)
+		D_EXIT_X + menu_xoff, D_EXIT_Y, D_EXIT_W, D_EXIT_H);
+#else
+		D_EXIT_X + menu_xoff, D_EXIT_Y, D_EXIT_W, D_EXIT_H);
+#endif
 #endif
 #endif
 
@@ -669,54 +697,39 @@ int Main_Menu(unsigned long timeout)
 	/*
 	**	Create the list
 	*/
-	commands = &startbtn;
-#ifdef NEWMENU
-	if (expansions) {
-		expandbtn.Add_Tail(*commands);
-	}
-#endif
-#ifdef BONUS_MISSIONS
-	bonusbtn.Add_Tail(*commands);
-#endif	//BONUS_MISSIONS
-
-
-#ifndef DEMO
-	internetbutton.Add_Tail(*commands);
-#endif	//DEMO
-	loadbtn.Add_Tail(*commands);
-	multibtn.Add_Tail(*commands);
-	introbtn.Add_Tail(*commands);
-	exitbtn.Add_Tail(*commands);
+	auto append_visible_button = [&](TextButtonClass& button, int selection) {
+		if (commands == NULL) {
+			commands = &button;
+		} else {
+			button.Add_Tail(*commands);
+		}
+		buttons[button_count] = &button;
+		button_selection[button_count] = selection;
+		button_count++;
+	};
 
 	/*
-	**	Fill array of button ptrs
+	**	Fill the visible menu from a single ordered list. Hidden items such as
+	**	the disabled Internet entry are omitted here so spacing and navigation
+	**	remain consistent.
 	*/
 #ifdef NEWMENU
-	if (expansions) {
-		curbutton = 0;
-	} else {
-		curbutton = 1;
+	if (expansions_present) {
+		append_visible_button(expandbtn, RET_NEW_SCENARIO);
 	}
-	int butt = 0;
-
-	buttons[butt++] = &expandbtn;
-	buttons[butt++] = &startbtn;
-#ifdef BONUS_MISSIONS
-	buttons[butt++] = &bonusbtn;
-#endif	//BONUS_MISSIONS
-	buttons[butt++] = &internetbutton;
-	buttons[butt++] = &loadbtn;
-	buttons[butt++] = &multibtn;
-	buttons[butt++] = &introbtn;
-	buttons[butt++] = &exitbtn;
-#else
-	curbutton = 0;
-	buttons[0] = &startbtn;
-	buttons[1] = &loadbtn;
-	buttons[2] = &multibtn;
-	buttons[3] = &introbtn;
-	buttons[4] = &exitbtn;
 #endif
+	append_visible_button(startbtn, RET_START_NEW_GAME);
+#ifdef BONUS_MISSIONS
+	if (bonus_missions_present) {
+		append_visible_button(bonusbtn, RET_BONUS_MISSIONS);
+	}
+#endif	//BONUS_MISSIONS
+	append_visible_button(loadbtn, RET_LOAD_MISSION);
+	append_visible_button(multibtn, RET_MULTIPLAYER_GAME);
+	append_visible_button(introbtn, RET_INTRO);
+	append_visible_button(exitbtn, RET_EXIT);
+
+	curbutton = 0;
 	buttons[curbutton]->Turn_On();
 
 	Keyboard::Clear();
@@ -807,7 +820,7 @@ int Main_Menu(unsigned long timeout)
 		** Check to see if WChat has told us to start playing an internet game
 		*/
 		if (DDEServer.Get_MPlayer_Game_Info()){
-			retval = BUTTON_INTERNET - BUTTON_EXPAND;
+			retval = RET_INTERNET;
 			process = false;
 		}
 #endif	//DEMO
@@ -819,12 +832,12 @@ int Main_Menu(unsigned long timeout)
 		switch (input) {
 #ifdef NEWMENU
 			case (BUTTON_EXPAND | KN_BUTTON):
-				retval = (input & 0x7FFF) - BUTTON_EXPAND;
+				retval = RET_NEW_SCENARIO;
 				process = false;
 				break;
 
 			case (BUTTON_INTERNET | KN_BUTTON):
-				retval = (input & 0x7FFF) - BUTTON_EXPAND;
+				retval = RET_INTERNET;
 				process = false;
 				break;
 
@@ -833,46 +846,34 @@ int Main_Menu(unsigned long timeout)
 #endif
 
 			case (BUTTON_START | KN_BUTTON):
-				retval = (input & 0x7FFF) - BUTTON_EXPAND;
+				retval = RET_START_NEW_GAME;
 				process = false;
 				break;
 
 #ifdef BONUS_MISSIONS
 			case (BUTTON_BONUS | KN_BUTTON):
-				retval = (input & 0x7FFF) - BUTTON_EXPAND;
+				retval = RET_BONUS_MISSIONS;
 				process = false;
 				break;
 #endif	//BONUS_MISSIONS
 
 			case (BUTTON_LOAD | KN_BUTTON):
-				retval = (input & 0x7FFF) - BUTTON_EXPAND;
-#ifdef DEMO
-				retval += 1;
-#endif	//DEMO
+				retval = RET_LOAD_MISSION;
 				process = false;
 				break;
 
 			case (BUTTON_MULTI | KN_BUTTON):
-				retval = (input & 0x7FFF) - BUTTON_EXPAND;
-#ifdef DEMO
-				retval += 1;
-#endif	//DEMO
+				retval = RET_MULTIPLAYER_GAME;
 				process = false;
 				break;
 
 			case (BUTTON_INTRO | KN_BUTTON):
-				retval = (input & 0x7FFF) - BUTTON_EXPAND;
-#ifdef DEMO
-				retval += 1;
-#endif	//DEMO
+				retval = RET_INTRO;
 				process = false;
 				break;
 
 			case (BUTTON_EXIT | KN_BUTTON):
-				retval = (input & 0x7FFF) - BUTTON_EXPAND;
-#ifdef DEMO
-				retval += 1;
-#endif	//DEMO
+				retval = RET_EXIT;
 				process = false;
 				break;
 
@@ -881,18 +882,12 @@ int Main_Menu(unsigned long timeout)
 				buttons[curbutton]->Flag_To_Redraw();
 				curbutton--;
 #ifdef NEWMENU
-				if (expansions) {
-					if (curbutton < 0) {
-						curbutton = 6;
-					}
-				} else {
-					if (curbutton < 1) {
-						curbutton = 6;
-					}
+				if (curbutton < 0) {
+					curbutton = button_count - 1;
 				}
 #else
 				if (curbutton < 0) {
-					curbutton = 4;
+					curbutton = button_count - 1;
 				}
 #endif
 				buttons[curbutton]->Turn_On();
@@ -904,15 +899,11 @@ int Main_Menu(unsigned long timeout)
 				buttons[curbutton]->Flag_To_Redraw();
 				curbutton++;
 #ifdef NEWMENU
-				if (curbutton > 6) {
-					if (expansions) {
-						curbutton = 0;
-					} else {
-						curbutton = 1;
-					}
+				if (curbutton >= button_count) {
+					curbutton = 0;
 				}
 #else
-				if (curbutton > 4) {
+				if (curbutton >= button_count) {
 					curbutton = 0;
 				}
 #endif
@@ -923,7 +914,7 @@ int Main_Menu(unsigned long timeout)
 			case KN_RETURN:
 				buttons[curbutton]->IsPressed = true;
 				buttons[curbutton]->Draw_Me(true);
-				retval = curbutton;
+				retval = button_selection[curbutton];
 				process = false;
 				break;
 

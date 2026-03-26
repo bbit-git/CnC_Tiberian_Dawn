@@ -1403,6 +1403,14 @@ bool Select_Game(bool fade)
 						/*
 						**	Internet, Modem or Null-Modem
 						*/
+						case GAME_SKIRMISH:
+							Theme.Fade_Out();
+							ScenPlayer = SCEN_PLAYER_MPLAYER;
+							ScenDir = SCEN_DIR_EAST;
+							process = false;
+							Options.ScoreVolume = 0;
+							break;
+
 						case GAME_MODEM:
 						case GAME_NULL_MODEM:
 						case GAME_INTERNET:

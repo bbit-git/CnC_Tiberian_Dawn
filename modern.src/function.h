@@ -277,6 +277,7 @@ void Nod_Ending(void);
 **	EXPAND.CPP
 */
 bool Expansion_Present(void);
+bool Bonus_Missions_Present(void);
 bool Expansion_Dialog(void);
 bool Bonus_Dialog(void);
 

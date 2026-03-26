@@ -46,6 +46,37 @@ bool Expansion_Present(void)
 	return(file.Is_Available());
 }
 
+bool Bonus_Missions_Present(void)
+{
+	int index;
+
+	for (index = 60; index < 63; index++) {
+		char buffer[128];
+		CCFileClass file;
+
+		Set_Scenario_Name(buffer, index, SCEN_PLAYER_GDI, SCEN_DIR_EAST, SCEN_VAR_A);
+		strcat(buffer, ".INI");
+		file.Set_Name(buffer);
+		if (file.Is_Available()) {
+			return(true);
+		}
+	}
+
+	for (index = 60; index < 62; index++) {
+		char buffer[128];
+		CCFileClass file;
+
+		Set_Scenario_Name(buffer, index, SCEN_PLAYER_NOD, SCEN_DIR_EAST, SCEN_VAR_A);
+		strcat(buffer, ".INI");
+		file.Set_Name(buffer);
+		if (file.Is_Available()) {
+			return(true);
+		}
+	}
+
+	return(false);
+}
+
 
 
 

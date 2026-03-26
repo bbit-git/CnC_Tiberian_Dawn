@@ -332,6 +332,7 @@ void Queue_AI(void)
 		switch (GameToPlay) {
 
 			case GAME_NORMAL:
+			case GAME_SKIRMISH:
 				Queue_AI_Normal();
 				break;
 
