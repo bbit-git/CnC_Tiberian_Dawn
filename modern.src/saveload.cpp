@@ -49,6 +49,7 @@
 
 #include "function.h"
 #include <dbg.h>
+extern const char* TD_Get_Save_Path(void);
 
 /*
 ********************************** Defines **********************************
@@ -142,7 +143,7 @@ bool Save_Game(int id,char *descr)
 	/*
 	**	Generate the filename to save
 	*/
-	sprintf(name, "SAVEGAME.%03d", id);
+	snprintf(name, sizeof(name), "%sSAVEGAME.%03d", TD_Get_Save_Path(), id);
 
 	/*
 	**	Code everybody's pointers
@@ -401,7 +402,7 @@ bool Load_Game(int id)
 	/*
 	**	Generate the filename to load
 	*/
-	sprintf(name, "SAVEGAME.%03d", id);
+	snprintf(name, sizeof(name), "%sSAVEGAME.%03d", TD_Get_Save_Path(), id);
 
 	/*
 	**	Open the file
@@ -1304,7 +1305,7 @@ bool Get_Savefile_Info(int id, char *buf, unsigned *scenp, HousesType *housep)
 	/*
 	**	Generate the filename to load
 	*/
-	sprintf(name, "SAVEGAME.%03d", id);
+	snprintf(name, sizeof(name), "%sSAVEGAME.%03d", TD_Get_Save_Path(), id);
 	fprintf(stderr, "Get_Savefile_Info: trying '%s'\n", name);
 
 	/*
