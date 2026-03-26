@@ -121,7 +121,8 @@ typedef enum GameEnum {
 	GAME_MODEM,										// modem game
 	GAME_NULL_MODEM,								// NULL-modem
 	GAME_IPX,										// IPX Network game
-	GAME_INTERNET									// Winsock game
+	GAME_INTERNET,									// Winsock game
+	GAME_SKIRMISH									// local skirmish game
 } GameType;
 #endif
 
