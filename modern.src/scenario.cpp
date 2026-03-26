@@ -231,6 +231,23 @@ void Fill_In_Data(void)
 		Buildings.Ptr(idx)->Update_Buildables();
 	}
 
+	/*
+	**	Initial map revelation: reveal cells around all player-owned ground objects.
+	**	In the original DOS/Win95 game, Debug_Unshroud was true by default; in the
+	**	GlyphX remaster, GameToPlay != GAME_NORMAL triggers Revealed() during placement.
+	**	In this SDL3 port (GAME_NORMAL + fog of war enabled), we must manually call
+	**	Look() on player units/buildings after scenario loading.
+	*/
+	for (int idx = 0; idx < Map.Layer[LAYER_GROUND].Count(); idx++) {
+		ObjectClass * obj = Map.Layer[LAYER_GROUND][idx];
+		if (obj && obj->IsActive && !obj->IsInLimbo && obj->Is_Techno()) {
+			TechnoClass * techno = (TechnoClass *)obj;
+			if (techno->House == PlayerPtr) {
+				techno->Look(false);
+			}
+		}
+	}
+
 	Map.Flag_To_Redraw(true);
 
 	/*
