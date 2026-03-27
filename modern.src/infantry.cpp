@@ -1820,7 +1820,11 @@ void InfantryClass::Enter_Idle_Mode(bool )
 			if (GameToPlay == GAME_NORMAL || House->IsHuman) {
 				order = MISSION_GUARD;
 			} else {
-				order = MISSION_HUNT;
+				if (GameToPlay == GAME_SKIRMISH && !House->IsHuman && !Team) {
+					order = MISSION_GUARD;
+				} else {
+					order = MISSION_HUNT;
+				}
 			}
 		}
 	}

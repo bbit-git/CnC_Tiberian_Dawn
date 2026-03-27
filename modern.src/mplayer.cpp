@@ -1041,7 +1041,11 @@ static void Prepare_Skirmish_Player_State(char const *namebuf, int scenario_inde
 		MPlayerID[i] = 0;
 		MPlayerHouses[i] = HOUSE_NONE;
 		memset(MPlayerNames[i], 0, sizeof(MPlayerNames[i]));
+		MPlayerAIPersonality[i] = Random_Pick(0, 2);
+		MPlayerAIWaveState[i] = 0;
 	}
+	MPlayerAIPersonality[0] = 1;
+	MPlayerAIWaveState[0] = 0;
 
 	if (BuildLevel < 1) {
 		BuildLevel = 1;

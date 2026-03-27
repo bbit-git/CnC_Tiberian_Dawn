@@ -79,6 +79,135 @@
 #include "function.h"
 
 
+static bool Skirmish_AI_Is_Combat_Foot(FootClass const * foot)
+{
+	if (!foot || foot->IsInLimbo || foot->Strength <= 0) return(false);
+
+	switch (foot->What_Am_I()) {
+		case RTTI_UNIT:
+			return(*((UnitClass const *)foot) != UNIT_HARVESTER && *((UnitClass const *)foot) != UNIT_MCV && foot->Risk() > 0);
+
+		case RTTI_INFANTRY:
+			return(*((InfantryClass const *)foot) != INFANTRY_E7 && foot->Risk() > 0);
+
+		default:
+			break;
+	}
+
+	return(false);
+}
+
+
+static CELL Skirmish_AI_Find_Regroup_Cell(FootClass const * foot)
+{
+	COORDINATE anchor = foot->Coord;
+
+	for (int index = 0; index < Buildings.Count(); index++) {
+		BuildingClass * building = Buildings.Ptr(index);
+
+		if (building && !building->IsInLimbo && building->House == foot->House && building->Strength > 0 &&
+			(*building == STRUCT_CONST || *building == STRUCT_WEAP || *building == STRUCT_AIRSTRIP ||
+			 *building == STRUCT_BARRACKS || *building == STRUCT_HAND)) {
+			anchor = building->Center_Coord();
+			if (*building == STRUCT_CONST) {
+				break;
+			}
+		}
+	}
+
+	CELL center = Coord_Cell(anchor);
+	static int const offset_x[8] = {0, 1, 2, 1, 0, -1, -2, -1};
+	static int const offset_y[8] = {-2, -1, 0, 1, 2, 1, 0, -1};
+	int start = Random_Pick(0, 7);
+
+	for (int ring = 2; ring <= 5; ring++) {
+		for (int step = 0; step < 8; step++) {
+			int dir = (start + step) & 7;
+			CELL cell = XY_Cell(Cell_X(center) + offset_x[dir] * ring, Cell_Y(center) + offset_y[dir] * ring);
+
+			if (Map.In_Radar(cell) && foot->Can_Enter_Cell(cell) == MOVE_OK) {
+				return(cell);
+			}
+		}
+	}
+
+	return(Coord_Cell(anchor));
+}
+
+
+static bool Skirmish_AI_Should_Retreat(FootClass * foot)
+{
+	if (GameToPlay != GAME_SKIRMISH || !foot || foot->House->IsHuman) return(false);
+	if (!Skirmish_AI_Is_Combat_Foot(foot)) return(false);
+	if (!Target_Legal(foot->TarCom)) return(false);
+	if (foot->Mission != MISSION_ATTACK && foot->Mission != MISSION_HUNT) return(false);
+
+	int friendly = 0;
+	int enemy = 0;
+	int friendly_risk = 0;
+	int enemy_risk = 0;
+	int range = 0x0700;
+
+	for (int index = 0; index < Units.Count(); index++) {
+		UnitClass * unit = Units.Ptr(index);
+
+		if (!Skirmish_AI_Is_Combat_Foot(unit) || foot->Distance((AbstractClass const *)unit) > range) {
+			continue;
+		}
+		if (foot->House->Is_Ally(unit)) {
+			friendly++;
+			friendly_risk += MAX(1, unit->Risk() / 10);
+		} else {
+			enemy++;
+			enemy_risk += MAX(1, unit->Risk() / 10);
+		}
+	}
+
+	for (int index = 0; index < Infantry.Count(); index++) {
+		InfantryClass * infantry = Infantry.Ptr(index);
+
+		if (!Skirmish_AI_Is_Combat_Foot(infantry) || foot->Distance((AbstractClass const *)infantry) > range) {
+			continue;
+		}
+		if (foot->House->Is_Ally(infantry)) {
+			friendly++;
+			friendly_risk += MAX(1, infantry->Risk() / 10);
+		} else {
+			enemy++;
+			enemy_risk += MAX(1, infantry->Risk() / 10);
+		}
+	}
+
+	if (enemy < 3 || enemy <= friendly) {
+		return(false);
+	}
+
+	int ratio = foot->Health_Ratio();
+	bool target_in_range = foot->In_Range(foot->TarCom);
+	bool target_is_building = (As_Building(foot->TarCom) != NULL);
+
+	if (target_in_range && ratio >= 0x0080 && enemy_risk <= friendly_risk + 2) {
+		return(false);
+	}
+
+	if (target_is_building && ratio >= 0x00A0 && enemy_risk <= friendly_risk + 4) {
+		return(false);
+	}
+
+	switch (MPlayerAISkill) {
+		default:
+		case 0:
+			return(enemy_risk >= friendly_risk + 2);
+
+		case 1:
+			return(enemy_risk >= friendly_risk + 4);
+
+		case 2:
+			return(enemy_risk >= friendly_risk + 6);
+	}
+}
+
+
 /***********************************************************************************************
  * FootClass::FootClass -- Default constructor for foot class objects.                         *
  *                                                                                             *
@@ -607,6 +736,20 @@ int FootClass::Mission_Capture(void)
  *=============================================================================================*/
 int FootClass::Mission_Attack(void)
 {
+	if (Skirmish_AI_Should_Retreat(this)) {
+		CELL regroup = Skirmish_AI_Find_Regroup_Cell(this);
+
+		Assign_Target(TARGET_NONE);
+		if (regroup && Distance(::As_Target(regroup)) > 0x0200) {
+			Assign_Destination(::As_Target(regroup));
+			Assign_Mission(MISSION_MOVE);
+		} else {
+			Assign_Destination(TARGET_NONE);
+			Assign_Mission(MISSION_GUARD);
+		}
+		return(TICKS_PER_SECOND);
+	}
+
 	if (Target_Legal(TarCom)) {
 		Approach_Target();
 	} else {

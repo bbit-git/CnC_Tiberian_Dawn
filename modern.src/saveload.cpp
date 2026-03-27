@@ -851,6 +851,8 @@ bool Save_Misc_Values(FileClass &file)
 	file.Write(&MPlayerSolo, sizeof(MPlayerSolo));
 	file.Write(&MPlayerAIs, sizeof(MPlayerAIs));
 	file.Write(&MPlayerAISkill, sizeof(MPlayerAISkill));
+	file.Write(MPlayerAIPersonality, sizeof(MPlayerAIPersonality));
+	file.Write(MPlayerAIWaveState, sizeof(MPlayerAIWaveState));
 	file.Write(&MPlayerUnitCount, sizeof(MPlayerUnitCount));
 	file.Write(MPlayerID, sizeof(MPlayerID));
 	file.Write(MPlayerHouses, sizeof(MPlayerHouses));
@@ -977,11 +979,20 @@ bool Load_Misc_Values(FileClass &file)
 			file.Read(&MPlayerGhosts, sizeof(MPlayerGhosts));
 			file.Read(&MPlayerSolo, sizeof(MPlayerSolo));
 			file.Read(&MPlayerAIs, sizeof(MPlayerAIs));
-			if (file.Seek(0, SEEK_CUR) + (long)sizeof(MPlayerAISkill) + (long)sizeof(MPlayerUnitCount) +
-				(long)sizeof(MPlayerID) + (long)sizeof(MPlayerHouses) + (long)sizeof(MPlayerNames) <= file.Size()) {
+			if (file.Seek(0, SEEK_CUR) + (long)sizeof(MPlayerAISkill) + (long)sizeof(MPlayerAIPersonality) +
+				(long)sizeof(MPlayerUnitCount) + (long)sizeof(MPlayerID) + (long)sizeof(MPlayerHouses) + (long)sizeof(MPlayerNames) <= file.Size()) {
 				file.Read(&MPlayerAISkill, sizeof(MPlayerAISkill));
+				file.Read(MPlayerAIPersonality, sizeof(MPlayerAIPersonality));
+				if (file.Seek(0, SEEK_CUR) + (long)sizeof(MPlayerAIWaveState) + (long)sizeof(MPlayerUnitCount) + (long)sizeof(MPlayerID) +
+					(long)sizeof(MPlayerHouses) + (long)sizeof(MPlayerNames) <= file.Size()) {
+					file.Read(MPlayerAIWaveState, sizeof(MPlayerAIWaveState));
+				} else {
+					memset(MPlayerAIWaveState, 0, sizeof(MPlayerAIWaveState));
+				}
 			} else {
 				MPlayerAISkill = 1;
+				memset(MPlayerAIPersonality, 0, sizeof(MPlayerAIPersonality));
+				memset(MPlayerAIWaveState, 0, sizeof(MPlayerAIWaveState));
 			}
 			file.Read(&MPlayerUnitCount, sizeof(MPlayerUnitCount));
 			file.Read(MPlayerID, sizeof(MPlayerID));
@@ -990,10 +1001,14 @@ bool Load_Misc_Values(FileClass &file)
 		} else {
 			MPlayerAIs = MPlayerGhosts ? (MPlayerMax - 1) : 0;
 			MPlayerAISkill = 1;
+			memset(MPlayerAIPersonality, 0, sizeof(MPlayerAIPersonality));
+			memset(MPlayerAIWaveState, 0, sizeof(MPlayerAIWaveState));
 		}
 	} else {
 		MPlayerAIs = MPlayerGhosts ? (MPlayerMax - 1) : 0;
 		MPlayerAISkill = 1;
+		memset(MPlayerAIPersonality, 0, sizeof(MPlayerAIPersonality));
+		memset(MPlayerAIWaveState, 0, sizeof(MPlayerAIWaveState));
 	}
 
 	return(true);

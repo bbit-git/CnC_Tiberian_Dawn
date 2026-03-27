@@ -101,6 +101,485 @@
 
 #include	"function.h"
 
+enum {
+	SKIRMISH_WAVE_ASSEMBLE = 0,
+	SKIRMISH_WAVE_LAUNCH = 1,
+	SKIRMISH_WAVE_COOLDOWN = 2,
+	SKIRMISH_WAVE_REGROUP = 3
+};
+
+
+static int Skirmish_AI_Index(HouseClass const * house)
+{
+	if (!house) {
+		return(-1);
+	}
+
+	int index = (int)house->Class->House - (int)HOUSE_MULTI1;
+
+	if (index >= 0 && index < MAX_PLAYERS) {
+		return(index);
+	}
+
+	return(-1);
+}
+
+
+static int Skirmish_AI_Map_Size_Class(void)
+{
+	int map_cells = Map.MapCellWidth * Map.MapCellHeight;
+
+	if (map_cells <= 2304) {
+		return(-1);
+	}
+	if (map_cells >= 4096) {
+		return(1);
+	}
+	return(0);
+}
+
+
+static int Skirmish_AI_Wave_State(HouseClass const * house)
+{
+	int index = Skirmish_AI_Index(house);
+
+	if (index == -1) {
+		return(SKIRMISH_WAVE_ASSEMBLE);
+	}
+
+	return(Bound(MPlayerAIWaveState[index], SKIRMISH_WAVE_ASSEMBLE, SKIRMISH_WAVE_REGROUP));
+}
+
+
+static void Skirmish_AI_Set_Wave_State(HouseClass const * house, int state)
+{
+	int index = Skirmish_AI_Index(house);
+
+	if (index != -1) {
+		MPlayerAIWaveState[index] = Bound(state, SKIRMISH_WAVE_ASSEMBLE, SKIRMISH_WAVE_REGROUP);
+	}
+}
+
+
+static int Skirmish_AI_Wave_Target(int skill, int personality, int map_class)
+{
+	int needed;
+
+	switch (skill) {
+		default:
+		case 0:
+			needed = Random_Pick(3, 5);
+			break;
+
+		case 1:
+			needed = Random_Pick(4, 6);
+			break;
+
+		case 2:
+			needed = Random_Pick(5, 7);
+			break;
+	}
+
+	if (map_class < 0) {
+		needed = MAX(2, needed - 1);
+	} else if (map_class > 0) {
+		needed = MIN(7, needed + 1);
+	}
+
+	if (personality == 0) {
+		needed = MAX(2, needed - 1);
+	} else if (personality == 1) {
+		needed = MIN(8, needed + 1);
+	}
+
+	return(needed);
+}
+
+
+static int Skirmish_AI_Relaunch_Target(int skill, int personality, int map_class)
+{
+	int needed;
+
+	switch (skill) {
+		default:
+		case 0:
+			needed = 3;
+			break;
+
+		case 1:
+			needed = 4;
+			break;
+
+		case 2:
+			needed = 5;
+			break;
+	}
+
+	if (map_class < 0) {
+		needed = MAX(2, needed - 1);
+	} else if (map_class > 0) {
+		needed = MIN(6, needed + 1);
+	}
+
+	if (personality == 0) {
+		needed = MAX(2, needed - 1);
+	} else if (personality == 1) {
+		needed = MIN(7, needed + 1);
+	}
+
+	return(needed);
+}
+
+
+static long Skirmish_AI_Wave_Prep_Delay(int personality, int map_class, bool regroup)
+{
+	if (personality == 0) {
+		if (map_class < 0) {
+			return(TICKS_PER_SECOND * Random_Pick(regroup ? 6 : 4, regroup ? 12 : 10));
+		}
+		if (map_class > 0) {
+			return(TICKS_PER_SECOND * Random_Pick(regroup ? 10 : 8, regroup ? 16 : 14));
+		}
+		return(TICKS_PER_SECOND * Random_Pick(regroup ? 8 : 6, regroup ? 14 : 12));
+	}
+
+	if (personality == 1) {
+		if (map_class < 0) {
+			return(TICKS_PER_SECOND * Random_Pick(regroup ? 10 : 8, regroup ? 18 : 16));
+		}
+		if (map_class > 0) {
+			return(TICKS_PER_SECOND * Random_Pick(regroup ? 14 : 12, regroup ? 24 : 24));
+		}
+		return(TICKS_PER_SECOND * Random_Pick(regroup ? 12 : 10, regroup ? 22 : 20));
+	}
+
+	if (map_class < 0) {
+		return(TICKS_PER_SECOND * Random_Pick(regroup ? 8 : 6, regroup ? 14 : 12));
+	}
+	if (map_class > 0) {
+		return(TICKS_PER_SECOND * Random_Pick(regroup ? 12 : 10, regroup ? 20 : 18));
+	}
+	return(TICKS_PER_SECOND * Random_Pick(regroup ? 10 : 8, regroup ? 18 : 16));
+}
+
+
+static long Skirmish_AI_Wave_Assemble_Delay(int skill, int personality, int map_class)
+{
+	switch (skill) {
+		default:
+		case 0:
+			if (personality == 0) {
+				if (map_class < 0) return(TICKS_PER_MINUTE * Random_Pick(2, 4));
+				if (map_class > 0) return(TICKS_PER_MINUTE * Random_Pick(4, 6));
+				return(TICKS_PER_MINUTE * Random_Pick(3, 5));
+			}
+			if (personality == 1) {
+				if (map_class < 0) return(TICKS_PER_MINUTE * Random_Pick(4, 6));
+				if (map_class > 0) return(TICKS_PER_MINUTE * Random_Pick(6, 8));
+				return(TICKS_PER_MINUTE * Random_Pick(5, 7));
+			}
+			if (map_class < 0) return(TICKS_PER_MINUTE * Random_Pick(3, 5));
+			if (map_class > 0) return(TICKS_PER_MINUTE * Random_Pick(5, 7));
+			return(TICKS_PER_MINUTE * Random_Pick(4, 6));
+
+		case 1:
+			if (personality == 0) {
+				if (map_class < 0) return(TICKS_PER_MINUTE * Random_Pick(1, 2));
+				if (map_class > 0) return(TICKS_PER_MINUTE * Random_Pick(2, 4));
+				return(TICKS_PER_MINUTE * Random_Pick(1, 3));
+			}
+			if (personality == 1) {
+				if (map_class < 0) return(TICKS_PER_MINUTE * Random_Pick(2, 4));
+				if (map_class > 0) return(TICKS_PER_MINUTE * Random_Pick(4, 6));
+				return(TICKS_PER_MINUTE * Random_Pick(3, 5));
+			}
+			if (map_class < 0) return(TICKS_PER_MINUTE * Random_Pick(1, 3));
+			if (map_class > 0) return(TICKS_PER_MINUTE * Random_Pick(3, 5));
+			return(TICKS_PER_MINUTE * Random_Pick(2, 4));
+
+		case 2:
+			if (personality == 0) {
+				if (map_class < 0) return(TICKS_PER_MINUTE * Random_Pick(1, 1));
+				if (map_class > 0) return(TICKS_PER_MINUTE * Random_Pick(1, 3));
+				return(TICKS_PER_MINUTE * Random_Pick(1, 2));
+			}
+			if (personality == 1) {
+				if (map_class < 0) return(TICKS_PER_MINUTE * Random_Pick(2, 3));
+				if (map_class > 0) return(TICKS_PER_MINUTE * Random_Pick(3, 5));
+				return(TICKS_PER_MINUTE * Random_Pick(2, 4));
+			}
+			if (map_class < 0) return(TICKS_PER_MINUTE * Random_Pick(1, 2));
+			if (map_class > 0) return(TICKS_PER_MINUTE * Random_Pick(2, 4));
+			return(TICKS_PER_MINUTE * Random_Pick(1, 3));
+	}
+}
+
+
+static long Skirmish_AI_Wave_Cooldown_Delay(int personality, int map_class, bool active_wave)
+{
+	if (active_wave) {
+		if (map_class < 0) {
+			return(TICKS_PER_SECOND * Random_Pick(12, 24));
+		}
+		if (map_class > 0) {
+			return(TICKS_PER_SECOND * Random_Pick(24, 45));
+		}
+		return(TICKS_PER_SECOND * Random_Pick(20, 40));
+	}
+
+	if (personality == 0) {
+		if (map_class < 0) return(TICKS_PER_SECOND * Random_Pick(10, 16));
+		if (map_class > 0) return(TICKS_PER_SECOND * Random_Pick(16, 24));
+		return(TICKS_PER_SECOND * Random_Pick(12, 20));
+	}
+	if (personality == 1) {
+		if (map_class < 0) return(TICKS_PER_SECOND * Random_Pick(14, 22));
+		if (map_class > 0) return(TICKS_PER_SECOND * Random_Pick(22, 32));
+		return(TICKS_PER_SECOND * Random_Pick(18, 28));
+	}
+	if (map_class < 0) return(TICKS_PER_SECOND * Random_Pick(12, 18));
+	if (map_class > 0) return(TICKS_PER_SECOND * Random_Pick(18, 28));
+	return(TICKS_PER_SECOND * Random_Pick(15, 24));
+}
+
+
+static int Skirmish_AI_Active_Wave_Count(HouseClass const * house, int * units = NULL)
+{
+	int count = 0;
+	int total = 0;
+
+	for (int index = 0; index < Teams.Count(); index++) {
+		TeamClass * team = Teams.Ptr(index);
+
+		if (!team || team->House != house || !team->Total || !team->IsHasBeen || team->IsUnderStrength || team->IsReforming) {
+			continue;
+		}
+
+		count++;
+		total += team->Total;
+	}
+
+	if (units) {
+		*units = total;
+	}
+
+	return(count);
+}
+
+
+static int Skirmish_AI_Regrouping_Units(HouseClass const * house, int * teams_out = NULL)
+{
+	int total = 0;
+	int teams = 0;
+
+	for (int index = 0; index < Teams.Count(); index++) {
+		TeamClass * team = Teams.Ptr(index);
+
+		if (!team || team->House != house || !team->Total || !team->IsHasBeen) {
+			continue;
+		}
+		if (!team->IsReforming && !team->IsUnderStrength) {
+			continue;
+		}
+
+		total += team->Total;
+		teams++;
+	}
+
+	if (teams_out) {
+		*teams_out = teams;
+	}
+
+	return(total);
+}
+
+
+static bool Skirmish_AI_Force_Regrouped_Wave(HouseClass const * house, int needed)
+{
+	TeamClass * best = NULL;
+	int best_total = 0;
+
+	for (int index = 0; index < Teams.Count(); index++) {
+		TeamClass * team = Teams.Ptr(index);
+
+		if (!team || team->House != house || !team->Total || !team->IsHasBeen) {
+			continue;
+		}
+		if (!team->IsReforming && !team->IsUnderStrength) {
+			continue;
+		}
+
+		if (team->Total > best_total) {
+			best = team;
+			best_total = team->Total;
+		}
+	}
+
+	if (best && best_total >= needed) {
+		best->Force_Active();
+		return(true);
+	}
+
+	return(false);
+}
+
+
+static int Skirmish_AI_Available_Combat_Count(HouseClass const * house)
+{
+	int combat = 0;
+
+	for (int index = 0; index < Units.Count(); index++) {
+		UnitClass * unit = Units.Ptr(index);
+
+		if (unit && !unit->IsInLimbo && unit->House == house && unit->Strength > 0 && !unit->Team &&
+			*unit != UNIT_HARVESTER && *unit != UNIT_MCV) {
+			combat++;
+		}
+	}
+
+	for (int index = 0; index < Infantry.Count(); index++) {
+		InfantryClass * infantry = Infantry.Ptr(index);
+
+		if (infantry && !infantry->IsInLimbo && infantry->House == house && infantry->Strength > 0 && !infantry->Team &&
+			*infantry != INFANTRY_E7) {
+			combat++;
+		}
+	}
+
+	return(combat);
+}
+
+
+static bool Skirmish_AI_Is_Recovery_Mode(long flags, int power, int drain, int refinery_count, int combat_units)
+{
+	if (!(flags & STRUCTF_POWER) || !(flags & STRUCTF_REFINERY)) {
+		return(true);
+	}
+
+	if (power <= drain || (power - drain) < 25) {
+		return(true);
+	}
+
+	if (!(flags & (STRUCTF_WEAP | STRUCTF_AIRSTRIP)) && combat_units >= 3) {
+		return(true);
+	}
+
+	if (!(flags & STRUCTF_RADAR) && combat_units >= 5) {
+		return(true);
+	}
+
+	if (refinery_count == 0) {
+		return(true);
+	}
+
+	return(false);
+}
+
+
+static bool Skirmish_AI_Economy_Harassed(long flags, bool under_pressure, int refinery_count, int harvester_count, int combat_units)
+{
+	if (!(flags & STRUCTF_REFINERY)) {
+		return(true);
+	}
+
+	if (refinery_count <= 0) {
+		return(true);
+	}
+
+	if (refinery_count == 1 && harvester_count == 0) {
+		return(true);
+	}
+
+	if (under_pressure && refinery_count <= 1 && harvester_count <= 1 && combat_units >= 3) {
+		return(true);
+	}
+
+	return(false);
+}
+
+
+static int Skirmish_AI_Personality(HouseClass const * house)
+{
+	int index = Skirmish_AI_Index(house);
+
+	if (index != -1) {
+		return(Bound(MPlayerAIPersonality[index], 0, 2));
+	}
+	return(1);
+}
+
+
+static void Skirmish_AI_Enemy_Mix(HouseClass const * house, int & enemy_infantry, int & enemy_units, int & enemy_buildings)
+{
+	enemy_infantry = 0;
+	enemy_units = 0;
+	enemy_buildings = 0;
+
+	for (int index = 0; index < Infantry.Count(); index++) {
+		InfantryClass * infantry = Infantry.Ptr(index);
+
+		if (infantry && !infantry->IsInLimbo && infantry->Strength > 0 && !house->Is_Ally(infantry) &&
+			*infantry != INFANTRY_E7) {
+			enemy_infantry++;
+		}
+	}
+
+	for (int index = 0; index < Units.Count(); index++) {
+		UnitClass * unit = Units.Ptr(index);
+
+		if (unit && !unit->IsInLimbo && unit->Strength > 0 && !house->Is_Ally(unit) &&
+			*unit != UNIT_HARVESTER && *unit != UNIT_MCV) {
+			enemy_units++;
+		}
+	}
+
+	for (int index = 0; index < Buildings.Count(); index++) {
+		BuildingClass * building = Buildings.Ptr(index);
+
+		if (building && !building->IsInLimbo && building->Strength > 0 && !house->Is_Ally(building)) {
+			enemy_buildings++;
+		}
+	}
+}
+
+
+static bool House_Has_Live_Assets(HouseClass const * house)
+{
+	for (int i = 0; i < ::Aircraft.Count(); i++) {
+		AircraftClass * craft = ::Aircraft.Ptr(i);
+
+		if (craft && !craft->IsInLimbo && craft->House == house && craft->Strength > 0) {
+			return(true);
+		}
+	}
+
+	for (int i = 0; i < ::Units.Count(); i++) {
+		UnitClass * unit = ::Units.Ptr(i);
+
+		if (unit && !unit->IsInLimbo && unit->House == house && unit->Strength > 0) {
+			return(true);
+		}
+	}
+
+	for (int i = 0; i < ::Infantry.Count(); i++) {
+		InfantryClass * infantry = ::Infantry.Ptr(i);
+
+		if (infantry && !infantry->IsInLimbo && infantry->House == house && infantry->Strength > 0) {
+			return(true);
+		}
+	}
+
+	for (int i = 0; i < ::Buildings.Count(); i++) {
+		BuildingClass * building = ::Buildings.Ptr(i);
+
+		if (building && !building->IsInLimbo && building->House == house && building->Strength > 0) {
+			return(true);
+		}
+	}
+
+	return(false);
+}
+
 
 /***********************************************************************************************
  * HouseClass::Validate -- validates house pointer															  *
@@ -831,6 +1310,53 @@ void HouseClass::AI(void)
 		Drain = MAX(Drain, 0);
 	}
 
+	if (GameToPlay == GAME_SKIRMISH && !IsHuman && IsAlerted && !AlertTime.Expired()) {
+		int active_wave_units = 0;
+		int active_waves = Skirmish_AI_Active_Wave_Count(this, &active_wave_units);
+		int available = Skirmish_AI_Available_Combat_Count(this);
+		int regrouping = Skirmish_AI_Regrouping_Units(this);
+		int personality = Skirmish_AI_Personality(this);
+		int wave_state = Skirmish_AI_Wave_State(this);
+		int map_class = Skirmish_AI_Map_Size_Class();
+		int needed = Skirmish_AI_Wave_Target(MPlayerAISkill, personality, map_class);
+		int relaunch_needed = Skirmish_AI_Relaunch_Target(MPlayerAISkill, personality, map_class);
+		int refinery_count = 0;
+		int harvester_count = 0;
+		bool economy_harassed = false;
+
+		for (int index = 0; index < Buildings.Count(); index++) {
+			BuildingClass * building = Buildings.Ptr(index);
+
+			if (building && !building->IsInLimbo && building->House == this && building->Strength > 0 &&
+				*building == STRUCT_REFINERY) {
+				refinery_count++;
+			}
+		}
+		for (int index = 0; index < Units.Count(); index++) {
+			UnitClass * unit = Units.Ptr(index);
+
+			if (unit && !unit->IsInLimbo && unit->House == this && unit->Strength > 0 &&
+				*unit == UNIT_HARVESTER) {
+				harvester_count++;
+			}
+		}
+		economy_harassed = Skirmish_AI_Economy_Harassed(ActiveBScan, (WhoLastHurtMe != HOUSE_NONE && WhoLastHurtMe != Class->House),
+			refinery_count, harvester_count, available + regrouping);
+
+		if (!economy_harassed && !active_waves && active_wave_units < 3) {
+			if ((wave_state == SKIRMISH_WAVE_ASSEMBLE || wave_state == SKIRMISH_WAVE_COOLDOWN) && available >= needed) {
+				Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_LAUNCH);
+				AlertTime = Skirmish_AI_Wave_Prep_Delay(personality, map_class, false);
+			} else if ((wave_state == SKIRMISH_WAVE_ASSEMBLE || wave_state == SKIRMISH_WAVE_COOLDOWN) && regrouping >= relaunch_needed) {
+				Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_REGROUP);
+				AlertTime = Skirmish_AI_Wave_Prep_Delay(personality, map_class, true);
+			} else if (wave_state == SKIRMISH_WAVE_COOLDOWN && (available + regrouping) >= relaunch_needed) {
+				Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_REGROUP);
+				AlertTime = Skirmish_AI_Wave_Prep_Delay(personality, map_class, true);
+			}
+		}
+	}
+
 	/*
 	**	If the base has been alerted to the enemy and should be attacking, then
 	**	see if the attack timer has expired. If it has, then create the attack
@@ -844,72 +1370,107 @@ void HouseClass::AI(void)
 		int maxteams = Random_Pick(2, (int)(((BuildLevel-1)/3)+1));
 		if (GameToPlay == GAME_SKIRMISH && !IsHuman) {
 			int combat = 0;
-			int needed;
+			int active_wave_units = 0;
+			int active_waves = Skirmish_AI_Active_Wave_Count(this, &active_wave_units);
+			int regrouping = Skirmish_AI_Regrouping_Units(this);
+			int personality = Skirmish_AI_Personality(this);
+			int wave_state = Skirmish_AI_Wave_State(this);
+			int map_class = Skirmish_AI_Map_Size_Class();
+			int needed = Skirmish_AI_Wave_Target(MPlayerAISkill, personality, map_class);
+			int relaunch_needed = Skirmish_AI_Relaunch_Target(MPlayerAISkill, personality, map_class);
+			int refinery_count = 0;
+			int harvester_count = 0;
+			bool economy_harassed = false;
+			maxteams = 1;
 
-			switch (MPlayerAISkill) {
-				default:
-				case 0:
-					needed = Random_Pick(8, 11);
-					maxteams = Random_Pick(1, 2);
-					break;
+			combat = Skirmish_AI_Available_Combat_Count(this);
+			for (int index = 0; index < Buildings.Count(); index++) {
+				BuildingClass * building = Buildings.Ptr(index);
 
-				case 1:
-					needed = Random_Pick(6, 9);
-					maxteams = Random_Pick(1, 3);
-					break;
-
-				case 2:
-					needed = Random_Pick(4, 7);
-					maxteams = Random_Pick(2, 4);
-					break;
+				if (building && !building->IsInLimbo && building->House == this && building->Strength > 0 &&
+					*building == STRUCT_REFINERY) {
+					refinery_count++;
+				}
 			}
-
-			if ((Map.MapCellWidth * Map.MapCellHeight) >= 4096) {
-				needed += 2;
-			}
-
 			for (int index = 0; index < Units.Count(); index++) {
 				UnitClass * unit = Units.Ptr(index);
 
-				if (unit && !unit->IsInLimbo && unit->House == this && unit->Strength > 0 && !unit->Team &&
-					*unit != UNIT_HARVESTER && *unit != UNIT_MCV) {
-					combat++;
+				if (unit && !unit->IsInLimbo && unit->House == this && unit->Strength > 0 &&
+					*unit == UNIT_HARVESTER) {
+					harvester_count++;
 				}
 			}
+			economy_harassed = Skirmish_AI_Economy_Harassed(ActiveBScan, (WhoLastHurtMe != HOUSE_NONE && WhoLastHurtMe != Class->House),
+				refinery_count, harvester_count, combat + regrouping);
 
-			for (int index = 0; index < Infantry.Count(); index++) {
-				InfantryClass * infantry = Infantry.Ptr(index);
+			if (economy_harassed) {
+				Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_ASSEMBLE);
+				AlertTime = TICKS_PER_SECOND * Random_Pick(25, 45);
+			} else if (active_waves || active_wave_units >= 3) {
+				Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_COOLDOWN);
+				AlertTime = Skirmish_AI_Wave_Cooldown_Delay(personality, map_class, true);
+			} else {
+				switch (wave_state) {
+					default:
+					case SKIRMISH_WAVE_ASSEMBLE:
+						if (regrouping >= relaunch_needed) {
+							Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_REGROUP);
+							AlertTime = Skirmish_AI_Wave_Prep_Delay(personality, map_class, true);
+						} else if (combat >= needed) {
+							Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_LAUNCH);
+							AlertTime = Skirmish_AI_Wave_Prep_Delay(personality, map_class, false);
+						} else {
+							AlertTime = Skirmish_AI_Wave_Assemble_Delay(MPlayerAISkill, personality, map_class);
+						}
+						break;
 
-				if (infantry && !infantry->IsInLimbo && infantry->House == this && infantry->Strength > 0 && !infantry->Team &&
-					*infantry != INFANTRY_E7) {
-					combat++;
+					case SKIRMISH_WAVE_LAUNCH:
+						if (combat >= needed) {
+							for (int index = 0; index < maxteams; index++) {
+								TeamTypeClass const * ttype = Suggested_New_Team(true);
+								if (ttype) {
+									ScenarioInit++;
+									ttype->Create_One_Of();
+									ScenarioInit--;
+								}
+							}
+							Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_COOLDOWN);
+							AlertTime = Skirmish_AI_Wave_Cooldown_Delay(personality, map_class, false);
+						} else if (regrouping >= relaunch_needed) {
+							Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_REGROUP);
+							AlertTime = Skirmish_AI_Wave_Prep_Delay(personality, map_class, true);
+						} else {
+							Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_ASSEMBLE);
+							AlertTime = Skirmish_AI_Wave_Assemble_Delay(MPlayerAISkill, personality, map_class);
+						}
+						break;
+
+					case SKIRMISH_WAVE_REGROUP:
+						if (regrouping >= relaunch_needed && Skirmish_AI_Force_Regrouped_Wave(this, relaunch_needed)) {
+							Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_COOLDOWN);
+							AlertTime = Skirmish_AI_Wave_Cooldown_Delay(personality, map_class, false);
+						} else if (combat >= needed) {
+							Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_LAUNCH);
+							AlertTime = Skirmish_AI_Wave_Prep_Delay(personality, map_class, false);
+						} else {
+							Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_ASSEMBLE);
+							AlertTime = Skirmish_AI_Wave_Assemble_Delay(MPlayerAISkill, personality, map_class);
+						}
+						break;
+
+					case SKIRMISH_WAVE_COOLDOWN:
+						if (regrouping >= relaunch_needed) {
+							Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_REGROUP);
+							AlertTime = Skirmish_AI_Wave_Prep_Delay(personality, map_class, true);
+						} else if (combat >= needed) {
+							Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_LAUNCH);
+							AlertTime = Skirmish_AI_Wave_Prep_Delay(personality, map_class, false);
+						} else {
+							Skirmish_AI_Set_Wave_State(this, SKIRMISH_WAVE_ASSEMBLE);
+							AlertTime = Skirmish_AI_Wave_Assemble_Delay(MPlayerAISkill, personality, map_class);
+						}
+						break;
 				}
-			}
-
-			if (combat >= needed) {
-				for (int index = 0; index < maxteams; index++) {
-					TeamTypeClass const * ttype = Suggested_New_Team(true);
-					if (ttype) {
-						ScenarioInit++;
-						ttype->Create_One_Of();
-						ScenarioInit--;
-					}
-				}
-			}
-
-			switch (MPlayerAISkill) {
-				default:
-				case 0:
-					AlertTime = (TICKS_PER_MINUTE * Random_Pick(4, 6));
-					break;
-
-				case 1:
-					AlertTime = (TICKS_PER_MINUTE * Random_Pick(2, 4));
-					break;
-
-				case 2:
-					AlertTime = (TICKS_PER_MINUTE * Random_Pick(1, 3));
-					break;
 			}
 			goto skip_alert_team_timer;
 		}
@@ -1307,9 +1868,16 @@ skip_alert_team_timer:
 	** may not properly set IScan etc for each house; you have to go
 	** through each object's AI before it will be properly set.
 	*/
-	if (GameToPlay != GAME_NORMAL && !IsDefeated &&
-		!ActiveBScan && !ActiveAScan && !UScan && !ActiveIScan && Frame > 0) {
+	if (GameToPlay != GAME_NORMAL && !IsDefeated && Frame > 0) {
+		bool defeated = (!ActiveBScan && !ActiveAScan && !UScan && !ActiveIScan);
+
+		if (GameToPlay == GAME_SKIRMISH) {
+			defeated = !House_Has_Live_Assets(this);
+		}
+
+		if (defeated) {
 		MPlayer_Defeated();
+		}
 	}
 
 	for (int index = 0; index < HouseTriggers[Class->House].Count(); index++) {
@@ -2061,18 +2629,18 @@ TeamTypeClass const * HouseClass::Suggested_New_Team(bool alertcheck)
 	Validate();
 	if (GameToPlay == GAME_SKIRMISH && !IsHuman && alertcheck) {
 		int combat = 0;
-		int needed = 6;
+		int needed = 5;
 
 		if (MPlayerAISkill == 0) {
-			needed = 8;
+			needed = 3;
 		} else {
 			if (MPlayerAISkill == 2) {
-				needed = 4;
+				needed = 5;
 			}
 		}
 
 		if ((Map.MapCellWidth * Map.MapCellHeight) >= 4096) {
-			needed += 2;
+			needed = MIN(7, needed + 1);
 		}
 
 		for (int index = 0; index < Units.Count(); index++) {
@@ -3283,12 +3851,24 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 	StructType reserve_build = STRUCT_NONE;
 	long flags = ActiveBScan;
 	int combat_units = 0;
+	int helipad_count = 0;
+	int combat_aircraft_count = 0;
+	int enemy_aircraft_count = 0;
+	int anti_air_count = 0;
+	bool recovery_mode = false;
+	bool economy_harassed = false;
+	int personality = 1;
 
 	if (GameToPlay == GAME_SKIRMISH && !IsHuman) {
 		int refinery_count = 0;
+		int harvester_count = 0;
 		int defense_count = 0;
 		int valuable_count = 0;
+		int desired_defense_count = 0;
 		bool big_map = ((Map.MapCellWidth * Map.MapCellHeight) >= 4096);
+		bool huge_map = ((Map.MapCellWidth * Map.MapCellHeight) >= 6144);
+		personality = Skirmish_AI_Personality(this);
+		bool under_pressure = (WhoLastHurtMe != HOUSE_NONE && WhoLastHurtMe != Class->House);
 
 		if (flags & STRUCTF_ADVANCED_POWER) flags |= STRUCTF_POWER;
 		if (flags & STRUCTF_HAND) flags |= STRUCTF_BARRACKS;
@@ -3307,9 +3887,15 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 					*building == STRUCT_TEMPLE) {
 					valuable_count++;
 				}
+				if (*building == STRUCT_HELIPAD) {
+					helipad_count++;
+				}
 				if (*building == STRUCT_GTOWER || *building == STRUCT_ATOWER || *building == STRUCT_TURRET ||
 					*building == STRUCT_OBELISK || *building == STRUCT_SAM) {
 					defense_count++;
+				}
+				if (*building == STRUCT_ATOWER || *building == STRUCT_SAM) {
+					anti_air_count++;
 				}
 			}
 		}
@@ -3317,11 +3903,33 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 		for (int index = 0; index < Units.Count(); index++) {
 			UnitClass * unit = Units.Ptr(index);
 
-			if (unit && !unit->IsInLimbo && unit->House == this && unit->Strength > 0 &&
-				*unit != UNIT_HARVESTER && *unit != UNIT_MCV) {
-				combat_units++;
+			if (unit && !unit->IsInLimbo && unit->House == this && unit->Strength > 0) {
+				if (*unit == UNIT_HARVESTER) {
+					harvester_count++;
+				} else if (*unit != UNIT_MCV) {
+					combat_units++;
+				}
 			}
 		}
+
+		for (int index = 0; index < Aircraft.Count(); index++) {
+			AircraftClass * aircraft = Aircraft.Ptr(index);
+
+			if (aircraft && !aircraft->IsInLimbo && aircraft->Strength > 0) {
+				if (aircraft->House == this) {
+					if (*aircraft != AIRCRAFT_TRANSPORT && *aircraft != AIRCRAFT_CARGO && *aircraft != AIRCRAFT_A10) {
+						combat_aircraft_count++;
+					}
+				} else if (!Is_Ally(aircraft)) {
+					if (*aircraft != AIRCRAFT_TRANSPORT && *aircraft != AIRCRAFT_CARGO && *aircraft != AIRCRAFT_A10) {
+						enemy_aircraft_count++;
+					}
+				}
+			}
+		}
+
+		recovery_mode = Skirmish_AI_Is_Recovery_Mode(flags, Power, Drain, refinery_count, combat_units);
+		economy_harassed = Skirmish_AI_Economy_Harassed(flags, under_pressure, refinery_count, harvester_count, combat_units);
 
 		if (!(flags & STRUCTF_POWER)) {
 			reserve_build = STRUCT_POWER;
@@ -3335,17 +3943,61 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 			reserve_build = STRUCT_WEAP;
 		} else if (ActLike == HOUSE_BAD && !(flags & STRUCTF_AIRSTRIP)) {
 			reserve_build = STRUCT_AIRSTRIP;
-		} else if (!(flags & STRUCTF_STORAGE) && Capacity > 0 && Tiberium > ((Capacity * 3) / 4)) {
+		} else if (!(flags & STRUCTF_STORAGE) && Capacity > 0 &&
+			Tiberium > (huge_map ? ((Capacity * 2) / 3) : ((Capacity * 3) / 4))) {
 			reserve_build = STRUCT_STORAGE;
-		} else if (big_map && refinery_count < 2) {
+		} else if (economy_harassed && refinery_count < 2 && harvester_count >= refinery_count) {
+			reserve_build = STRUCT_REFINERY;
+		} else if ((huge_map && refinery_count < 3 && harvester_count >= refinery_count) ||
+			(big_map && refinery_count < 2 && harvester_count >= refinery_count)) {
 			reserve_build = STRUCT_REFINERY;
 		} else if (!(flags & STRUCTF_RADAR)) {
 			reserve_build = STRUCT_RADAR;
+		} else if (enemy_aircraft_count > 0 && anti_air_count < MAX(1, enemy_aircraft_count / 2)) {
+			if (Can_Build(&BuildingTypeClass::As_Reference(STRUCT_SAM), ActLike)) {
+				reserve_build = STRUCT_SAM;
+			} else if ((flags & STRUCTF_EYE) && Can_Build(&BuildingTypeClass::As_Reference(STRUCT_ATOWER), ActLike)) {
+				reserve_build = STRUCT_ATOWER;
+			}
+		} else if (!(flags & STRUCTF_REPAIR) &&
+			((flags & (STRUCTF_WEAP | STRUCTF_AIRSTRIP)) || combat_units >= 4)) {
+			reserve_build = STRUCT_REPAIR;
+		} else if ((personality == 2 || enemy_aircraft_count > 0) && !(flags & STRUCTF_HELIPAD) &&
+			Can_Build(&BuildingTypeClass::As_Reference(STRUCT_HELIPAD), ActLike)) {
+			reserve_build = STRUCT_HELIPAD;
+		} else if (flags & STRUCTF_RADAR) {
+			desired_defense_count = MAX(1, (valuable_count + 1) / 2);
+			if (under_pressure) {
+				desired_defense_count++;
+				if (big_map) {
+					desired_defense_count++;
+				}
+			}
+			if (economy_harassed) {
+				desired_defense_count++;
+			}
+			if (defense_count < desired_defense_count) {
+				if (ActLike == HOUSE_GOOD) {
+					if ((flags & STRUCTF_EYE) && !(flags & STRUCTF_ATOWER) &&
+						Can_Build(&BuildingTypeClass::As_Reference(STRUCT_ATOWER), ActLike)) {
+						reserve_build = STRUCT_ATOWER;
+					} else {
+						reserve_build = STRUCT_GTOWER;
+					}
+				} else {
+					if ((flags & STRUCTF_TEMPLE) && !(flags & STRUCTF_OBELISK) &&
+						Can_Build(&BuildingTypeClass::As_Reference(STRUCT_OBELISK), ActLike)) {
+						reserve_build = STRUCT_OBELISK;
+					} else {
+						reserve_build = STRUCT_TURRET;
+					}
+				}
+			}
 		} else if (ActLike == HOUSE_GOOD && !(flags & STRUCTF_EYE)) {
 			reserve_build = STRUCT_EYE;
 		} else if (ActLike == HOUSE_BAD && !(flags & STRUCTF_TEMPLE)) {
 			reserve_build = STRUCT_TEMPLE;
-		} else if (defense_count < MAX(1, valuable_count)) {
+		} else if ((flags & STRUCTF_RADAR) && defense_count < MAX(1, (valuable_count + 1) / 2)) {
 			if (ActLike == HOUSE_GOOD) {
 				if ((flags & STRUCTF_EYE) && !(flags & STRUCTF_ATOWER) &&
 					Can_Build(&BuildingTypeClass::As_Reference(STRUCT_ATOWER), ActLike)) {
@@ -3425,17 +4077,111 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 					int bestcount = 0;
 					UnitType bestlist[8];
 					long money = Available_Money();
+					int personality = Skirmish_AI_Personality(this);
+					int refinery_count = 0;
+					int harvester_count = 0;
+					int enemy_infantry = 0;
+					int enemy_units = 0;
+					int enemy_buildings = 0;
+					bool late_game = ((flags & STRUCTF_RADAR) &&
+						((flags & STRUCTF_REPAIR) || (flags & STRUCTF_EYE) || (flags & STRUCTF_TEMPLE) ||
+						 (flags & STRUCTF_ADVANCED_POWER)));
+
+					if (recovery_mode && reserve_build != STRUCT_NONE) {
+						break;
+					}
+
+					if (economy_harassed && reserve_build != STRUCT_NONE) {
+						break;
+					}
 
 					if (reserve && money < reserve + 600) {
 						break;
 					}
 
+					Skirmish_AI_Enemy_Mix(this, enemy_infantry, enemy_units, enemy_buildings);
+
+					for (int idx = 0; idx < Buildings.Count(); idx++) {
+						BuildingClass * building = Buildings.Ptr(idx);
+
+						if (building && !building->IsInLimbo && building->House == this && building->Strength > 0 &&
+							*building == STRUCT_REFINERY) {
+							refinery_count++;
+						}
+					}
+
+					for (int idx = 0; idx < Units.Count(); idx++) {
+						UnitClass * unit = Units.Ptr(idx);
+
+						if (unit && !unit->IsInLimbo && unit->House == this && unit->Strength > 0 &&
+							*unit == UNIT_HARVESTER) {
+							harvester_count++;
+						}
+					}
+
+					if (refinery_count >= 2 && harvester_count < refinery_count &&
+						Can_Build(UNIT_HARVESTER, ActLike) &&
+						UnitTypeClass::As_Reference(UNIT_HARVESTER).Cost_Of() <= money &&
+						(!reserve || (money - UnitTypeClass::As_Reference(UNIT_HARVESTER).Cost_Of()) >= reserve)) {
+						techno = &UnitTypeClass::As_Reference(UNIT_HARVESTER);
+						break;
+					}
+
 					for (int idx = 0; idx < list_count; idx++) {
 						UnitType utype = list[idx];
+						bool prefer = true;
+
+						switch (personality) {
+							default:
+							case 0:
+								prefer = (ActLike == HOUSE_BAD) ? (utype == UNIT_BUGGY || utype == UNIT_BIKE || utype == UNIT_FTANK)
+									: (utype == UNIT_JEEP || utype == UNIT_APC);
+								break;
+
+							case 1:
+								prefer = (ActLike == HOUSE_BAD) ? (utype == UNIT_LTANK || utype == UNIT_ARTY || utype == UNIT_STANK)
+									: (utype == UNIT_MTANK || utype == UNIT_MLRS || utype == UNIT_HTANK);
+								break;
+
+							case 2:
+								prefer = (ActLike == HOUSE_BAD) ? (utype == UNIT_BIKE || utype == UNIT_BUGGY || utype == UNIT_STANK)
+									: (utype == UNIT_MLRS || utype == UNIT_APC || utype == UNIT_JEEP);
+								break;
+						}
+
+						if (late_game) {
+							if (ActLike == HOUSE_BAD) {
+								if (utype == UNIT_STANK || utype == UNIT_FTANK || utype == UNIT_ARTY) {
+									prefer = true;
+								}
+							} else {
+								if (utype == UNIT_HTANK || utype == UNIT_MLRS) {
+									prefer = true;
+								}
+							}
+						}
+
+						if (enemy_infantry > enemy_units + 2) {
+							if (utype == UNIT_BUGGY || utype == UNIT_FTANK || utype == UNIT_JEEP || utype == UNIT_APC) {
+								prefer = true;
+							}
+						}
+						if (enemy_units > enemy_infantry + 1) {
+							if (utype == UNIT_MTANK || utype == UNIT_HTANK || utype == UNIT_LTANK || utype == UNIT_STANK ||
+								utype == UNIT_BIKE || utype == UNIT_MLRS || utype == UNIT_ARTY) {
+								prefer = true;
+							}
+						}
+						if (enemy_buildings >= MAX(3, enemy_units) &&
+							(utype == UNIT_MLRS || utype == UNIT_ARTY || utype == UNIT_HTANK || utype == UNIT_STANK)) {
+							prefer = true;
+						}
+
 						if (Can_Build(utype, ActLike) &&
 							UnitTypeClass::As_Reference(utype).Level <= BuildLevel &&
 							UnitTypeClass::As_Reference(utype).Cost_Of() <= money &&
-							(!reserve || (money - UnitTypeClass::As_Reference(utype).Cost_Of()) >= reserve)) {
+							(!reserve || (money - UnitTypeClass::As_Reference(utype).Cost_Of()) >= reserve) &&
+							(prefer || !bestcount)) {
 							bestlist[bestcount++] = utype;
 						}
 					}
@@ -3561,6 +4307,13 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 					InfantryType bestlist[8];
 					long money = Available_Money();
 					int unit_goal = 4;
+					int personality = Skirmish_AI_Personality(this);
+					int enemy_infantry = 0;
+					int enemy_units = 0;
+					int enemy_buildings = 0;
+					bool late_game = ((flags & STRUCTF_RADAR) &&
+						((flags & STRUCTF_REPAIR) || (flags & STRUCTF_EYE) || (flags & STRUCTF_TEMPLE) ||
+						 (flags & STRUCTF_ADVANCED_POWER)));
 
 					switch (MPlayerAISkill) {
 						default:
@@ -3577,7 +4330,21 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 							break;
 					}
 
+					if (personality == 0) {
+						unit_goal = MAX(1, unit_goal - 2);
+					} else if (personality == 1 || personality == 2) {
+						unit_goal += 1;
+					}
+
 					if ((flags & (STRUCTF_WEAP | STRUCTF_AIRSTRIP)) && combat_units < unit_goal) {
+						break;
+					}
+
+					if (recovery_mode && reserve_build != STRUCT_NONE) {
+						break;
+					}
+
+					if (economy_harassed && reserve_build != STRUCT_NONE) {
 						break;
 					}
 
@@ -3585,12 +4352,44 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 						break;
 					}
 
+					Skirmish_AI_Enemy_Mix(this, enemy_infantry, enemy_units, enemy_buildings);
+
 					for (int idx = 0; idx < list_count; idx++) {
 						InfantryType utype = list[idx];
+						bool prefer = true;
+
+						switch (personality) {
+							default:
+							case 0:
+								prefer = (utype == INFANTRY_E1 || utype == INFANTRY_E3 || utype == INFANTRY_E4);
+								break;
+
+							case 1:
+								prefer = (utype == INFANTRY_E2 || utype == INFANTRY_E3 || utype == INFANTRY_E5);
+								break;
+
+							case 2:
+								prefer = (utype == INFANTRY_E2 || utype == INFANTRY_E5);
+								break;
+						}
+
+						if (late_game && (utype == INFANTRY_E3 || utype == INFANTRY_E5)) {
+							prefer = true;
+						}
+
+						if (enemy_infantry > enemy_units + 2 && (utype == INFANTRY_E2 || utype == INFANTRY_E4)) {
+							prefer = true;
+						}
+						if ((enemy_units > enemy_infantry + 1 || enemy_buildings > enemy_infantry + 2) &&
+							(utype == INFANTRY_E3 || utype == INFANTRY_E5)) {
+							prefer = true;
+						}
+
 						if (Can_Build(utype, ActLike) &&
 							InfantryTypeClass::As_Reference(utype).Level <= BuildLevel &&
 							InfantryTypeClass::As_Reference(utype).Cost_Of() <= money &&
-							(!reserve || (money - InfantryTypeClass::As_Reference(utype).Cost_Of()) >= reserve)) {
+							(!reserve || (money - InfantryTypeClass::As_Reference(utype).Cost_Of()) >= reserve) &&
+							(prefer || !bestcount)) {
 							bestlist[bestcount++] = utype;
 						}
 					}
@@ -3691,6 +4490,51 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 			}
 			break;
 
+		case RTTI_AIRCRAFT:
+		case RTTI_AIRCRAFTTYPE:
+			if (GameToPlay == GAME_SKIRMISH && !IsHuman) {
+				AircraftType atype = (ActLike == HOUSE_GOOD) ? AIRCRAFT_ORCA : AIRCRAFT_HELICOPTER;
+				long money = Available_Money();
+				int desired_aircraft = 0;
+				bool late_game = ((flags & STRUCTF_RADAR) &&
+					((flags & STRUCTF_REPAIR) || (flags & STRUCTF_EYE) || (flags & STRUCTF_TEMPLE) ||
+					 (flags & STRUCTF_ADVANCED_POWER)));
+
+				if (recovery_mode && reserve_build != STRUCT_NONE) {
+					break;
+				}
+
+				if (economy_harassed) {
+					break;
+				}
+
+				if (!(flags & STRUCTF_HELIPAD)) {
+					break;
+				}
+				if (Skirmish_AI_Personality(this) == 2) {
+					desired_aircraft = MAX(desired_aircraft, helipad_count);
+				}
+				if (enemy_aircraft_count > 0) {
+					desired_aircraft = MAX(desired_aircraft, MIN(helipad_count, enemy_aircraft_count));
+				}
+				if (late_game) {
+					desired_aircraft = MAX(desired_aircraft, helipad_count);
+				}
+				if (desired_aircraft <= combat_aircraft_count) {
+					break;
+				}
+				if (reserve && money < reserve + 800) {
+					break;
+				}
+				if (Can_Build(atype, ActLike) &&
+					AircraftTypeClass::As_Reference(atype).Level <= BuildLevel &&
+					AircraftTypeClass::As_Reference(atype).Cost_Of() <= money &&
+					(!reserve || (money - AircraftTypeClass::As_Reference(atype).Cost_Of()) >= reserve)) {
+					techno = &AircraftTypeClass::As_Reference(atype);
+				}
+			}
+			break;
+
 		/*
 		**	Building construction is based upon the preconstruction list.
 		*/
@@ -3709,10 +4553,18 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 					}
 				} else if (GameToPlay == GAME_SKIRMISH && !IsHuman) {
 					StructType build = STRUCT_NONE;
+					bool late_game = false;
+					bool wants_air = false;
 
 					if (flags & STRUCTF_ADVANCED_POWER) flags |= STRUCTF_POWER;
 					if (flags & STRUCTF_HAND) flags |= STRUCTF_BARRACKS;
 					if (flags & STRUCTF_AIRSTRIP) flags |= STRUCTF_WEAP;
+					if (flags & STRUCTF_OBELISK) flags |= STRUCTF_ATOWER;
+
+					late_game = ((flags & STRUCTF_RADAR) &&
+						((flags & STRUCTF_REPAIR) || (flags & STRUCTF_EYE) || (flags & STRUCTF_TEMPLE) ||
+						 (flags & STRUCTF_ATOWER) || (flags & STRUCTF_OBELISK) || (flags & STRUCTF_ADVANCED_POWER)));
+					wants_air = (personality == 2 || enemy_aircraft_count > 0);
 
 					if (!(flags & STRUCTF_POWER)) {
 						build = STRUCT_POWER;
@@ -3726,8 +4578,29 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 						build = STRUCT_WEAP;
 					} else if (ActLike == HOUSE_BAD && !(flags & STRUCTF_AIRSTRIP)) {
 						build = STRUCT_AIRSTRIP;
+					} else if (ActLike == HOUSE_GOOD && !(flags & STRUCTF_RADAR)) {
+						build = STRUCT_RADAR;
+					} else if (!(flags & STRUCTF_REPAIR) &&
+						((flags & (STRUCTF_WEAP | STRUCTF_AIRSTRIP)) || combat_units >= 4)) {
+						build = STRUCT_REPAIR;
+					} else if (wants_air && !(flags & STRUCTF_HELIPAD) &&
+						Can_Build(&BuildingTypeClass::As_Reference(STRUCT_HELIPAD), ActLike)) {
+						build = STRUCT_HELIPAD;
+					} else if (ActLike == HOUSE_GOOD && !(flags & STRUCTF_EYE)) {
+						build = STRUCT_EYE;
+					} else if (ActLike == HOUSE_BAD && !(flags & STRUCTF_TEMPLE)) {
+						build = STRUCT_TEMPLE;
+					} else if ((Power - Drain) < 75 && !(flags & STRUCTF_ADVANCED_POWER) &&
+						Can_Build(&BuildingTypeClass::As_Reference(STRUCT_ADVANCED_POWER), ActLike)) {
+						build = STRUCT_ADVANCED_POWER;
 					} else if (reserve_build != STRUCT_NONE) {
 						build = reserve_build;
+					} else if (late_game && ActLike == HOUSE_GOOD && !(flags & STRUCTF_ATOWER) &&
+						(flags & STRUCTF_EYE) && Can_Build(&BuildingTypeClass::As_Reference(STRUCT_ATOWER), ActLike)) {
+						build = STRUCT_ATOWER;
+					} else if (late_game && ActLike == HOUSE_BAD && !(flags & STRUCTF_OBELISK) &&
+						(flags & STRUCTF_TEMPLE) && Can_Build(&BuildingTypeClass::As_Reference(STRUCT_OBELISK), ActLike)) {
+						build = STRUCT_OBELISK;
 					} else if (Power <= Drain) {
 						build = STRUCT_POWER;
 					} else if ((Tiberium / 2) > Capacity) {

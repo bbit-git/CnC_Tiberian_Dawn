@@ -259,6 +259,8 @@ extern int										MPlayerGhosts;
 extern int										MPlayerSolo;
 extern int										MPlayerAIs;
 extern int										MPlayerAISkill;
+extern int										MPlayerAIPersonality[MAX_PLAYERS];
+extern int										MPlayerAIWaveState[MAX_PLAYERS];
 extern int										MPlayerUnitCount;
 extern int										MPlayerCountMin[2];
 extern int										MPlayerCountMax[2];

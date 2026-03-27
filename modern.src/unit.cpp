@@ -98,6 +98,63 @@
 
 #include "function.h"
 
+
+static bool Skirmish_AI_Should_Repair(UnitClass const * unit)
+{
+	if (GameToPlay != GAME_SKIRMISH || !unit || unit->House->IsHuman) return(false);
+	if (*unit == UNIT_HARVESTER || *unit == UNIT_MCV || *unit == UNIT_GUNBOAT) return(false);
+	if (unit->Class->Primary == WEAPON_NONE) return(false);
+	if (unit->IsInLimbo || unit->Mission == MISSION_ENTER) return(false);
+	if (!(unit->House->BScan & STRUCTF_REPAIR)) return(false);
+
+	int ratio = unit->Health_Ratio();
+	int threshold = 0x0060;
+
+	switch (MPlayerAISkill) {
+		default:
+		case 0:
+			threshold = 0x00A0;
+			break;
+
+		case 1:
+			threshold = 0x0080;
+			break;
+
+		case 2:
+			threshold = 0x0060;
+			break;
+	}
+
+	if (ratio > threshold) {
+		return(false);
+	}
+
+	return(unit->Techno_Type_Class()->Cost_Of() >= 700 || unit->Class->IsScanner || *unit == UNIT_STANK);
+}
+
+
+static bool Skirmish_AI_Try_Repair(UnitClass * unit)
+{
+	if (!Skirmish_AI_Should_Repair(unit)) return(false);
+
+	BuildingClass * building = unit->Find_Docking_Bay(STRUCT_REPAIR, false);
+	if (!building) return(false);
+
+	if (unit->Team) {
+		unit->Team->Remove(unit);
+	}
+
+	unit->Assign_Target(TARGET_NONE);
+	unit->Assign_Destination(TARGET_NONE);
+
+	if (unit->Transmit_Message(RADIO_HELLO, building) == RADIO_ROGER) {
+		unit->Assign_Mission(MISSION_ENTER);
+		return(true);
+	}
+
+	return(false);
+}
+
 /*
 ** This contains the value of the Virtual Function Table Pointer
 */
@@ -1013,6 +1070,10 @@ ResultType UnitClass::Take_Damage(int & damage, int distance, WarheadType warhea
 			}
 		}
 
+		if (Skirmish_AI_Try_Repair(this)) {
+			return(res);
+		}
+
 		/*
 		**	Computer controlled harvester will radio for help if they are attacked.
 		*/
@@ -1223,6 +1284,10 @@ void UnitClass::Enter_Idle_Mode(bool initial)
 		Transmit_Message(RADIO_OVER_OUT);
 	}
 
+	if (Skirmish_AI_Try_Repair(this)) {
+		return;
+	}
+
 	if (Class->Primary == WEAPON_NONE) {
 		if (Class->IsToHarvest) {
 			if (!In_Radio_Contact() && Mission != MISSION_HARVEST) {
@@ -1255,7 +1320,9 @@ void UnitClass::Enter_Idle_Mode(bool initial)
 				if (GameToPlay == GAME_NORMAL || House->IsHuman) {
 					order = MISSION_GUARD;
 				} else {
-					if (GameToPlay != GAME_NORMAL) {
+					if (GameToPlay == GAME_SKIRMISH && !House->IsHuman && !Team) {
+						order = MISSION_GUARD;
+					} else if (GameToPlay != GAME_NORMAL) {
 						order = MISSION_TIMED_HUNT;
 					} else {
 						order = MISSION_HUNT;

@@ -115,6 +115,128 @@ static int Skirmish_AI_Cooldown_Delay(void)
 }
 
 
+static bool Skirmish_AI_Should_Rally(BuildingClass const * building, TechnoClass const * techno)
+{
+	if (GameToPlay != GAME_SKIRMISH || !building || !techno) return(false);
+	if (building->House->IsHuman) return(false);
+
+	switch (techno->What_Am_I()) {
+		case RTTI_INFANTRY:
+			return(((InfantryClass const *)techno)->Class->Type != INFANTRY_E7);
+
+		case RTTI_UNIT:
+			return(*((UnitClass const *)techno) != UNIT_HARVESTER && *((UnitClass const *)techno) != UNIT_MCV);
+
+		default:
+			break;
+	}
+
+	return(false);
+}
+
+
+static CELL Skirmish_AI_Find_Rally_Cell(BuildingClass const * building, TechnoClass const * techno)
+{
+	if (!Skirmish_AI_Should_Rally(building, techno)) return(0);
+
+	CELL anchor = Coord_Cell(building->Center_Coord());
+
+	for (int index = 0; index < Buildings.Count(); index++) {
+		BuildingClass * candidate = Buildings.Ptr(index);
+
+		if (candidate && !candidate->IsInLimbo && candidate->House == building->House && candidate->Strength > 0 &&
+			(*candidate == STRUCT_CONST || *candidate == STRUCT_WEAP || *candidate == STRUCT_AIRSTRIP ||
+			 *candidate == STRUCT_BARRACKS || *candidate == STRUCT_HAND)) {
+			anchor = Coord_Cell(candidate->Center_Coord());
+			if (*candidate == STRUCT_CONST) {
+				break;
+			}
+		}
+	}
+
+	int start = Random_Pick(0, 7);
+	static int const offset_x[8] = {0, 2, 2, 2, 0, -2, -2, -2};
+	static int const offset_y[8] = {-2, -2, 0, 2, 2, 2, 0, -2};
+
+	for (int ring = 2; ring <= 6; ring++) {
+		for (int step = 0; step < 8; step++) {
+			int dir = (start + step) & 7;
+			CELL cell = XY_Cell(Cell_X(anchor) + offset_x[dir] * ring, Cell_Y(anchor) + offset_y[dir] * ring);
+
+			if (Map.In_Radar(cell) && techno->Can_Enter_Cell(cell) == MOVE_OK) {
+				return(cell);
+			}
+		}
+	}
+
+	return(0);
+}
+
+
+static bool Skirmish_AI_Is_Defense(StructType type)
+{
+	switch (type) {
+		case STRUCT_GTOWER:
+		case STRUCT_ATOWER:
+		case STRUCT_TURRET:
+		case STRUCT_OBELISK:
+		case STRUCT_SAM:
+			return(true);
+
+		default:
+			break;
+	}
+
+	return(false);
+}
+
+
+static COORDINATE Skirmish_AI_Defense_Target(HouseClass const * house, COORDINATE fallback)
+{
+	COORDINATE best = fallback;
+	int bestdist = 0x7fffffff;
+	HousesType focus = house->WhoLastHurtMe;
+	HousesType owner = house->Class->House;
+
+	for (int index = 0; index < Buildings.Count(); index++) {
+		BuildingClass * building = Buildings.Ptr(index);
+
+		if (!building || building->IsInLimbo || building->Strength <= 0 || house->Is_Ally(building)) {
+			continue;
+		}
+		if (focus != HOUSE_NONE && focus != owner && building->Owner() != focus) {
+			continue;
+		}
+
+		int dist = ::Distance(building->Center_Coord(), fallback);
+		if (bestdist > dist) {
+			bestdist = dist;
+			best = building->Center_Coord();
+		}
+	}
+
+	if (bestdist != 0x7fffffff || focus == HOUSE_NONE || focus == owner) {
+		return(best);
+	}
+
+	for (int index = 0; index < Buildings.Count(); index++) {
+		BuildingClass * building = Buildings.Ptr(index);
+
+		if (!building || building->IsInLimbo || building->Strength <= 0 || house->Is_Ally(building)) {
+			continue;
+		}
+
+		int dist = ::Distance(building->Center_Coord(), fallback);
+		if (bestdist > dist) {
+			bestdist = dist;
+			best = building->Center_Coord();
+		}
+	}
+
+	return(best);
+}
+
+
 enum SAMState {
 	SAM_NONE=-1,					// Used for non SAM site buildings.
 	SAM_UNDERGROUND,			// Launcher is underground and awaiting orders.
@@ -2146,6 +2268,13 @@ int BuildingClass::Exit_Object(TechnoClass * base)
 						base->Mark(MARK_DOWN);
 						Transmit_Message(RADIO_HELLO, base);
 						Transmit_Message(RADIO_TETHER);
+						if (Skirmish_AI_Should_Rally(this, base)) {
+							CELL rally = Skirmish_AI_Find_Rally_Cell(this, base);
+
+							if (rally) {
+								base->Assign_Destination(::As_Target(rally));
+							}
+						}
 						Assign_Mission(MISSION_UNLOAD);
 						ScenarioInit--;
 						return(2);
@@ -2178,12 +2307,17 @@ int BuildingClass::Exit_Object(TechnoClass * base)
 					if (found) {
 						DirType	dir = Direction(cell);
 						COORDINATE		start = Coord_Add(Coord, Class->ExitPoint);
+						CELL rally = Skirmish_AI_Find_Rally_Cell(this, base);
 
 						ScenarioInit++;
 						if (base->Unlimbo(start, dir)) {
 
 							base->Assign_Mission(MISSION_MOVE);
-							base->Assign_Destination(::As_Target(cell));
+							if (rally) {
+								base->Assign_Destination(::As_Target(rally));
+							} else {
+								base->Assign_Destination(::As_Target(cell));
+							}
 
 							/*
 							**	Establish radio contact so unload coordination can occur. This
@@ -2226,6 +2360,10 @@ int BuildingClass::Exit_Object(TechnoClass * base)
 							CELL yardcell = Coord_Cell(yard->Coord);
 							BuildingClass * bldg = (BuildingClass *)base;
 							bool waiting = false;
+							bool is_defense = Skirmish_AI_Is_Defense(bldg->Class->Type);
+							CELL bestcell = 0;
+							int bestscore = 0x7fffffff;
+							COORDINATE enemy = Skirmish_AI_Defense_Target(House, yard->Center_Coord());
 
 							for (int dist = 0; dist < 12; dist++) {
 								for (int dy = -dist; dy <= dist; dy++) {
@@ -2242,14 +2380,31 @@ int BuildingClass::Exit_Object(TechnoClass * base)
 										if (!bldg->Class->Legal_Placement(placecell)) {
 											continue;
 										}
-										if (Flush_For_Placement(base, placecell)) {
-											waiting = true;
-											continue;
-										}
-										if (base->Unlimbo(Cell_Coord(placecell))) {
-											return(2);
+										if (is_defense) {
+											int score = ::Distance(Cell_Coord(placecell), enemy);
+
+											if (bestcell == 0 || bestscore > score) {
+												bestscore = score;
+												bestcell = placecell;
+											}
+										} else {
+											if (Flush_For_Placement(base, placecell)) {
+												waiting = true;
+												continue;
+											}
+											if (base->Unlimbo(Cell_Coord(placecell))) {
+												return(2);
+											}
 										}
 									}
+								}
+							}
+
+							if (is_defense && bestcell) {
+								if (Flush_For_Placement(base, bestcell)) {
+									waiting = true;
+								} else if (base->Unlimbo(Cell_Coord(bestcell))) {
+									return(2);
 								}
 							}
 
@@ -4677,7 +4832,12 @@ int BuildingClass::Mission_Unload(void)
 				if (Is_Door_Open()) {
 					unit = (UnitClass *)Contact_With_Whom();
 					if (unit) {
+						CELL rally = Skirmish_AI_Find_Rally_Cell(this, unit);
+
 						unit->Assign_Mission(MISSION_MOVE);
+						if (rally) {
+							unit->Assign_Destination(::As_Target(rally));
+						}
 						unit->Force_Track(DriveClass::OUT_OF_WEAPON_FACTORY, Adjacent_Cell(Center_Coord(), FACING_SW));
 						unit->Set_Speed(128);
 						Status = LEAVE;

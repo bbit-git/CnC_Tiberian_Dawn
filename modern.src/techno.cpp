@@ -116,6 +116,129 @@
 
 #include "function.h"
 
+enum SkirmishTargetPhaseType {
+	SKIRMISH_TARGET_EARLY,
+	SKIRMISH_TARGET_MID,
+	SKIRMISH_TARGET_LATE
+};
+
+static SkirmishTargetPhaseType Skirmish_Target_Phase(HouseClass const * house)
+{
+	if (!house) {
+		return(SKIRMISH_TARGET_MID);
+	}
+
+	unsigned int flags = house->ActiveBScan;
+
+	if ((flags & (STRUCTF_EYE | STRUCTF_TEMPLE | STRUCTF_OBELISK | STRUCTF_ATOWER | STRUCTF_ADVANCED_POWER)) != 0) {
+		return(SKIRMISH_TARGET_LATE);
+	}
+
+	if ((flags & (STRUCTF_RADAR | STRUCTF_WEAP | STRUCTF_AIRSTRIP | STRUCTF_REPAIR)) != 0) {
+		return(SKIRMISH_TARGET_MID);
+	}
+
+	return(SKIRMISH_TARGET_EARLY);
+}
+
+
+static int Skirmish_Target_Phase_Adjustment(BuildingClass const * building, SkirmishTargetPhaseType phase)
+{
+	if (!building) {
+		return(0);
+	}
+
+	switch (phase) {
+		case SKIRMISH_TARGET_EARLY:
+			switch (*building) {
+				case STRUCT_REFINERY:
+					return(2200);
+
+				case STRUCT_GTOWER:
+				case STRUCT_TURRET:
+					return(1600);
+
+				case STRUCT_POWER:
+					return(1200);
+
+				case STRUCT_WEAP:
+				case STRUCT_AIRSTRIP:
+					return(1000);
+
+				case STRUCT_CONST:
+				case STRUCT_EYE:
+				case STRUCT_TEMPLE:
+				case STRUCT_OBELISK:
+				case STRUCT_ATOWER:
+				case STRUCT_SAM:
+					return(-800);
+
+				default:
+					break;
+			}
+			break;
+
+		case SKIRMISH_TARGET_MID:
+			switch (*building) {
+				case STRUCT_WEAP:
+				case STRUCT_AIRSTRIP:
+					return(2000);
+
+				case STRUCT_POWER:
+				case STRUCT_ADVANCED_POWER:
+					return(1800);
+
+				case STRUCT_REPAIR:
+				case STRUCT_RADAR:
+					return(1600);
+
+				case STRUCT_CONST:
+					return(1200);
+
+				case STRUCT_GTOWER:
+				case STRUCT_TURRET:
+					return(1000);
+
+				case STRUCT_STORAGE:
+					return(-1000);
+
+				default:
+					break;
+			}
+			break;
+
+		case SKIRMISH_TARGET_LATE:
+			switch (*building) {
+				case STRUCT_CONST:
+					return(2200);
+
+				case STRUCT_EYE:
+				case STRUCT_TEMPLE:
+					return(2400);
+
+				case STRUCT_OBELISK:
+				case STRUCT_ATOWER:
+				case STRUCT_SAM:
+					return(1800);
+
+				case STRUCT_WEAP:
+				case STRUCT_AIRSTRIP:
+				case STRUCT_REFINERY:
+					return(1200);
+
+				case STRUCT_STORAGE:
+					return(-1200);
+
+				default:
+					break;
+			}
+			break;
+	}
+
+	return(0);
+}
+
+
 static int Skirmish_Target_Adjustment(TechnoClass const * object)
 {
 	if (!object || GameToPlay != GAME_SKIRMISH) {
@@ -124,46 +247,67 @@ static int Skirmish_Target_Adjustment(TechnoClass const * object)
 
 	if (object->What_Am_I() == RTTI_BUILDING) {
 		BuildingClass const * building = (BuildingClass const *)object;
+		SkirmishTargetPhaseType phase = Skirmish_Target_Phase(building->House);
 
 		switch (*building) {
 			case STRUCT_STORAGE:
-				return(-1200);
+				return(-4000);
 
 			case STRUCT_CONST:
-				return(1600);
+				return(3200);
 
 			case STRUCT_REFINERY:
-				return(1400);
+				return(2600);
 
 			case STRUCT_WEAP:
 			case STRUCT_AIRSTRIP:
-				return(1500);
+				return(3000);
 
 			case STRUCT_REPAIR:
-				return(900);
+				return(1800);
 
 			case STRUCT_RADAR:
-				return(1200);
+				return(2200);
 
 			case STRUCT_EYE:
 			case STRUCT_TEMPLE:
-				return(1800);
+				return(3400);
 
 			case STRUCT_GTOWER:
 			case STRUCT_TURRET:
-				return(1000);
+				return(2400);
 
 			case STRUCT_ATOWER:
 			case STRUCT_OBELISK:
 			case STRUCT_SAM:
-				return(1300);
+				return(3000);
 
 			default:
 				break;
 		}
 
 		if (building->Class->Primary != WEAPON_NONE) {
-			return(900);
+			return(1800 + Skirmish_Target_Phase_Adjustment(building, phase));
+		}
+
+		return(Skirmish_Target_Phase_Adjustment(building, phase));
+	}
+
+	if (object->What_Am_I() == RTTI_UNIT) {
+		UnitClass const * unit = (UnitClass const *)object;
+		SkirmishTargetPhaseType phase = Skirmish_Target_Phase(unit->House);
+
+		if (*unit == UNIT_HARVESTER) {
+			switch (phase) {
+				case SKIRMISH_TARGET_EARLY:
+					return(2200);
+
+				case SKIRMISH_TARGET_MID:
+					return(1400);
+
+				case SKIRMISH_TARGET_LATE:
+					return(800);
+			}
 		}
 	}
 
@@ -3302,6 +3446,7 @@ void TechnoClass::Base_Is_Attacked(TechnoClass const *enemy)
 	int weakest = 0;
 	int desired = enemy->Risk() * 2;
 	int risktotal = 0;
+	bool skirmish_defense = (GameToPlay == GAME_SKIRMISH);
 
 	/*
 	** Humans have to deal with their own base is attacked problems.
@@ -3343,7 +3488,12 @@ void TechnoClass::Base_Is_Attacked(TechnoClass const *enemy)
 	** We will need units to defend our base.  We need to suspend teams until
 	** the situation has been dealt with.
 	*/
-	TeamClass::Suspend_Teams(20);
+	if (skirmish_defense) {
+		desired += enemy->Risk();
+		TeamClass::Suspend_Teams(30);
+	} else {
+		TeamClass::Suspend_Teams(20);
+	}
 
 	/*
 	** Loop through the infantry looking for those who are capable of going
