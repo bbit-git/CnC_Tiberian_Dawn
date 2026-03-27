@@ -367,6 +367,14 @@ void Main_Game(int argc, char *argv[])
 			PlaybackGame = 0;
 		}
 
+		/*
+		**	Local skirmish should return to the regular front-end state after
+		**	leaving the match, not stay latched in a multiplayer game type.
+		*/
+		if (GameToPlay == GAME_SKIRMISH) {
+			GameToPlay = GAME_NORMAL;
+		}
+
 
 		/*
 		** If we were spawned from WChat then dont go back to the main menu - just quit

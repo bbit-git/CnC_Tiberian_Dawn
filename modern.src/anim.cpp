@@ -949,10 +949,10 @@ void AnimClass::Middle(void)
 
 		int radius = 3;
 		int rawdamage = 200;
+		Fade_Palette_To(WhitePalette, 30, NULL);
 		if (GameToPlay == GAME_NORMAL) {
 			radius = 4;
 			rawdamage = 1000;
-			Fade_Palette_To(WhitePalette, 30, NULL);
 		}
 		for (int x = -radius; x <= radius; x++) {
 			for (int y = -radius; y <= radius; y++) {
@@ -979,9 +979,7 @@ void AnimClass::Middle(void)
 			}
 		}
 		Shake_Screen(3);
-		if (GameToPlay == GAME_NORMAL) {
-			Fade_Palette_To(GamePalette, 15, NULL);
-		}
+		Fade_Palette_To(GamePalette, 15, NULL);
 	}
 
 	/*

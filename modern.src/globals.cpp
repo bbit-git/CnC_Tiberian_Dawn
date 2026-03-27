@@ -575,6 +575,8 @@ int MPlayerTiberium;				// 1 = tiberium enabled for this scenario
 int MPlayerGoodies;				// 1 = goodies enabled for this scenario
 int MPlayerGhosts;				// 1 = houses with no players will still play
 int MPlayerSolo = 0;				// 1 = allows a single-player net game
+int MPlayerAIs = 3;				// # computer opponents for skirmish
+int MPlayerAISkill = 1;			// 0 = easy, 1 = normal, 2 = hard
 int MPlayerUnitCount = 10;		// # units for non-base multiplayer scenarios
 
 
@@ -653,6 +655,7 @@ int MPlayerGamesPlayed;					// # games played this run
 int MPlayerNumScores;					// # active entries in MPlayerScore
 int MPlayerWinner;						// index of winner of last game
 int MPlayerCurGame;						// index of current game being played
+bool PendingSkirmishLoad = false;
 
 
 //
@@ -1043,4 +1046,3 @@ bool				GameStatisticsPacketSent;
 bool				ConnectionLost;
 
 TheaterType		LastTheater = THEATER_NONE;
-

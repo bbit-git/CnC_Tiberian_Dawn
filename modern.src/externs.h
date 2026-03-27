@@ -257,6 +257,8 @@ extern int										MPlayerTiberium;
 extern int										MPlayerGoodies;
 extern int										MPlayerGhosts;
 extern int										MPlayerSolo;
+extern int										MPlayerAIs;
+extern int										MPlayerAISkill;
 extern int										MPlayerUnitCount;
 extern int										MPlayerCountMin[2];
 extern int										MPlayerCountMax[2];
@@ -275,6 +277,7 @@ extern int										MPlayerGamesPlayed;
 extern int										MPlayerNumScores;
 extern int										MPlayerWinner;
 extern int										MPlayerCurGame;
+extern bool										PendingSkirmishLoad;
 
 extern int										TheirProcessTime[MAX_PLAYERS - 1];
 extern int										DesiredFrameRate;

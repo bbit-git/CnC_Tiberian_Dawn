@@ -99,6 +99,21 @@
 
 #include "function.h"
 
+static int Skirmish_AI_Cooldown_Delay(void)
+{
+	switch (MPlayerAISkill) {
+		default:
+		case 0:
+			return(TICKS_PER_SECOND * 5);
+
+		case 1:
+			return(TICKS_PER_SECOND * 3);
+
+		case 2:
+			return(TICKS_PER_SECOND * 1);
+	}
+}
+
 
 enum SAMState {
 	SAM_NONE=-1,					// Used for non SAM site buildings.
@@ -1096,8 +1111,9 @@ void BuildingClass::AI(void)
 	**	all production control.
 	*/
 	if (Factory && Factory->Has_Completed() && PlacementDelay.Expired()) {
+		int exit_result = Exit_Object(Factory->Get_Object());
 
-		switch (Exit_Object(Factory->Get_Object())) {
+		switch (exit_result) {
 
 			/*
 			**	If the object could not leave the factory, then either request
@@ -1111,13 +1127,16 @@ void BuildingClass::AI(void)
 				break;
 
 			case 1:
-				PlacementDelay = TICKS_PER_SECOND*3;
+				PlacementDelay = (GameToPlay == GAME_SKIRMISH && !House->IsHuman) ? Skirmish_AI_Cooldown_Delay() : TICKS_PER_SECOND*3;
 				break;
 
 			case 2:
 				Factory->Completed();
 				delete Factory;
 				Factory = 0;
+				if (GameToPlay == GAME_SKIRMISH && !House->IsHuman) {
+					PlacementDelay = Skirmish_AI_Cooldown_Delay();
+				}
 				break;
 
 		}
@@ -1169,7 +1188,8 @@ void BuildingClass::AI(void)
 				**	money available. In cases where there is no practical money left, then
 				**	production can never complete -- don't bother starting it.
 				*/
-				if (House->IsStarted && House->Available_Money() > 10) {
+				if (House->IsStarted && House->Available_Money() > 10 &&
+					(GameToPlay != GAME_SKIRMISH || House->IsHuman || PlacementDelay.Expired())) {
 					TechnoTypeClass const * techno = House->Suggest_New_Object(Class->ToBuild);
 
 					/*
@@ -1183,6 +1203,16 @@ void BuildingClass::AI(void)
 								delete Factory;
 								Factory = 0;
 							} else {
+								if (GameToPlay == GAME_SKIRMISH && !House->IsHuman) {
+									DBG("Skirmish AI build start: house=%d factory=%d type=%d ini=%s cost=%d level=%d credits=%ld",
+										House->Class->House,
+										Class->Type,
+										techno->What_Am_I(),
+										techno->IniName ? techno->IniName : "<null>",
+										techno->Cost_Of(),
+										techno->Level,
+										House->Available_Money());
+								}
 								Factory->Start();
 							}
 						}
@@ -2188,6 +2218,47 @@ int BuildingClass::Exit_Object(TechnoClass * base)
 					if (base->Unlimbo(node->Coord)) {
 						return(2);
 					}
+				} else if (GameToPlay == GAME_SKIRMISH) {
+					for (int index = 0; index < Buildings.Count(); index++) {
+						BuildingClass * yard = Buildings.Ptr(index);
+
+						if (yard && !yard->IsInLimbo && yard->House == House && *yard == STRUCT_CONST) {
+							CELL yardcell = Coord_Cell(yard->Coord);
+							BuildingClass * bldg = (BuildingClass *)base;
+							bool waiting = false;
+
+							for (int dist = 0; dist < 12; dist++) {
+								for (int dy = -dist; dy <= dist; dy++) {
+									for (int dx = -dist; dx <= dist; dx++) {
+										if (dist > 0 && abs(dx) != dist && abs(dy) != dist) {
+											continue;
+										}
+
+										CELL placecell = yardcell + dx + (dy * MAP_CELL_W);
+
+										if (!Map.In_Radar(placecell)) {
+											continue;
+										}
+										if (!bldg->Class->Legal_Placement(placecell)) {
+											continue;
+										}
+										if (Flush_For_Placement(base, placecell)) {
+											waiting = true;
+											continue;
+										}
+										if (base->Unlimbo(Cell_Coord(placecell))) {
+											return(2);
+										}
+									}
+								}
+							}
+
+							if (waiting) {
+								return(1);
+							}
+							break;
+						}
+					}
 				}
 			}
 			break;
@@ -2557,7 +2628,8 @@ void BuildingClass::Grand_Opening(bool captured)
 	**	Refineries get a free harvester. Add a harvester to the reinforcement list
 	**	at this time.
 	*/
-	if (*this == STRUCT_REFINERY && !ScenarioInit && !captured && !Debug_Map && (!House->IsHuman || PurchasePrice == 0 || PurchasePrice > Class->Raw_Cost())) {
+	if (*this == STRUCT_REFINERY && !ScenarioInit && !captured && !Debug_Map && (PurchasePrice == 0 || PurchasePrice > Class->Raw_Cost())) {
+		PurchasePrice = Class->Raw_Cost();
 		CELL cell = Coord_Cell(Adjacent_Cell(Center_Coord(), DIR_SW));
 //		if (!Map[cell].Cell_Unit()) {
 			UnitClass * unit = new UnitClass(UNIT_HARVESTER, House->Class->House);
@@ -2593,7 +2665,8 @@ void BuildingClass::Grand_Opening(bool captured)
 	/*
 	**	Helicopter pads get a free attack helicopter.
 	*/
-	if (*this == STRUCT_HELIPAD && !captured && (!House->IsHuman || PurchasePrice == 0 || PurchasePrice > Class->Raw_Cost())) {
+	if (*this == STRUCT_HELIPAD && !captured && (PurchasePrice == 0 || PurchasePrice > Class->Raw_Cost())) {
+		PurchasePrice = Class->Raw_Cost();
 		ScenarioInit++;
 		AircraftClass * air = 0;
 		if (House->ActLike == HOUSE_GOOD) {

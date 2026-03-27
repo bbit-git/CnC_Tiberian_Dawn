@@ -45,8 +45,11 @@
 
 #include "function.h"
 
+extern void CC_Texture_Fill(void const *shapefile, int shapenum, int xpos, int ypos, int width, int height);
+
 static void Garble_Message(char *buf);
 static void Prepare_Skirmish_Player_State(char const *namebuf, int scenario_index);
+static bool Load_Skirmish_Game(void);
 
 int Choose_Internet_Game(void);
 int Get_Internet_Host_Or_Join(void);
@@ -78,7 +81,7 @@ GameType Select_MPlayer_Game (void)
 	Dialog & button dimensions
 	........................................................................*/
 	int	d_dialog_w = 190*factor;
-	int	d_dialog_h = 26*4*factor;
+	int	d_dialog_h = 26*5*factor;
 	int 	d_dialog_x = ((SeenBuff.Get_Width() - d_dialog_w) / 2);
 //	d_dialog_y = ((200 - d_dialog_h) / 2),
 	int	d_dialog_y = ((136*factor - d_dialog_h) / 2);
@@ -97,10 +100,15 @@ GameType Select_MPlayer_Game (void)
 	int	d_internet_x = d_dialog_cx - d_internet_w / 2;
 	int	d_internet_y = d_modemserial_y + d_modemserial_h + 2*factor;
 #endif	//(0)
+	int	d_load_w = 80*factor;
+	int	d_load_h = 9*factor;
+	int	d_load_x = d_dialog_cx - d_load_w / 2;
+	int	d_load_y = d_modemserial_y + d_modemserial_h + 2*factor;
+
 	int 	d_ipx_w = 80*factor;
 	int	d_ipx_h = 9*factor;
 	int	d_ipx_x = d_dialog_cx - d_ipx_w / 2;
-	int 	d_ipx_y = d_modemserial_y + d_modemserial_h + 2*factor;
+	int 	d_ipx_y = d_load_y + d_load_h + 2*factor;
 //	int 	d_ipx_y = d_internet_y + d_internet_h + 2*factor;
 
 	int	d_cancel_w = 60*factor;
@@ -118,10 +126,11 @@ GameType Select_MPlayer_Game (void)
 #if	(0)
 		BUTTON_INTERNET,
 #endif	//(0)
+		BUTTON_LOAD,
 		BUTTON_IPX,
 		BUTTON_CANCEL,
 
-		NUM_OF_BUTTONS = 3,
+		NUM_OF_BUTTONS = 4,
 	};
 	number_of_buttons = NUM_OF_BUTTONS;
 	/*........................................................................
@@ -164,6 +173,9 @@ GameType Select_MPlayer_Game (void)
 	TextButtonClass modemserialbtn (BUTTON_MODEMSERIAL, "Skirmish",
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
 		d_modemserial_x, d_modemserial_y, d_modemserial_w, d_modemserial_h);
+	TextButtonClass loadbtn (BUTTON_LOAD, "Load Skirmish",
+		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
+		d_load_x, d_load_y, d_load_w, d_load_h);
 #if (0)
 	TextButtonClass internetbtn (BUTTON_INTERNET, TXT_INTERNET,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
@@ -186,6 +198,7 @@ GameType Select_MPlayer_Game (void)
 	............................ Create the list .............................
 	*/
 	commands = &modemserialbtn;
+	loadbtn.Add_Tail(*commands);
 #if (0)
 	internetbtn.Add_Tail(*commands);
 #endif	//(0)
@@ -199,14 +212,15 @@ GameType Select_MPlayer_Game (void)
 	*/
 	curbutton = 0;
 	buttons[0] = &modemserialbtn;
+	buttons[1] = &loadbtn;
 #if (0)
 	buttons[1] = &internetbtn;
 #endif	//(0)
 	if (ipx_avail){
-		buttons[1] = &ipxbtn;
-		buttons[2] = &cancelbtn;
+		buttons[2] = &ipxbtn;
+		buttons[3] = &cancelbtn;
 	}else{
-		buttons[1] = &cancelbtn;
+		buttons[2] = &cancelbtn;
 		number_of_buttons--;
 	}
 
@@ -285,6 +299,11 @@ GameType Select_MPlayer_Game (void)
 				break;
 #endif	//(0)
 
+			case (BUTTON_LOAD | KN_BUTTON):
+				selection = BUTTON_LOAD;
+				pressed = true;
+				break;
+
 			case (BUTTON_IPX | KN_BUTTON):
 				selection = BUTTON_IPX;
 				pressed = true;
@@ -317,8 +336,20 @@ GameType Select_MPlayer_Game (void)
 				break;
 
 			case KN_RETURN:
-				selection = curbutton + BUTTON_MODEMSERIAL;
-				if (!ipx_avail) selection--;
+				switch (curbutton) {
+					case 0:
+						selection = BUTTON_MODEMSERIAL;
+						break;
+					case 1:
+						selection = BUTTON_LOAD;
+						break;
+					case 2:
+						selection = ipx_avail ? BUTTON_IPX : BUTTON_CANCEL;
+						break;
+					default:
+						selection = BUTTON_CANCEL;
+						break;
+				}
 				pressed = true;
 				break;
 
@@ -349,6 +380,16 @@ GameType Select_MPlayer_Game (void)
 					retval = Com_Scenario_Dialog() ? GAME_SKIRMISH : GAME_NORMAL;
 
 					if (retval != GAME_NORMAL) {
+						process = false;
+					} else {
+						buttons[curbutton]->IsPressed = false;
+						display = REDRAW_ALL;
+					}
+					break;
+
+				case (BUTTON_LOAD):
+					if (Load_Skirmish_Game()) {
+						retval = GAME_SKIRMISH;
 						process = false;
 					} else {
 						buttons[curbutton]->IsPressed = false;
@@ -534,49 +575,48 @@ int Com_Scenario_Dialog(void)
 	int d_scenariolist_x = d_dialog_cx - (d_scenariolist_w / 2);
 	int d_scenariolist_y = d_credits_y + d_credits_h + d_margin1 + d_txt6_h;
 
-	int d_count_w = 25*factor;
-	int d_count_h = 7*factor;
-	int d_count_y = d_scenariolist_y + d_scenariolist_h + factor;
-
 	int d_level_w = 25*factor;
 	int d_level_h = 7*factor;
-	int d_level_y = d_count_y;
+	int d_level_y = d_scenariolist_y + d_scenariolist_h + factor;
 
-	int d_bases_w = 110*factor;
-	int d_bases_h = 9*factor;
-	int d_bases_x = d_dialog_cx - d_bases_w - d_margin2;
-	int d_bases_y = d_count_y + d_count_h + factor;
+	int d_count_w = 25*factor;
+	int d_count_h = 7*factor;
+	int d_count_y = d_level_y + d_level_h + factor;
 
-	int d_goodies_w = 110*factor;
-	int d_goodies_h = 9*factor;
-	int d_goodies_x = d_dialog_cx + d_margin2;
-	int d_goodies_y = d_bases_y;
+	int d_ai_w = 25*factor;
+	int d_ai_h = 7*factor;
+	int d_ai_y = d_count_y + d_count_h + factor;
+
+	int d_skill_w = 25*factor;
+	int d_skill_h = 7*factor;
+	int d_skill_y = d_ai_y + d_ai_h + factor;
+
+	int d_options_w = 110*factor;
+	int d_options_h = 37*factor;
+	int d_options_x = d_dialog_cx + d_margin2;
+	int d_options_y = d_count_y + d_count_h + factor;
 
 	int d_count_x = d_dialog_cx - d_count_w - ((2 * 6*factor) + 3*factor)
-					- ((d_bases_w - ((13 * 6*factor) + 3*factor + d_count_w)) / 2) - d_margin2;
+					- ((d_options_w - ((13 * 6*factor) + 3*factor + d_count_w)) / 2) - d_margin2;
 
-	int d_level_x = d_dialog_cx + (11 * 6*factor)
-					+ ((d_goodies_w - ((13 * 6*factor) + 3*factor + d_level_w)) / 2) + d_margin2;
+	int d_count_value_x = d_count_x + d_count_w + 6*factor;
+	int d_level_x = d_count_x;
+	int d_level_value_x = d_count_value_x;
 
-	int d_tiberium_w = 110*factor;
-	int d_tiberium_h = 9*factor;
-	int d_tiberium_x = d_dialog_cx - d_bases_w - d_margin2;
-	int d_tiberium_y = d_dialog_y + d_dialog_h - d_margin1 - d_tiberium_h - 9*factor;
-
-	int d_ghosts_w = 110*factor;
-	int d_ghosts_h = 9*factor;
-	int d_ghosts_x = d_dialog_cx + d_margin2;
-	int d_ghosts_y = d_tiberium_y;
+	int d_ai_x = d_count_x;
+	int d_ai_value_x = d_ai_x + d_ai_w + 6*factor;
+	int d_skill_x = d_count_x;
+	int d_skill_value_x = d_skill_x + d_skill_w + 6*factor;
 
 	int d_ok_w = 45*factor;
 	int d_ok_h = 9*factor;
-	int d_ok_x = d_tiberium_x + (d_tiberium_w / 2) - (d_ok_w / 2);
-	int d_ok_y = d_tiberium_y + d_tiberium_h + d_margin1;
+	int d_ok_x = d_dialog_cx - d_options_w - d_margin2 + (d_options_w / 2) - (d_ok_w / 2);
+	int d_ok_y = d_dialog_y + d_dialog_h - d_margin1 - d_ok_h;
 
 	int d_cancel_w = 45*factor;
 	int d_cancel_h = 9*factor;
-	int d_cancel_x = d_ghosts_x + (d_ghosts_w / 2) - (d_cancel_w / 2);
-	int d_cancel_y = d_tiberium_y + d_tiberium_h + d_margin1;
+	int d_cancel_x = d_options_x + (d_options_w / 2) - (d_cancel_w / 2);
+	int d_cancel_y = d_ok_y;
 
 	enum {
 		BUTTON_NAME = 100,
@@ -586,10 +626,9 @@ int Com_Scenario_Dialog(void)
 		BUTTON_SCENARIOLIST,
 		BUTTON_COUNT,
 		BUTTON_LEVEL,
-		BUTTON_BASES,
-		BUTTON_TIBERIUM,
-		BUTTON_GOODIES,
-		BUTTON_GHOSTS,
+		BUTTON_AI_PLAYERS,
+		BUTTON_AI_SKILL,
+		BUTTON_OPTIONS,
 		BUTTON_OK,
 		BUTTON_CANCEL,
 	};
@@ -607,9 +646,32 @@ int Com_Scenario_Dialog(void)
 	int retcode = 0;
 	char namebuf[MPLAYER_NAME_MAX] = {0};
 	char credbuf[CREDITSBUF_MAX];
+	char countbuf[8] = {0};
+	char levelbuf[8] = {0};
+	char aibuf[8] = {0};
+	char skillbuf[8] = {0};
+	char optionbases[] = " Bases";
+	char optiontiberium[] = " Tiberium";
+	char optiongoodies[] = " Crates";
+	char optioncapture[] = " Capture The Flag";
+	char const * skillnames[] = {"Easy", "Normal", "Hard"};
 	void const *up_button;
 	void const *down_button;
+	void const *dialog_texture;
 	static int first_time = 1;
+	auto redraw_value = [&](int x, int y, TextLabelClass& label) {
+		int value_w = String_Pixel_Width("000") + factor;
+		int value_h = FontHeight + FontYSpacing;
+
+		Hide_Mouse();
+		if (dialog_texture) {
+			CC_Texture_Fill(dialog_texture, InMainLoop, x - factor, y - factor, value_w, value_h);
+		} else {
+			LogicPage->Fill_Rect(x - factor, y - factor, x - factor + value_w, y - factor + value_h, CC_GREEN_BKGD);
+		}
+		label.Flag_To_Redraw();
+		Show_Mouse();
+	};
 
 	if (MPlayerScenarios.Count() == 0) {
 		Read_Scenario_Descriptions();
@@ -625,6 +687,7 @@ int Com_Scenario_Dialog(void)
 		up_button = Hires_Retrieve("BTN-UP2.SHP");
 		down_button = Hires_Retrieve("BTN-DN2.SHP");
 	}
+	dialog_texture = MixFileClass::Retrieve("BTEXTURE.SHP");
 
 	EditClass name_edt (BUTTON_NAME,
 		namebuf, MPLAYER_NAME_MAX,
@@ -652,25 +715,28 @@ int Com_Scenario_Dialog(void)
 
 	GaugeClass countgauge (BUTTON_COUNT,
 		d_count_x, d_count_y, d_count_w, d_count_h);
+	TextLabelClass countlabel(countbuf, d_count_value_x, d_count_y - factor, CC_GREEN,
+		TPF_NOSHADOW | TPF_6PT_GRAD | TPF_USE_GRAD_PAL);
 
 	GaugeClass levelgauge (BUTTON_LEVEL,
 		d_level_x, d_level_y, d_level_w, d_level_h);
+	TextLabelClass levellabel(levelbuf, d_level_value_x, d_level_y - factor, CC_GREEN,
+		TPF_NOSHADOW | TPF_6PT_GRAD | TPF_USE_GRAD_PAL);
 
-	TextButtonClass basesbtn(BUTTON_BASES, TXT_BASES_OFF,
-		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		d_bases_x, d_bases_y, d_bases_w, d_bases_h);
+	GaugeClass aiplayersgauge(BUTTON_AI_PLAYERS,
+		d_ai_x, d_ai_y, d_ai_w, d_ai_h);
+	TextLabelClass ailabel(aibuf, d_ai_value_x, d_ai_y - factor, CC_GREEN,
+		TPF_NOSHADOW | TPF_6PT_GRAD | TPF_USE_GRAD_PAL);
 
-	TextButtonClass tiberiumbtn(BUTTON_TIBERIUM, TXT_TIBERIUM_OFF,
-		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		d_tiberium_x, d_tiberium_y, d_tiberium_w, d_tiberium_h);
-
-	TextButtonClass goodiesbtn(BUTTON_GOODIES, TXT_CRATES_OFF,
-		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		d_goodies_x, d_goodies_y, d_goodies_w, d_goodies_h);
-
-	TextButtonClass ghostsbtn(BUTTON_GHOSTS, TXT_AI_PLAYERS_OFF,
-		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		d_ghosts_x, d_ghosts_y, d_ghosts_w, d_ghosts_h);
+	GaugeClass aiskillgauge(BUTTON_AI_SKILL,
+		d_skill_x, d_skill_y, d_skill_w, d_skill_h);
+	TextLabelClass skilllabel(skillbuf, d_skill_value_x, d_skill_y - factor, CC_GREEN,
+		TPF_NOSHADOW | TPF_6PT_GRAD | TPF_USE_GRAD_PAL);
+	CheckListClass optionslist(BUTTON_OPTIONS,
+		d_options_x, d_options_y, d_options_w, d_options_h,
+		TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
+		NULL,
+		NULL);
 
 	TextButtonClass okbtn(BUTTON_OK, TXT_OK,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
@@ -688,11 +754,14 @@ int Com_Scenario_Dialog(void)
 	credit_edt.Add_Tail(*commands);
 	scenariolist.Add_Tail(*commands);
 	countgauge.Add_Tail(*commands);
+	countlabel.Add_Tail(*commands);
 	levelgauge.Add_Tail(*commands);
-	basesbtn.Add_Tail(*commands);
-	tiberiumbtn.Add_Tail(*commands);
-	goodiesbtn.Add_Tail(*commands);
-	ghostsbtn.Add_Tail(*commands);
+	levellabel.Add_Tail(*commands);
+	aiplayersgauge.Add_Tail(*commands);
+	ailabel.Add_Tail(*commands);
+	aiskillgauge.Add_Tail(*commands);
+	skilllabel.Add_Tail(*commands);
+	optionslist.Add_Tail(*commands);
 	okbtn.Add_Tail(*commands);
 	cancelbtn.Add_Tail(*commands);
 
@@ -712,34 +781,46 @@ int Com_Scenario_Dialog(void)
 		MPlayerBases = 1;
 		MPlayerTiberium = 0;
 		MPlayerGoodies = 0;
-		MPlayerGhosts = 1;
+		MPlayerAIs = MPlayerMax - 1;
+		MPlayerGhosts = (MPlayerAIs > 0);
+		MPlayerAISkill = 1;
+		Special.IsCaptureTheFlag = 0;
 		MPlayerUnitCount = (MPlayerCountMax[MPlayerBases] + MPlayerCountMin[MPlayerBases]) / 2;
 		first_time = 0;
 	}
 
-	if (MPlayerBases) {
-		basesbtn.Turn_On();
-		basesbtn.Set_Text(TXT_BASES_ON);
-	}
-	if (MPlayerTiberium) {
-		tiberiumbtn.Turn_On();
-		tiberiumbtn.Set_Text(TXT_TIBERIUM_ON);
-	}
-	if (MPlayerGoodies) {
-		goodiesbtn.Turn_On();
-		goodiesbtn.Set_Text(TXT_CRATES_ON);
-	}
-	if (MPlayerGhosts) {
-		ghostsbtn.Turn_On();
-		ghostsbtn.Set_Text(TXT_AI_PLAYERS_ON);
-	}
+	MPlayerAIs = Bound(MPlayerAIs, 1, MPlayerMax - 1);
+	MPlayerAISkill = Bound(MPlayerAISkill, 0, 2);
+	MPlayerGhosts = 1;
+	MPlayerUnitCount = Bound(MPlayerUnitCount, MAX(1, MPlayerCountMin[MPlayerBases]), MPlayerCountMax[MPlayerBases]);
+	BuildLevel = Bound(BuildLevel, 1, MPLAYER_BUILD_LEVEL_MAX);
 
 	sprintf(credbuf, "%d", MPlayerCredits);
 	credit_edt.Set_Text(credbuf, CREDITSBUF_MAX);
 	levelgauge.Set_Maximum(MPLAYER_BUILD_LEVEL_MAX - 1);
 	levelgauge.Set_Value(BuildLevel - 1);
-	countgauge.Set_Maximum(MPlayerCountMax[MPlayerBases] - MPlayerCountMin[MPlayerBases]);
-	countgauge.Set_Value(MPlayerUnitCount - MPlayerCountMin[MPlayerBases]);
+	snprintf(levelbuf, sizeof(levelbuf), "%3d", BuildLevel);
+	levellabel.Set_Text(levelbuf);
+	aiplayersgauge.Set_Maximum(MPlayerMax - 2);
+	aiplayersgauge.Set_Value(MPlayerAIs - 1);
+	snprintf(aibuf, sizeof(aibuf), "%3d", MPlayerAIs);
+	ailabel.Set_Text(aibuf);
+	aiskillgauge.Set_Maximum(2);
+	aiskillgauge.Set_Value(MPlayerAISkill);
+	snprintf(skillbuf, sizeof(skillbuf), "%s", skillnames[MPlayerAISkill]);
+	skilllabel.Set_Text(skillbuf);
+	countgauge.Set_Maximum(MPlayerCountMax[MPlayerBases] - MAX(1, MPlayerCountMin[MPlayerBases]));
+	countgauge.Set_Value(MPlayerUnitCount - MAX(1, MPlayerCountMin[MPlayerBases]));
+	snprintf(countbuf, sizeof(countbuf), "%3d", MPlayerUnitCount);
+	countlabel.Set_Text(countbuf);
+	optionslist.Add_Item(optionbases);
+	optionslist.Add_Item(optiontiberium);
+	optionslist.Add_Item(optiongoodies);
+	optionslist.Add_Item(optioncapture);
+	optionslist.Check_Item(0, MPlayerBases);
+	optionslist.Check_Item(1, MPlayerTiberium);
+	optionslist.Check_Item(2, MPlayerGoodies);
+	optionslist.Check_Item(3, Special.IsCaptureTheFlag);
 	Special.IsTGrowth = MPlayerTiberium;
 	Special.IsTSpread = MPlayerTiberium;
 
@@ -803,6 +884,12 @@ int Com_Scenario_Dialog(void)
 			Fancy_Text_Print(TXT_LEVEL, d_level_x - 3*factor, d_level_y, CC_GREEN, TBLACK,
 				TPF_NOSHADOW | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_RIGHT);
 
+			Fancy_Text_Print(TXT_AI_PLAYERS_COLON, d_ai_x - 3*factor, d_ai_y, CC_GREEN, TBLACK,
+				TPF_NOSHADOW | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_RIGHT);
+
+			Fancy_Text_Print("AI Skill", d_skill_x - 3*factor, d_skill_y, CC_GREEN, TBLACK,
+				TPF_NOSHADOW | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_RIGHT);
+
 			commands->Flag_List_To_Redraw();
 			Show_Mouse();
 			display = REDRAW_NONE;
@@ -842,75 +929,66 @@ int Com_Scenario_Dialog(void)
 				break;
 
 			case (BUTTON_COUNT | KN_BUTTON):
-				MPlayerUnitCount = countgauge.Get_Value() + MPlayerCountMin[MPlayerBases];
+				MPlayerUnitCount = countgauge.Get_Value() + MAX(1, MPlayerCountMin[MPlayerBases]);
+				snprintf(countbuf, sizeof(countbuf), "%3d", MPlayerUnitCount);
+				countlabel.Set_Text(countbuf);
+				redraw_value(d_count_value_x, d_count_y - factor, countlabel);
 				break;
 
 			case (BUTTON_LEVEL | KN_BUTTON):
 				BuildLevel = levelgauge.Get_Value() + 1;
 				if (BuildLevel > MPLAYER_BUILD_LEVEL_MAX)
 					BuildLevel = MPLAYER_BUILD_LEVEL_MAX;
+				snprintf(levelbuf, sizeof(levelbuf), "%3d", BuildLevel);
+				levellabel.Set_Text(levelbuf);
+				redraw_value(d_level_value_x, d_level_y - factor, levellabel);
 				break;
 
-			case (BUTTON_BASES | KN_BUTTON):
-				if (MPlayerBases) {
-					MPlayerBases = 0;
-					basesbtn.Turn_Off();
-					basesbtn.Set_Text(TXT_BASES_OFF);
-					MPlayerUnitCount = Fixed_To_Cardinal (MPlayerCountMax[0]-MPlayerCountMin[0],
-						Cardinal_To_Fixed(MPlayerCountMax[1]-MPlayerCountMin[1],
-						MPlayerUnitCount-MPlayerCountMin[1])) + MPlayerCountMin[0];
-				} else {
-					MPlayerBases = 1;
-					basesbtn.Turn_On();
-					basesbtn.Set_Text(TXT_BASES_ON);
-					MPlayerUnitCount = Fixed_To_Cardinal (MPlayerCountMax[1]-MPlayerCountMin[1],
-						Cardinal_To_Fixed(MPlayerCountMax[0]-MPlayerCountMin[0],
-						MPlayerUnitCount-MPlayerCountMin[0])) + MPlayerCountMin[1];
-				}
-				countgauge.Set_Maximum(MPlayerCountMax[MPlayerBases] - MPlayerCountMin[MPlayerBases]);
-				countgauge.Set_Value(MPlayerUnitCount - MPlayerCountMin[MPlayerBases]);
-				display = REDRAW_ALL;
+			case (BUTTON_AI_PLAYERS | KN_BUTTON):
+				MPlayerAIs = aiplayersgauge.Get_Value() + 1;
+				MPlayerGhosts = 1;
+				snprintf(aibuf, sizeof(aibuf), "%3d", MPlayerAIs);
+				ailabel.Set_Text(aibuf);
+				redraw_value(d_ai_value_x, d_ai_y - factor, ailabel);
 				break;
 
-			case (BUTTON_TIBERIUM | KN_BUTTON):
-				if (MPlayerTiberium) {
-					MPlayerTiberium = 0;
-					Special.IsTGrowth = 0;
-					Special.IsTSpread = 0;
-					tiberiumbtn.Turn_Off();
-					tiberiumbtn.Set_Text(TXT_TIBERIUM_OFF);
-				} else {
-					MPlayerTiberium = 1;
-					Special.IsTGrowth = 1;
-					Special.IsTSpread = 1;
-					tiberiumbtn.Turn_On();
-					tiberiumbtn.Set_Text(TXT_TIBERIUM_ON);
-				}
+			case (BUTTON_AI_SKILL | KN_BUTTON):
+				MPlayerAISkill = Bound(aiskillgauge.Get_Value(), 0, 2);
+				snprintf(skillbuf, sizeof(skillbuf), "%s", skillnames[MPlayerAISkill]);
+				skilllabel.Set_Text(skillbuf);
+				redraw_value(d_skill_value_x, d_skill_y - factor, skilllabel);
 				break;
 
-			case (BUTTON_GOODIES | KN_BUTTON):
-				if (MPlayerGoodies) {
-					MPlayerGoodies = 0;
-					goodiesbtn.Turn_Off();
-					goodiesbtn.Set_Text(TXT_CRATES_OFF);
-				} else {
-					MPlayerGoodies = 1;
-					goodiesbtn.Turn_On();
-					goodiesbtn.Set_Text(TXT_CRATES_ON);
-				}
-				break;
+			case (BUTTON_OPTIONS | KN_BUTTON):
+			{
+				int oldbases = MPlayerBases;
 
-			case (BUTTON_GHOSTS | KN_BUTTON):
-				if (MPlayerGhosts) {
-					MPlayerGhosts = 0;
-					ghostsbtn.Turn_Off();
-					ghostsbtn.Set_Text(TXT_AI_PLAYERS_OFF);
-				} else {
-					MPlayerGhosts = 1;
-					ghostsbtn.Turn_On();
-					ghostsbtn.Set_Text(TXT_AI_PLAYERS_ON);
+				MPlayerBases = optionslist.Is_Checked(0);
+				MPlayerTiberium = optionslist.Is_Checked(1);
+				MPlayerGoodies = optionslist.Is_Checked(2);
+				Special.IsCaptureTheFlag = optionslist.Is_Checked(3);
+				Special.IsTGrowth = MPlayerTiberium;
+				Special.IsTSpread = MPlayerTiberium;
+
+				if (MPlayerBases != oldbases) {
+					if (MPlayerBases) {
+						MPlayerUnitCount = Fixed_To_Cardinal (MPlayerCountMax[1]-MPlayerCountMin[1],
+							Cardinal_To_Fixed(MPlayerCountMax[0]-MPlayerCountMin[0],
+							MPlayerUnitCount-MPlayerCountMin[0])) + MPlayerCountMin[1];
+					} else {
+						MPlayerUnitCount = Fixed_To_Cardinal (MPlayerCountMax[0]-MPlayerCountMin[0],
+							Cardinal_To_Fixed(MPlayerCountMax[1]-MPlayerCountMin[1],
+							MPlayerUnitCount-MPlayerCountMin[1])) + MPlayerCountMin[0];
+					}
+					MPlayerUnitCount = Bound(MPlayerUnitCount, MAX(1, MPlayerCountMin[MPlayerBases]), MPlayerCountMax[MPlayerBases]);
+					countgauge.Set_Maximum(MPlayerCountMax[MPlayerBases] - MAX(1, MPlayerCountMin[MPlayerBases]));
+					countgauge.Set_Value(MPlayerUnitCount - MAX(1, MPlayerCountMin[MPlayerBases]));
+					snprintf(countbuf, sizeof(countbuf), "%3d", MPlayerUnitCount);
+					countlabel.Set_Text(countbuf);
+					display = REDRAW_ALL;
 				}
 				break;
+			}
 
 			case (KN_RETURN):
 			case (BUTTON_OK | KN_BUTTON):
@@ -971,6 +1049,23 @@ static void Prepare_Skirmish_Player_State(char const *namebuf, int scenario_inde
 	if (BuildLevel > MPLAYER_BUILD_LEVEL_MAX) {
 		BuildLevel = MPLAYER_BUILD_LEVEL_MAX;
 	}
+}
+
+
+static bool Load_Skirmish_Game(void)
+{
+	GameType old_game = GameToPlay;
+	bool loaded = false;
+
+	GameToPlay = GAME_SKIRMISH;
+	if (LoadOptionsClass(LoadOptionsClass::LOAD).Process()) {
+		PendingSkirmishLoad = true;
+		loaded = true;
+	} else {
+		GameToPlay = old_game;
+	}
+
+	return(loaded);
 }
 
 

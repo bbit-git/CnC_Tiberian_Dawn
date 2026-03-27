@@ -53,6 +53,7 @@
 /************************************* Prototypes *********************************************/
 static void Assign_Houses(void);
 static void Remove_AI_Players(void);
+static void Trim_AI_Players(void);
 static void Create_Units(void);
 static void Sort_Cells(CELL *cells, int numcells, CELL *outcells);
 static int Furthest_Cell(CELL *cells, int numcells, CELL *tcells, int numtcells);
@@ -512,6 +513,9 @@ bool Read_Scenario_Ini(char *root, bool fresh)
 		if (!MPlayerGhosts && !Debug_Map) {
 			Remove_AI_Players();
 		} else {
+			if (GameToPlay == GAME_SKIRMISH && !Debug_Map) {
+				Trim_AI_Players();
+			}
 
 			/*
 			** If Ghosts are on, set up their houses for blitzing the humans
@@ -529,6 +533,9 @@ bool Read_Scenario_Ini(char *root, bool fresh)
 				for (int i = 0; i < MPlayerMax; i++) {
 					HousesType house = (HousesType)(i + (int)HOUSE_MULTI1);
 					HouseClass *housep = HouseClass::As_Pointer (house);
+					if (!housep) {
+						continue;
+					}
 					housep->BlitzTime = IRandom (rndmin,rndmax);
 				}
 
@@ -818,16 +825,18 @@ CCDebugString (wibble);
 	/*
 	**	Now make all computer-owned houses allies of each other.
 	*/
-	for (house = HOUSE_MULTI1; house < (HOUSE_MULTI1 + MPlayerMax); house++) {
-		housep = HouseClass::As_Pointer(house);
-		if (housep->IsHuman)
-			continue;
-
-		for (house2 = HOUSE_MULTI1; house2 < (HOUSE_MULTI1 + MPlayerMax); house2++) {
-			housep2 = HouseClass::As_Pointer (house2);
-			if (housep2->IsHuman)
+	if (GameToPlay != GAME_SKIRMISH) {
+		for (house = HOUSE_MULTI1; house < (HOUSE_MULTI1 + MPlayerMax); house++) {
+			housep = HouseClass::As_Pointer(house);
+			if (housep->IsHuman)
 				continue;
-			housep->Make_Ally(house2);
+
+			for (house2 = HOUSE_MULTI1; house2 < (HOUSE_MULTI1 + MPlayerMax); house2++) {
+				housep2 = HouseClass::As_Pointer (house2);
+				if (housep2->IsHuman)
+					continue;
+				housep->Make_Ally(house2);
+			}
 		}
 	}
 }
@@ -860,6 +869,44 @@ static void Remove_AI_Players(void)
 		if (housep->IsHuman == false) {
 			housep->Clobber_All();
 		}
+	}
+}
+
+
+/***********************************************************************************************
+ * Trim_AI_Players -- Limits skirmish to the selected number of AI opponents.                  *
+ *                                                                                             *
+ * INPUT:                                                                                      *
+ *      none.                                                                                  *
+ *                                                                                             *
+ * OUTPUT:                                                                                     *
+ *      none.                                                                                  *
+ *                                                                                             *
+ * WARNINGS:                                                                                   *
+ *      none.                                                                                  *
+ *                                                                                             *
+ * HISTORY:                                                                                    *
+ *   03/26/2026 EA : Created.                                                                  *
+ *=============================================================================================*/
+static void Trim_AI_Players(void)
+{
+	int ai_count = 0;
+	int ai_limit = Bound(MPlayerAIs, 0, MPlayerMax - 1);
+
+	for (int i = 0; i < MAX_PLAYERS; i++) {
+		HousesType house = (HousesType)(i + (int)HOUSE_MULTI1);
+		HouseClass *housep = HouseClass::As_Pointer (house);
+
+		if (!housep || housep->IsHuman) {
+			continue;
+		}
+
+		if (ai_count < ai_limit) {
+			ai_count++;
+			continue;
+		}
+
+		housep->Clobber_All();
 	}
 }
 
@@ -1091,53 +1138,40 @@ static void Create_Units(void)
 		}
 
 		/*---------------------------------------------------------------------
-		If Bases are ON, human & computer houses are treated differently
+		If Bases are ON, every house gets an MCV so AI skirmish opponents can
+		deploy and enter the normal base production path.
 		---------------------------------------------------------------------*/
 		if (MPlayerBases) {
 			/*..................................................................
-			- For a human-controlled house:
-			  - Set 'scaleval' to 1
-			  - Create an MCV
-			  - Attach a flag to it for capture-the-flag mode
+			- Set 'scaleval' to 1
+			- Create an MCV
+			- Attach a flag to it for capture-the-flag mode
+			- For computer-controlled houses, begin production and force the
+			  initial MCV to deploy.
 			..................................................................*/
-			if (hptr->IsHuman) {
-				scaleval = 1;
-				obj = new UnitClass (UNIT_MCV, h);
-				if (!obj->Unlimbo(Cell_Coord(centroid),DIR_N)) {
-					if (!Scan_Place_Object(obj, centroid)) {
-						delete obj;
-						obj = NULL;
-					}
+			scaleval = 1;
+			obj = new UnitClass (UNIT_MCV, h);
+			if (!obj->Unlimbo(Cell_Coord(centroid),DIR_N)) {
+				if (!Scan_Place_Object(obj, centroid)) {
+					delete obj;
+					obj = NULL;
 				}
-				if (obj) {
-					hptr->FlagHome = 0;
-					hptr->FlagLocation = 0;
-					if (Special.IsCaptureTheFlag) {
-						hptr->Flag_Attach((UnitClass *)obj,true);
-					}
-				}
-			} else {
-
-				/*..................................................................
-				- For computer-controlled house:
-				  - Set 'scaleval' to 3
-				  - Create a Mobile HQ for capture-the-flag mode
-				..................................................................*/
-				scaleval = 3 / (MPlayerMax - MPlayerCount);
-				if (scaleval==0) {
-					scaleval = 1;
-				}
-
+			}
+			if (obj) {
+				hptr->FlagHome = 0;
+				hptr->FlagLocation = 0;
 				if (Special.IsCaptureTheFlag) {
-					obj = new UnitClass (UNIT_MHQ, h);
-					if (!obj->Unlimbo(Cell_Coord(centroid),DIR_N)) {
-						if (!Scan_Place_Object(obj, centroid)) {
-							delete obj;
-							obj = NULL;
-						}
-					}
-					hptr->FlagHome = 0;					// turn house's flag off
-					hptr->FlagLocation = 0;
+					hptr->Flag_Attach((UnitClass *)obj,true);
+				}
+
+				if (!hptr->IsHuman) {
+					hptr->Begin_Production();
+					hptr->IsStarted = true;
+					hptr->IsAlerted = true;
+					((UnitClass *)obj)->Commence();
+					((UnitClass *)obj)->Assign_Mission(MISSION_HUNT);
+					((UnitClass *)obj)->Assign_Target(TARGET_NONE);
+					((UnitClass *)obj)->Assign_Destination(TARGET_NONE);
 				}
 			}
 		} else {

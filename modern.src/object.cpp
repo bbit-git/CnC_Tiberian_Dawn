@@ -1063,7 +1063,7 @@ bool ObjectClass::Limbo(void)
 			int before = Logic.Count();
 			Logic.Delete(this);
 			int after = Logic.Count();
-			fprintf(stderr, "Limbo %s %p: Logic.Delete %d→%d %s\n",
+			DBG_AI("Limbo %s %p: Logic.Delete %d->%d %s",
 				Class_Of().IniName, (void*)this, before, after,
 				(before > after) ? "OK" : "FAILED!");
 		}
@@ -1525,4 +1525,3 @@ short const * ObjectClass::Overlap_List(void) const {return(Class_Of().Overlap_L
 BuildingClass * ObjectClass::Who_Can_Build_Me(bool intheory, bool legal) const {return(Class_Of().Who_Can_Build_Me(intheory, legal, Owner()));};
 unsigned ObjectClass::Health_Ratio(void) const {return(Cardinal_To_Fixed(Class_Of().MaxStrength, Strength));};
 int ObjectClass::Full_Name(void) const {return Class_Of().Full_Name();};
-

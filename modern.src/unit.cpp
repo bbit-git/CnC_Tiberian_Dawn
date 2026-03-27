@@ -1443,7 +1443,7 @@ bool UnitClass::Goto_Clear_Spot(void)
 {
 	Validate();
 	Mark(MARK_UP);
-	if (!Target_Legal(NavCom) && BuildingTypeClass::As_Reference(STRUCT_CONST).Legal_Placement(Coord_Cell(Coord))) {
+	if (!Target_Legal(NavCom) && BuildingTypeClass::As_Reference(STRUCT_CONST).Legal_Placement(Adjacent_Cell(Coord_Cell(Center_Coord()), FACING_NW))) {
 		Mark(MARK_DOWN);
 		return(true);
 	}
@@ -1468,6 +1468,22 @@ bool UnitClass::Goto_Clear_Spot(void)
 			-(MAP_CELL_W*4)-1,
 			-(MAP_CELL_W*4)+2,
 			-(MAP_CELL_W*4)-2,
+			MAP_CELL_W*1,
+			MAP_CELL_W*2,
+			(MAP_CELL_W*2)+1,
+			(MAP_CELL_W*2)-1,
+			MAP_CELL_W*3,
+			(MAP_CELL_W*3)+1,
+			(MAP_CELL_W*3)-1,
+			(MAP_CELL_W*3)+2,
+			(MAP_CELL_W*3)-2,
+			MAP_CELL_W*4,
+			(MAP_CELL_W*4)+1,
+			(MAP_CELL_W*4)-1,
+			(MAP_CELL_W*4)+2,
+			(MAP_CELL_W*4)-2,
+			-1,-2,-3,-4,
+			 1, 2, 3, 4,
 			0
 		};
 		int *ptr;
@@ -1475,14 +1491,23 @@ bool UnitClass::Goto_Clear_Spot(void)
 		ptr = &_offsets[0];
 		while (*ptr) {
 			CELL	cell = Coord_Cell(Coord)+*ptr++;
+			CELL	check_cell = Adjacent_Cell(cell, FACING_NW);
 
-			if (BuildingTypeClass::As_Reference(STRUCT_CONST).Legal_Placement(cell)) {
+			if (BuildingTypeClass::As_Reference(STRUCT_CONST).Legal_Placement(check_cell)) {
 				Assign_Destination(::As_Target(cell));
 				break;
 			}
 		}
 	}
 	Mark(MARK_DOWN);
+
+	/*
+	**	If the AI couldn't find a legal deploy destination, nudge it into a local
+	**	scatter so it can keep searching instead of stalling forever.
+	*/
+	if (!Target_Legal(NavCom) && !House->IsHuman) {
+		Scatter(0);
+	}
 
 	return(false);
 }
@@ -1513,21 +1538,18 @@ bool UnitClass::Try_To_Deploy(void)
 	if (!Target_Legal(NavCom) && !IsRotating) {
 		if (*this == UNIT_MCV) {
 
-			fprintf(stderr, "MCV Deploy: Coord=0x%08X Center=0x%08X\n",
-				(unsigned)Coord, (unsigned)Center_Coord());
-			COORDINATE nw_coord = Adjacent_Cell(Center_Coord(), FACING_NW);
-			CELL nw_cell = Coord_Cell(nw_coord);
-			fprintf(stderr, "  NW coord=0x%08X cell=%d CellX=%d CellY=%d\n",
-				(unsigned)nw_coord, (int)nw_cell, Cell_X(nw_cell), Cell_Y(nw_cell));
-
 			/*
 			**	Determine if it is legal to deploy at this location. If not, tell the
 			**	player.
 			*/
 			Mark(MARK_UP);
+			CELL nw_cell = Coord_Cell(Adjacent_Cell(Center_Coord(), FACING_NW));
 			if (!BuildingTypeClass::As_Reference(STRUCT_CONST).Legal_Placement(nw_cell)) {
 				if (PlayerPtr == House) {
 					Speak(VOX_DEPLOY);
+				}
+				if (!House->IsHuman) {
+					Scatter(0);
 				}
 				Mark(MARK_DOWN);
 				IsDeploying = false;
@@ -1553,15 +1575,10 @@ bool UnitClass::Try_To_Deploy(void)
 			**	unit, just mark it as not deploying.
 			*/
 			Mark(MARK_UP);
-			fprintf(stderr, "  Creating BuildingClass STRUCT_CONST...\n");
 			BuildingClass * building = new BuildingClass(STRUCT_CONST, House->Class->House);
-			fprintf(stderr, "  building=%p\n", (void*)building);
 			if (building) {
 				COORDINATE deploy_coord = Adjacent_Cell(Coord, FACING_NW);
-				fprintf(stderr, "  Unlimbo at coord=0x%08X cell=%d\n",
-					(unsigned)deploy_coord, (int)Coord_Cell(deploy_coord));
 				if (building->Unlimbo(deploy_coord)) {
-					fprintf(stderr, "  Unlimbo succeeded\n");
 
 					/*
 					**	Always reveal the construction yard to the player that owned the
@@ -3699,6 +3716,11 @@ int UnitClass::Mission_Guard(void)
 
 	if (*this == UNIT_HARVESTER && !House->IsHuman) {
 		Assign_Mission(MISSION_HARVEST);
+		return(TICKS_PER_SECOND);
+	}
+
+	if (*this == UNIT_MCV && !House->IsHuman && GameToPlay == GAME_SKIRMISH) {
+		Assign_Mission(MISSION_HUNT);
 		return(TICKS_PER_SECOND);
 	}
 	return(TarComClass::Mission_Guard());

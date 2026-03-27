@@ -116,6 +116,60 @@
 
 #include "function.h"
 
+static int Skirmish_Target_Adjustment(TechnoClass const * object)
+{
+	if (!object || GameToPlay != GAME_SKIRMISH) {
+		return(0);
+	}
+
+	if (object->What_Am_I() == RTTI_BUILDING) {
+		BuildingClass const * building = (BuildingClass const *)object;
+
+		switch (*building) {
+			case STRUCT_STORAGE:
+				return(-1200);
+
+			case STRUCT_CONST:
+				return(1600);
+
+			case STRUCT_REFINERY:
+				return(1400);
+
+			case STRUCT_WEAP:
+			case STRUCT_AIRSTRIP:
+				return(1500);
+
+			case STRUCT_REPAIR:
+				return(900);
+
+			case STRUCT_RADAR:
+				return(1200);
+
+			case STRUCT_EYE:
+			case STRUCT_TEMPLE:
+				return(1800);
+
+			case STRUCT_GTOWER:
+			case STRUCT_TURRET:
+				return(1000);
+
+			case STRUCT_ATOWER:
+			case STRUCT_OBELISK:
+			case STRUCT_SAM:
+				return(1300);
+
+			default:
+				break;
+		}
+
+		if (building->Class->Primary != WEAPON_NONE) {
+			return(900);
+		}
+	}
+
+	return(0);
+}
+
 
 /***************************************************************************
 **	Cloaking control values.
@@ -3187,7 +3241,7 @@ int TechnoClass::Value(void) const
 			}
 		}
 	}
-	return Risk() + Techno_Type_Class()->Reward + value;
+	return Risk() + Techno_Type_Class()->Reward + value + Skirmish_Target_Adjustment(this);
 }
 
 
