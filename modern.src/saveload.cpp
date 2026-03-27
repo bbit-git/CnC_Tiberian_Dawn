@@ -51,6 +51,22 @@
 #include <dbg.h>
 extern const char* TD_Get_Save_Path(void);
 
+char const * Savegame_File_Stem(void)
+{
+	if (GameToPlay == GAME_SKIRMISH) {
+		return("SKIRMISH");
+	}
+
+	return("SAVEGAME");
+}
+
+void Build_Savegame_File_Name(char *buf, size_t size, int id)
+{
+	snprintf(buf, size, "%s%s.%03d", TD_Get_Save_Path(), Savegame_File_Stem(), id);
+}
+
+static const uint32_t TD_SAVEGAME_MULTIPLAYER_MAGIC = 0x534B4D31;	/* "SKM1" */
+
 /*
 ********************************** Defines **********************************
 */
@@ -143,7 +159,7 @@ bool Save_Game(int id,char *descr)
 	/*
 	**	Generate the filename to save
 	*/
-	snprintf(name, sizeof(name), "%sSAVEGAME.%03d", TD_Get_Save_Path(), id);
+	Build_Savegame_File_Name(name, sizeof(name), id);
 
 	/*
 	**	Code everybody's pointers
@@ -402,7 +418,7 @@ bool Load_Game(int id)
 	/*
 	**	Generate the filename to load
 	*/
-	snprintf(name, sizeof(name), "%sSAVEGAME.%03d", TD_Get_Save_Path(), id);
+	Build_Savegame_File_Name(name, sizeof(name), id);
 
 	/*
 	**	Open the file
@@ -744,6 +760,7 @@ bool Save_Misc_Values(FileClass &file)
 	int i;
 	int count;								// # ptrs in 'CurrentObject'
 	ObjectClass * ptr;					// for saving 'CurrentObject' ptrs
+	uint32_t multiplayer_magic = TD_SAVEGAME_MULTIPLAYER_MAGIC;
 
 	/*
 	**	Player's House.
@@ -818,6 +835,27 @@ bool Save_Misc_Values(FileClass &file)
 
 	file.Write(&Special, sizeof(Special));
 
+	file.Write(&multiplayer_magic, sizeof(multiplayer_magic));
+	file.Write(&GameToPlay, sizeof(GameToPlay));
+	file.Write(MPlayerName, sizeof(MPlayerName));
+	file.Write(&MPlayerPrefColor, sizeof(MPlayerPrefColor));
+	file.Write(&MPlayerColorIdx, sizeof(MPlayerColorIdx));
+	file.Write(&MPlayerHouse, sizeof(MPlayerHouse));
+	file.Write(&MPlayerLocalID, sizeof(MPlayerLocalID));
+	file.Write(&MPlayerCount, sizeof(MPlayerCount));
+	file.Write(&MPlayerBases, sizeof(MPlayerBases));
+	file.Write(&MPlayerCredits, sizeof(MPlayerCredits));
+	file.Write(&MPlayerTiberium, sizeof(MPlayerTiberium));
+	file.Write(&MPlayerGoodies, sizeof(MPlayerGoodies));
+	file.Write(&MPlayerGhosts, sizeof(MPlayerGhosts));
+	file.Write(&MPlayerSolo, sizeof(MPlayerSolo));
+	file.Write(&MPlayerAIs, sizeof(MPlayerAIs));
+	file.Write(&MPlayerAISkill, sizeof(MPlayerAISkill));
+	file.Write(&MPlayerUnitCount, sizeof(MPlayerUnitCount));
+	file.Write(MPlayerID, sizeof(MPlayerID));
+	file.Write(MPlayerHouses, sizeof(MPlayerHouses));
+	file.Write(MPlayerNames, sizeof(MPlayerNames));
+
 	return(true);
 }
 
@@ -839,6 +877,7 @@ bool Load_Misc_Values(FileClass &file)
 	int i;
 	int count;								// # ptrs in 'CurrentObject'
 	ObjectClass * ptr;					// for loading 'CurrentObject' ptrs
+	uint32_t multiplayer_magic = 0;
 
 	/*
 	**	Player's House.
@@ -919,6 +958,42 @@ bool Load_Misc_Values(FileClass &file)
 		file.Read(&Special, sizeof(Special));
 	} else {
 		Special.Init();
+	}
+
+	if (file.Seek(0, SEEK_CUR) < file.Size()) {
+		if (file.Read(&multiplayer_magic, sizeof(multiplayer_magic)) == sizeof(multiplayer_magic) &&
+			multiplayer_magic == TD_SAVEGAME_MULTIPLAYER_MAGIC) {
+			file.Read(&GameToPlay, sizeof(GameToPlay));
+			file.Read(MPlayerName, sizeof(MPlayerName));
+			file.Read(&MPlayerPrefColor, sizeof(MPlayerPrefColor));
+			file.Read(&MPlayerColorIdx, sizeof(MPlayerColorIdx));
+			file.Read(&MPlayerHouse, sizeof(MPlayerHouse));
+			file.Read(&MPlayerLocalID, sizeof(MPlayerLocalID));
+			file.Read(&MPlayerCount, sizeof(MPlayerCount));
+			file.Read(&MPlayerBases, sizeof(MPlayerBases));
+			file.Read(&MPlayerCredits, sizeof(MPlayerCredits));
+			file.Read(&MPlayerTiberium, sizeof(MPlayerTiberium));
+			file.Read(&MPlayerGoodies, sizeof(MPlayerGoodies));
+			file.Read(&MPlayerGhosts, sizeof(MPlayerGhosts));
+			file.Read(&MPlayerSolo, sizeof(MPlayerSolo));
+			file.Read(&MPlayerAIs, sizeof(MPlayerAIs));
+			if (file.Seek(0, SEEK_CUR) + (long)sizeof(MPlayerAISkill) + (long)sizeof(MPlayerUnitCount) +
+				(long)sizeof(MPlayerID) + (long)sizeof(MPlayerHouses) + (long)sizeof(MPlayerNames) <= file.Size()) {
+				file.Read(&MPlayerAISkill, sizeof(MPlayerAISkill));
+			} else {
+				MPlayerAISkill = 1;
+			}
+			file.Read(&MPlayerUnitCount, sizeof(MPlayerUnitCount));
+			file.Read(MPlayerID, sizeof(MPlayerID));
+			file.Read(MPlayerHouses, sizeof(MPlayerHouses));
+			file.Read(MPlayerNames, sizeof(MPlayerNames));
+		} else {
+			MPlayerAIs = MPlayerGhosts ? (MPlayerMax - 1) : 0;
+			MPlayerAISkill = 1;
+		}
+	} else {
+		MPlayerAIs = MPlayerGhosts ? (MPlayerMax - 1) : 0;
+		MPlayerAISkill = 1;
 	}
 
 	return(true);
@@ -1305,7 +1380,7 @@ bool Get_Savefile_Info(int id, char *buf, unsigned *scenp, HousesType *housep)
 	/*
 	**	Generate the filename to load
 	*/
-	snprintf(name, sizeof(name), "%sSAVEGAME.%03d", TD_Get_Save_Path(), id);
+	Build_Savegame_File_Name(name, sizeof(name), id);
 	fprintf(stderr, "Get_Savefile_Info: trying '%s'\n", name);
 
 	/*
@@ -1659,4 +1734,3 @@ void Dump(void)
 	fclose(fp);
 }
 #endif
-

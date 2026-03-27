@@ -108,6 +108,7 @@ void GameOptionsClass::Process(void)
 	int curbutton = 6;
 	int y;
 	TextButtonClass *buttonsel[sizeof(_constants)/sizeof(_constants[0])];
+	bool allow_local_save = (GameToPlay == GAME_NORMAL || GameToPlay == GAME_SKIRMISH);
 
 	Set_Logic_Page(SeenBuff);
 
@@ -121,9 +122,13 @@ void GameOptionsClass::Process(void)
 		int text = _constants[index].Text;
 		buttonsel[index] = NULL;
 
-		if (GameToPlay != GAME_NORMAL && !_constants[index].Multiplay) {
-			buttonsel[index] = 0;
-			continue;
+		if (!_constants[index].Multiplay) {
+			bool allow_in_skirmish = (GameToPlay == GAME_SKIRMISH &&
+				(_constants[index].ID == BUTTON_LOAD || _constants[index].ID == BUTTON_SAVE));
+			if (GameToPlay != GAME_NORMAL && !allow_in_skirmish) {
+				buttonsel[index] = 0;
+				continue;
+			}
 		}
 
 		if (GameToPlay != GAME_NORMAL && text == TXT_DELETE_MISSION) {
@@ -169,7 +174,7 @@ void GameOptionsClass::Process(void)
 #endif
 	buttonsel[BUTTON_RESUME-1]->X = OptionX+(5 * resfactor);
 
-	if (GameToPlay == GAME_NORMAL) {
+	if (buttonsel[BUTTON_RESTATE-1]) {
 		buttonsel[BUTTON_RESTATE-1]->Width = 90 * resfactor;
 		buttonsel[BUTTON_RESTATE-1]->X = OptionX+OptionWidth-(buttonsel[BUTTON_RESTATE-1]->Width+(5 * resfactor));
 	}
@@ -210,7 +215,7 @@ void GameOptionsClass::Process(void)
 		/*
 		**	Invoke game callback.
 		*/
-		if (GameToPlay == GAME_NORMAL) {
+		if (allow_local_save) {
 			Call_Back();
 		} else {
 			if (Main_Loop()) {
@@ -323,17 +328,12 @@ void GameOptionsClass::Process(void)
 			case (KN_UP):
 				buttonsel[curbutton-1]->Turn_Off();
 				buttonsel[curbutton-1]->Flag_To_Redraw();
-				curbutton--;
-				if (GameToPlay == GAME_NORMAL) {
+				do {
+					curbutton--;
 					if (curbutton < BUTTON_LOAD) {
 						curbutton = (BUTTON_COUNT - 1);
 					}
-				} else {
-					if (curbutton < BUTTON_DELETE) {
-						curbutton = BUTTON_RESUME;
-//						curbutton = (BUTTON_COUNT-1);
-					}
-				}
+				} while (buttonsel[curbutton-1] == NULL);
 				buttonsel[curbutton-1]->Turn_On();
 				buttonsel[curbutton-1]->Flag_To_Redraw();
 				break;
@@ -341,16 +341,12 @@ void GameOptionsClass::Process(void)
 			case (KN_DOWN):
 				buttonsel[curbutton-1]->Turn_Off();
 				buttonsel[curbutton-1]->Flag_To_Redraw();
-				curbutton++;
-				if (GameToPlay == GAME_NORMAL) {
+				do {
+					curbutton++;
 					if (curbutton >= BUTTON_COUNT) {
 						curbutton = BUTTON_LOAD;
 					}
-				} else {
-					if (curbutton > BUTTON_RESUME) {
-						curbutton = BUTTON_DELETE;
-					}
-				}
+				} while (buttonsel[curbutton-1] == NULL);
 				buttonsel[curbutton-1]->Turn_On();
 				buttonsel[curbutton-1]->Flag_To_Redraw();
 				break;

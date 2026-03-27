@@ -411,6 +411,8 @@ bool Load_Misc_Values(FileClass &file);
 bool Save_Misc_Values(FileClass &file);
 bool Get_Savefile_Info(int id, char *buf, unsigned *scenp, HousesType *housep);
 bool Load_Game(int id);
+char const * Savegame_File_Stem(void);
+void Build_Savegame_File_Name(char *buf, size_t size, int id);
 bool Read_Object (void *ptr, int base_size, int class_size, FileClass & file, void * vtable);
 bool Save_Game(int id,char *descr);
 bool Write_Object (void *ptr, int class_size, FileClass & file);

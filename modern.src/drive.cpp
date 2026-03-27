@@ -1579,7 +1579,27 @@ int DriveClass::Offload_Tiberium_Bail(void)
 		if (House->IsHuman) {
 			return(UnitTypeClass::FULL_LOAD_CREDITS/UnitTypeClass::STEP_COUNT);
 		}
-		return(UnitTypeClass::FULL_LOAD_CREDITS+(UnitTypeClass::FULL_LOAD_CREDITS/3)/UnitTypeClass::STEP_COUNT);
+		if (GameToPlay == GAME_SKIRMISH) {
+			int bonus = 33;
+
+			switch (MPlayerAISkill) {
+				default:
+				case 0:
+					bonus = 0;
+					break;
+
+				case 1:
+					bonus = 12;
+					break;
+
+				case 2:
+					bonus = 33;
+					break;
+			}
+
+			return((UnitTypeClass::FULL_LOAD_CREDITS + ((UnitTypeClass::FULL_LOAD_CREDITS * bonus) / 100)) / UnitTypeClass::STEP_COUNT);
+		}
+		return((UnitTypeClass::FULL_LOAD_CREDITS+(UnitTypeClass::FULL_LOAD_CREDITS/3))/UnitTypeClass::STEP_COUNT);
 	}
 	return(0);
 }
@@ -2218,4 +2238,3 @@ DriveClass::TurnTrackType const DriveClass::TrackControl[67] = {
 	{12,	12,	DIR_SW_X2,	F_},															// Drive back into refinery.
 	{13,	13,	DIR_SW,	F_}																// Drive out of weapons factory.
 };
-

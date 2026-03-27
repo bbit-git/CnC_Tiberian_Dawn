@@ -554,7 +554,7 @@ void Debug_Key(unsigned input)
 			**	Reveal entire map to player.
 			*/
 			case KN_F4:
-				if (GameToPlay == GAME_NORMAL) {
+				if (Debug_Flag) {
 					Debug_Unshroud = (Debug_Unshroud == false);
 					Map.Flag_To_Redraw(true);
 				}

@@ -1226,6 +1226,10 @@ bool Select_Game(bool fade)
 						*/
 						case GAME_NORMAL:
 							GameToPlay = Select_MPlayer_Game();
+							if (PendingSkirmishLoad) {
+								gameloaded = true;
+								PendingSkirmishLoad = false;
+							}
 							if (GameToPlay == GAME_NORMAL) {		// 'Cancel'
 								display = true;
 								selection = SEL_NONE;
@@ -2742,6 +2746,7 @@ void Save_Recording_Values(void)
 	RecordFile.Write(&MPlayerTiberium, sizeof(MPlayerTiberium));
 	RecordFile.Write(&MPlayerGoodies, sizeof(MPlayerGoodies));
 	RecordFile.Write(&MPlayerGhosts, sizeof(MPlayerGhosts));
+	RecordFile.Write(&MPlayerAIs, sizeof(MPlayerAIs));
 	RecordFile.Write(&MPlayerUnitCount, sizeof(MPlayerUnitCount));
 	RecordFile.Write(MPlayerID, sizeof(MPlayerID));
 	RecordFile.Write(MPlayerHouses, sizeof(MPlayerHouses));
@@ -2794,6 +2799,7 @@ void Load_Recording_Values(void)
 	RecordFile.Read(&MPlayerTiberium, sizeof(MPlayerTiberium));
 	RecordFile.Read(&MPlayerGoodies, sizeof(MPlayerGoodies));
 	RecordFile.Read(&MPlayerGhosts, sizeof(MPlayerGhosts));
+	RecordFile.Read(&MPlayerAIs, sizeof(MPlayerAIs));
 	RecordFile.Read(&MPlayerUnitCount, sizeof(MPlayerUnitCount));
 	RecordFile.Read(MPlayerID, sizeof(MPlayerID));
 	RecordFile.Read(MPlayerHouses, sizeof(MPlayerHouses));

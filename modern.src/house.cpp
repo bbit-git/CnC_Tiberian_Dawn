@@ -454,7 +454,7 @@ bool HouseClass::Can_Build(TechnoTypeClass const * type, HousesType house) const
 	/*
 	**	The computer can always build everthing.
 	*/
-	if (!IsHuman) return(true);
+	if (!IsHuman && GameToPlay != GAME_SKIRMISH) return(true);
 
 	/*
 	**	Perform some equivalency fixups for the building existance flags.
@@ -842,6 +842,77 @@ void HouseClass::AI(void)
 		**	Adjusted to reduce maximum number of teams created.
 		*/
 		int maxteams = Random_Pick(2, (int)(((BuildLevel-1)/3)+1));
+		if (GameToPlay == GAME_SKIRMISH && !IsHuman) {
+			int combat = 0;
+			int needed;
+
+			switch (MPlayerAISkill) {
+				default:
+				case 0:
+					needed = Random_Pick(8, 11);
+					maxteams = Random_Pick(1, 2);
+					break;
+
+				case 1:
+					needed = Random_Pick(6, 9);
+					maxteams = Random_Pick(1, 3);
+					break;
+
+				case 2:
+					needed = Random_Pick(4, 7);
+					maxteams = Random_Pick(2, 4);
+					break;
+			}
+
+			if ((Map.MapCellWidth * Map.MapCellHeight) >= 4096) {
+				needed += 2;
+			}
+
+			for (int index = 0; index < Units.Count(); index++) {
+				UnitClass * unit = Units.Ptr(index);
+
+				if (unit && !unit->IsInLimbo && unit->House == this && unit->Strength > 0 && !unit->Team &&
+					*unit != UNIT_HARVESTER && *unit != UNIT_MCV) {
+					combat++;
+				}
+			}
+
+			for (int index = 0; index < Infantry.Count(); index++) {
+				InfantryClass * infantry = Infantry.Ptr(index);
+
+				if (infantry && !infantry->IsInLimbo && infantry->House == this && infantry->Strength > 0 && !infantry->Team &&
+					*infantry != INFANTRY_E7) {
+					combat++;
+				}
+			}
+
+			if (combat >= needed) {
+				for (int index = 0; index < maxteams; index++) {
+					TeamTypeClass const * ttype = Suggested_New_Team(true);
+					if (ttype) {
+						ScenarioInit++;
+						ttype->Create_One_Of();
+						ScenarioInit--;
+					}
+				}
+			}
+
+			switch (MPlayerAISkill) {
+				default:
+				case 0:
+					AlertTime = (TICKS_PER_MINUTE * Random_Pick(4, 6));
+					break;
+
+				case 1:
+					AlertTime = (TICKS_PER_MINUTE * Random_Pick(2, 4));
+					break;
+
+				case 2:
+					AlertTime = (TICKS_PER_MINUTE * Random_Pick(1, 3));
+					break;
+			}
+			goto skip_alert_team_timer;
+		}
 		for (int index = 0; index < maxteams; index++) {
 			TeamTypeClass const * ttype = Suggested_New_Team(true);
 			if (ttype) {
@@ -860,15 +931,18 @@ void HouseClass::AI(void)
 			}
 		}
 	}
+skip_alert_team_timer:
 
 	/*
 	**	Create teams for this house if necessary.
 	** (Use the same timer for some extra capture-the-flag logic.)
 	*/
 	if (TeamTime.Expired()) {
-		TeamTypeClass const * ttype = Suggested_New_Team(false);
-		if (ttype) {
-			ttype->Create_One_Of();
+		if (!(GameToPlay == GAME_SKIRMISH && !IsHuman)) {
+			TeamTypeClass const * ttype = Suggested_New_Team(false);
+			if (ttype) {
+				ttype->Create_One_Of();
+			}
 		}
 
 		/*
@@ -1170,7 +1244,7 @@ void HouseClass::AI(void)
 		**	If there is no nuke strike present, but there is a Temple of Nod
 		**	available, then make the nuke strike strike available.
 		*/
-		if ((ActiveBScan & STRUCTF_TEMPLE) && Has_Nuke_Device() && IsHuman) {
+		if ((ActiveBScan & STRUCTF_TEMPLE) && Has_Nuke_Device() && (IsHuman || GameToPlay != GAME_NORMAL)) {
 			NukeStrike.Enable((GameToPlay == GAME_NORMAL), this == PlayerPtr);
 
 			/*
@@ -1985,6 +2059,44 @@ unsigned char const * HouseClass::Remap_Table(bool blushing, bool unit) const
 TeamTypeClass const * HouseClass::Suggested_New_Team(bool alertcheck)
 {
 	Validate();
+	if (GameToPlay == GAME_SKIRMISH && !IsHuman && alertcheck) {
+		int combat = 0;
+		int needed = 6;
+
+		if (MPlayerAISkill == 0) {
+			needed = 8;
+		} else {
+			if (MPlayerAISkill == 2) {
+				needed = 4;
+			}
+		}
+
+		if ((Map.MapCellWidth * Map.MapCellHeight) >= 4096) {
+			needed += 2;
+		}
+
+		for (int index = 0; index < Units.Count(); index++) {
+			UnitClass * unit = Units.Ptr(index);
+
+			if (unit && !unit->IsInLimbo && unit->House == this && unit->Strength > 0 && !unit->Team &&
+				*unit != UNIT_HARVESTER && *unit != UNIT_MCV) {
+				combat++;
+			}
+		}
+
+		for (int index = 0; index < Infantry.Count(); index++) {
+			InfantryClass * infantry = Infantry.Ptr(index);
+
+			if (infantry && !infantry->IsInLimbo && infantry->House == this && infantry->Strength > 0 && !infantry->Team &&
+				*infantry != INFANTRY_E7) {
+				combat++;
+			}
+		}
+
+		if (combat < needed) {
+			return(NULL);
+		}
+	}
 	return(TeamTypeClass::Suggested_New_Team(this, UScan, IScan, IsAlerted && alertcheck));
 }
 
@@ -3167,6 +3279,104 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 {
 	Validate();
 	TechnoTypeClass const * techno = NULL;
+	long reserve = 0;
+	StructType reserve_build = STRUCT_NONE;
+	long flags = ActiveBScan;
+	int combat_units = 0;
+
+	if (GameToPlay == GAME_SKIRMISH && !IsHuman) {
+		int refinery_count = 0;
+		int defense_count = 0;
+		int valuable_count = 0;
+		bool big_map = ((Map.MapCellWidth * Map.MapCellHeight) >= 4096);
+
+		if (flags & STRUCTF_ADVANCED_POWER) flags |= STRUCTF_POWER;
+		if (flags & STRUCTF_HAND) flags |= STRUCTF_BARRACKS;
+		if (flags & STRUCTF_AIRSTRIP) flags |= STRUCTF_WEAP;
+		if (flags & STRUCTF_OBELISK) flags |= STRUCTF_ATOWER;
+
+		for (int index = 0; index < Buildings.Count(); index++) {
+			BuildingClass * building = Buildings.Ptr(index);
+
+			if (building && !building->IsInLimbo && building->House == this && building->Strength > 0) {
+				if (*building == STRUCT_REFINERY) {
+					refinery_count++;
+				}
+				if (*building == STRUCT_REFINERY || *building == STRUCT_WEAP || *building == STRUCT_AIRSTRIP ||
+					*building == STRUCT_REPAIR || *building == STRUCT_RADAR || *building == STRUCT_EYE ||
+					*building == STRUCT_TEMPLE) {
+					valuable_count++;
+				}
+				if (*building == STRUCT_GTOWER || *building == STRUCT_ATOWER || *building == STRUCT_TURRET ||
+					*building == STRUCT_OBELISK || *building == STRUCT_SAM) {
+					defense_count++;
+				}
+			}
+		}
+
+		for (int index = 0; index < Units.Count(); index++) {
+			UnitClass * unit = Units.Ptr(index);
+
+			if (unit && !unit->IsInLimbo && unit->House == this && unit->Strength > 0 &&
+				*unit != UNIT_HARVESTER && *unit != UNIT_MCV) {
+				combat_units++;
+			}
+		}
+
+		if (!(flags & STRUCTF_POWER)) {
+			reserve_build = STRUCT_POWER;
+		} else if (!(flags & STRUCTF_REFINERY)) {
+			reserve_build = STRUCT_REFINERY;
+		} else if (ActLike == HOUSE_GOOD && !(flags & STRUCTF_BARRACKS)) {
+			reserve_build = STRUCT_BARRACKS;
+		} else if (ActLike == HOUSE_BAD && !(flags & STRUCTF_HAND)) {
+			reserve_build = STRUCT_HAND;
+		} else if (ActLike == HOUSE_GOOD && !(flags & STRUCTF_WEAP)) {
+			reserve_build = STRUCT_WEAP;
+		} else if (ActLike == HOUSE_BAD && !(flags & STRUCTF_AIRSTRIP)) {
+			reserve_build = STRUCT_AIRSTRIP;
+		} else if (!(flags & STRUCTF_STORAGE) && Capacity > 0 && Tiberium > ((Capacity * 3) / 4)) {
+			reserve_build = STRUCT_STORAGE;
+		} else if (big_map && refinery_count < 2) {
+			reserve_build = STRUCT_REFINERY;
+		} else if (!(flags & STRUCTF_RADAR)) {
+			reserve_build = STRUCT_RADAR;
+		} else if (ActLike == HOUSE_GOOD && !(flags & STRUCTF_EYE)) {
+			reserve_build = STRUCT_EYE;
+		} else if (ActLike == HOUSE_BAD && !(flags & STRUCTF_TEMPLE)) {
+			reserve_build = STRUCT_TEMPLE;
+		} else if (defense_count < MAX(1, valuable_count)) {
+			if (ActLike == HOUSE_GOOD) {
+				if ((flags & STRUCTF_EYE) && !(flags & STRUCTF_ATOWER) &&
+					Can_Build(&BuildingTypeClass::As_Reference(STRUCT_ATOWER), ActLike)) {
+					reserve_build = STRUCT_ATOWER;
+				} else {
+					reserve_build = STRUCT_GTOWER;
+				}
+			} else {
+				if ((flags & STRUCTF_TEMPLE) && !(flags & STRUCTF_OBELISK) &&
+					Can_Build(&BuildingTypeClass::As_Reference(STRUCT_OBELISK), ActLike)) {
+					reserve_build = STRUCT_OBELISK;
+				} else {
+					reserve_build = STRUCT_TURRET;
+				}
+			}
+		} else if (!(flags & STRUCTF_REPAIR)) {
+			reserve_build = STRUCT_REPAIR;
+		} else if ((Power - Drain) < 75 && !(flags & STRUCTF_ADVANCED_POWER)) {
+			reserve_build = STRUCT_ADVANCED_POWER;
+		}
+
+		if (reserve_build != STRUCT_NONE) {
+			BuildingTypeClass const & buildtype = BuildingTypeClass::As_Reference(reserve_build);
+
+			if (Can_Build(&buildtype, ActLike)) {
+				reserve = buildtype.Cost_Of();
+			} else {
+				reserve_build = STRUCT_NONE;
+			}
+		}
+	}
 
 	switch (objecttype) {
 
@@ -3176,17 +3386,64 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 		*/
 		case RTTI_UNIT:
 		case RTTI_UNITTYPE:
-			if (CurUnits < MaxUnit) {
+			if (GameToPlay == GAME_SKIRMISH || CurUnits < MaxUnit) {
 
 				/*
 				**	A computer controlled house will try to build a replacement
 				**	harvester if possible. Never replace harvesters if the game
 				**	is in easy mode.
 				*/
-				if (!Special.IsEasy && !IsHuman && (ActiveBScan & STRUCTF_REFINERY) && !(UScan & UNITF_HARVESTER)) {
+				if (GameToPlay != GAME_SKIRMISH && !Special.IsEasy && !IsHuman && (ActiveBScan & STRUCTF_REFINERY) && !(UScan & UNITF_HARVESTER)) {
 					techno = &UnitTypeClass::As_Reference(UNIT_HARVESTER);
 					if (techno->Scenario <= BuildLevel) break;
 					techno = 0;
+				}
+
+				/*
+				**	Skirmish AI uses a simpler roster-driven production rule. The
+				**	legacy multiplayer path desires every buildable unit at once,
+				**	which is too spammy for local skirmish.
+				*/
+				if (GameToPlay == GAME_SKIRMISH && !IsHuman) {
+					static UnitType const gdi_units[] = {
+						UNIT_JEEP,
+						UNIT_MTANK,
+						UNIT_APC,
+						UNIT_MLRS,
+						UNIT_HTANK
+					};
+					static UnitType const nod_units[] = {
+						UNIT_BUGGY,
+						UNIT_BIKE,
+						UNIT_LTANK,
+						UNIT_ARTY,
+						UNIT_STANK,
+						UNIT_FTANK
+					};
+					UnitType const * list = (ActLike == HOUSE_BAD) ? nod_units : gdi_units;
+					int list_count = (ActLike == HOUSE_BAD) ? (sizeof(nod_units) / sizeof(nod_units[0])) : (sizeof(gdi_units) / sizeof(gdi_units[0]));
+					int bestcount = 0;
+					UnitType bestlist[8];
+					long money = Available_Money();
+
+					if (reserve && money < reserve + 600) {
+						break;
+					}
+
+					for (int idx = 0; idx < list_count; idx++) {
+						UnitType utype = list[idx];
+						if (Can_Build(utype, ActLike) &&
+							UnitTypeClass::As_Reference(utype).Level <= BuildLevel &&
+							UnitTypeClass::As_Reference(utype).Cost_Of() <= money &&
+							(!reserve || (money - UnitTypeClass::As_Reference(utype).Cost_Of()) >= reserve)) {
+							bestlist[bestcount++] = utype;
+						}
+					}
+
+					if (bestcount) {
+						techno = &UnitTypeClass::As_Reference(bestlist[Random_Pick(0, bestcount-1)]);
+					}
+					break;
 				}
 
 				int counter[UNIT_COUNT];
@@ -3284,7 +3541,66 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 		*/
 		case RTTI_INFANTRY:
 		case RTTI_INFANTRYTYPE:
-			if (CurUnits < MaxUnit) {
+			if (GameToPlay == GAME_SKIRMISH || CurUnits < MaxUnit) {
+				if (GameToPlay == GAME_SKIRMISH && !IsHuman) {
+					static InfantryType const gdi_infantry[] = {
+						INFANTRY_E1,
+						INFANTRY_E2,
+						INFANTRY_E3,
+						INFANTRY_E5
+					};
+					static InfantryType const nod_infantry[] = {
+						INFANTRY_E1,
+						INFANTRY_E3,
+						INFANTRY_E4,
+						INFANTRY_E5
+					};
+					InfantryType const * list = (ActLike == HOUSE_BAD) ? nod_infantry : gdi_infantry;
+					int list_count = (ActLike == HOUSE_BAD) ? (sizeof(nod_infantry) / sizeof(nod_infantry[0])) : (sizeof(gdi_infantry) / sizeof(gdi_infantry[0]));
+					int bestcount = 0;
+					InfantryType bestlist[8];
+					long money = Available_Money();
+					int unit_goal = 4;
+
+					switch (MPlayerAISkill) {
+						default:
+						case 0:
+							unit_goal = 5;
+							break;
+
+						case 1:
+							unit_goal = 4;
+							break;
+
+						case 2:
+							unit_goal = 3;
+							break;
+					}
+
+					if ((flags & (STRUCTF_WEAP | STRUCTF_AIRSTRIP)) && combat_units < unit_goal) {
+						break;
+					}
+
+					if (reserve && money < reserve + 400) {
+						break;
+					}
+
+					for (int idx = 0; idx < list_count; idx++) {
+						InfantryType utype = list[idx];
+						if (Can_Build(utype, ActLike) &&
+							InfantryTypeClass::As_Reference(utype).Level <= BuildLevel &&
+							InfantryTypeClass::As_Reference(utype).Cost_Of() <= money &&
+							(!reserve || (money - InfantryTypeClass::As_Reference(utype).Cost_Of()) >= reserve)) {
+							bestlist[bestcount++] = utype;
+						}
+					}
+
+					if (bestcount) {
+						techno = &InfantryTypeClass::As_Reference(bestlist[Random_Pick(0, bestcount-1)]);
+					}
+					break;
+				}
+
 				int counter[INFANTRY_COUNT];
 				if (GameToPlay == GAME_NORMAL) {
 					memset(counter, 0x00, sizeof(counter));
@@ -3383,7 +3699,46 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 			if (CurBuildings < MaxBuilding) {
 				BaseNodeClass * node = Base.Next_Buildable();
 				if (node) {
-					techno = &BuildingTypeClass::As_Reference(node->Type);
+					BuildingTypeClass const & buildtype = BuildingTypeClass::As_Reference(node->Type);
+					if (GameToPlay != GAME_SKIRMISH || IsHuman) {
+						techno = &buildtype;
+					} else {
+						if (Can_Build(&buildtype, ActLike) && buildtype.Cost_Of() <= Available_Money()) {
+							techno = &buildtype;
+						}
+					}
+				} else if (GameToPlay == GAME_SKIRMISH && !IsHuman) {
+					StructType build = STRUCT_NONE;
+
+					if (flags & STRUCTF_ADVANCED_POWER) flags |= STRUCTF_POWER;
+					if (flags & STRUCTF_HAND) flags |= STRUCTF_BARRACKS;
+					if (flags & STRUCTF_AIRSTRIP) flags |= STRUCTF_WEAP;
+
+					if (!(flags & STRUCTF_POWER)) {
+						build = STRUCT_POWER;
+					} else if (!(flags & STRUCTF_REFINERY)) {
+						build = STRUCT_REFINERY;
+					} else if (ActLike == HOUSE_GOOD && !(flags & STRUCTF_BARRACKS)) {
+						build = STRUCT_BARRACKS;
+					} else if (ActLike == HOUSE_BAD && !(flags & STRUCTF_HAND)) {
+						build = STRUCT_HAND;
+					} else if (ActLike == HOUSE_GOOD && !(flags & STRUCTF_WEAP)) {
+						build = STRUCT_WEAP;
+					} else if (ActLike == HOUSE_BAD && !(flags & STRUCTF_AIRSTRIP)) {
+						build = STRUCT_AIRSTRIP;
+					} else if (reserve_build != STRUCT_NONE) {
+						build = reserve_build;
+					} else if (Power <= Drain) {
+						build = STRUCT_POWER;
+					} else if ((Tiberium / 2) > Capacity) {
+						build = STRUCT_REFINERY;
+					}
+
+					if (build != STRUCT_NONE &&
+						Can_Build(&BuildingTypeClass::As_Reference(build), ActLike) &&
+						BuildingTypeClass::As_Reference(build).Cost_Of() <= Available_Money()) {
+						techno = &BuildingTypeClass::As_Reference(build);
+					}
 				}
 			}
 			break;

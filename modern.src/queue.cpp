@@ -2840,7 +2840,7 @@ static int Execute_DoList(int , HousesType ,
 	//------------------------------------------------------------------------
 	// For a single-player game, just execute all events in the queue.
 	//------------------------------------------------------------------------
-	if (GameToPlay == GAME_NORMAL) {
+	if (GameToPlay == GAME_NORMAL || GameToPlay == GAME_SKIRMISH) {
 		for (i = 0; i < DoList.Count; i++) {
 			if (Frame >= DoList[i].Frame && !DoList[i].IsExecuted) {
 				DoList[i].Execute();				// execute it
@@ -3274,7 +3274,7 @@ static void Queue_Playback(void)
 	//------------------------------------------------------------------------
 	// Execute the DoList; if an error occurs, bail out.
 	//------------------------------------------------------------------------
-	if (GameToPlay == GAME_NORMAL) {
+	if (GameToPlay == GAME_NORMAL || GameToPlay == GAME_SKIRMISH) {
 		max_houses = 1;
 		base_house = PlayerPtr->Class->House;
 	}

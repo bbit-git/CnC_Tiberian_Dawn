@@ -44,6 +44,12 @@
 
 #include "function.h"
 #include "io.h"				// for unlink
+extern const char* TD_Get_Save_Path(void);
+
+static void Build_Savegame_Search(char *buf, size_t size)
+{
+	snprintf(buf, size, "%s%s.*", TD_Get_Save_Path(), Savegame_File_Stem());
+}
 
 
 /***********************************************************************************************
@@ -225,7 +231,7 @@ int LoadOptionsClass::Process(void)
 	int game_idx = 0;							// index of game to save/load/etc
 	int game_num = 0;							// file number of game to load/save/etc
 	char game_descr[40] = {0};				// save-game description
-	char fname[13];							// for generating filename to delete
+	char fname[260];							// for generating filename to delete
 
 	void const *up_button;
 	void const *down_button;
@@ -312,7 +318,7 @@ int LoadOptionsClass::Process(void)
 		/*
 		**	Invoke game callback.
 		*/
-		if (GameToPlay == GAME_NORMAL) {
+		if (GameToPlay == GAME_NORMAL || GameToPlay == GAME_SKIRMISH) {
 			Call_Back();
 		} else {
 			if (Main_Loop()) {
@@ -474,7 +480,7 @@ int LoadOptionsClass::Process(void)
 				game_idx = listbtn.Current_Index();
 				game_num = Files[game_idx]->Num;
 				if (CCMessageBox().Process(TXT_DELETE_FILE_QUERY,TXT_YES,TXT_NO)==0) {
-					sprintf(fname,"SAVEGAME.%03d",game_num);
+					Build_Savegame_File_Name(fname, sizeof(fname), game_num);
 					unlink(fname);
 					Clear_List(&listbtn);
 					Fill_List(&listbtn);
@@ -612,7 +618,9 @@ void LoadOptionsClass::Fill_List(ListClass *list)
 	/*
 	** Find all savegame files
 	*/
-	int rc = _dos_findfirst("SAVEGAME.*", _A_NORMAL, &ff);
+	char search[260];
+	Build_Savegame_Search(search, sizeof(search));
+	int rc = _dos_findfirst(search, _A_NORMAL, &ff);
 	fprintf(stderr, "LoadDlg: _dos_findfirst rc=%d\n", rc);
 
 	while (!rc) {

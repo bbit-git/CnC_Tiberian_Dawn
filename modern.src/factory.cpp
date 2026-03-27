@@ -746,5 +746,3 @@ bool FactoryClass::Completed(void)
 	}
 	return(false);
 }
-
-
