@@ -577,6 +577,8 @@ int MPlayerGhosts;				// 1 = houses with no players will still play
 int MPlayerSolo = 0;				// 1 = allows a single-player net game
 int MPlayerAIs = 3;				// # computer opponents for skirmish
 int MPlayerAISkill = 1;			// 0 = easy, 1 = normal, 2 = hard
+int MPlayerAIPersonality[MAX_PLAYERS] = {0};	// 0 = infantry, 1 = armor, 2 = air/mobile
+int MPlayerAIWaveState[MAX_PLAYERS] = {0};	// 0 = assemble, 1 = launch, 2 = cooldown, 3 = regroup
 int MPlayerUnitCount = 10;		// # units for non-base multiplayer scenarios
 
 

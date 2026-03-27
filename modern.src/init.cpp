@@ -2747,6 +2747,8 @@ void Save_Recording_Values(void)
 	RecordFile.Write(&MPlayerGoodies, sizeof(MPlayerGoodies));
 	RecordFile.Write(&MPlayerGhosts, sizeof(MPlayerGhosts));
 	RecordFile.Write(&MPlayerAIs, sizeof(MPlayerAIs));
+	RecordFile.Write(MPlayerAIPersonality, sizeof(MPlayerAIPersonality));
+	RecordFile.Write(MPlayerAIWaveState, sizeof(MPlayerAIWaveState));
 	RecordFile.Write(&MPlayerUnitCount, sizeof(MPlayerUnitCount));
 	RecordFile.Write(MPlayerID, sizeof(MPlayerID));
 	RecordFile.Write(MPlayerHouses, sizeof(MPlayerHouses));
@@ -2800,6 +2802,8 @@ void Load_Recording_Values(void)
 	RecordFile.Read(&MPlayerGoodies, sizeof(MPlayerGoodies));
 	RecordFile.Read(&MPlayerGhosts, sizeof(MPlayerGhosts));
 	RecordFile.Read(&MPlayerAIs, sizeof(MPlayerAIs));
+	RecordFile.Read(MPlayerAIPersonality, sizeof(MPlayerAIPersonality));
+	RecordFile.Read(MPlayerAIWaveState, sizeof(MPlayerAIWaveState));
 	RecordFile.Read(&MPlayerUnitCount, sizeof(MPlayerUnitCount));
 	RecordFile.Read(MPlayerID, sizeof(MPlayerID));
 	RecordFile.Read(MPlayerHouses, sizeof(MPlayerHouses));

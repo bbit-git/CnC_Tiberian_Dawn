@@ -198,6 +198,350 @@ TeamClass::TeamClass(TeamTypeClass const * type, HouseClass * owner) :
 }	
 
 
+static ThreatType Skirmish_AI_Team_Threat_Method(TeamTypeClass const * teamtype, int current_mission)
+{
+	if (!teamtype || current_mission < 0) {
+		return(THREAT_NORMAL);
+	}
+
+	TeamMissionStruct const * mission = &teamtype->MissionList[current_mission];
+	switch (mission->Mission) {
+		case TMISSION_ATTACKBASE:
+			return(THREAT_BUILDINGS);
+
+		case TMISSION_ATTACKUNITS:
+			return((ThreatType)(THREAT_VEHICLES|THREAT_INFANTRY));
+
+		case TMISSION_ATTACKCIVILIANS:
+			return(THREAT_CIVILIANS);
+
+		case TMISSION_ATTACKTARCOM:
+		case TMISSION_RAMPAGE:
+		default:
+			break;
+	}
+
+	return(THREAT_NORMAL);
+}
+
+
+static int Skirmish_AI_Target_Score(FootClass const * unit, TARGET target)
+{
+	if (!unit || !Target_Legal(target)) {
+		return(-0x7FFFFFFF);
+	}
+
+	TechnoClass * techno = As_Techno(target);
+	if (!techno || unit->House->Is_Ally(techno)) {
+		return(-0x7FFFFFFF);
+	}
+
+	int value = techno->Value();
+	int distance = unit->Distance(target);
+	return(value * 8 - distance / 8);
+}
+
+
+static bool Skirmish_AI_Persistent_Target(TARGET target)
+{
+	BuildingClass * building = As_Building(target);
+	if (!building) {
+		return(false);
+	}
+
+	switch (*building) {
+		case STRUCT_CONST:
+		case STRUCT_REFINERY:
+		case STRUCT_WEAP:
+		case STRUCT_AIRSTRIP:
+		case STRUCT_POWER:
+		case STRUCT_ADVANCED_POWER:
+		case STRUCT_RADAR:
+		case STRUCT_REPAIR:
+		case STRUCT_EYE:
+		case STRUCT_TEMPLE:
+		case STRUCT_GTOWER:
+		case STRUCT_ATOWER:
+		case STRUCT_TURRET:
+		case STRUCT_OBELISK:
+		case STRUCT_SAM:
+			return(true);
+
+		default:
+			break;
+	}
+
+	return(false);
+}
+
+
+static bool Skirmish_AI_Is_Harass_Unit(FootClass const * unit)
+{
+	if (!unit || unit->What_Am_I() != RTTI_UNIT) {
+		return(false);
+	}
+
+	UnitClass const * vehicle = (UnitClass const *)unit;
+	if (*vehicle == UNIT_HARVESTER || *vehicle == UNIT_MCV || *vehicle == UNIT_GUNBOAT) {
+		return(false);
+	}
+
+	UnitTypeClass const * type = &UnitTypeClass::As_Reference(*vehicle);
+	return(type->MaxSpeed >= MPH_MEDIUM_FAST && type->Primary != WEAPON_NONE);
+}
+
+
+static int Skirmish_AI_Harvester_Defenders(HouseClass const * house, UnitClass const * harvester, int range)
+{
+	if (!house || !harvester) {
+		return(0);
+	}
+
+	int defenders = 0;
+
+	for (int idx = 0; idx < Units.Count(); idx++) {
+		UnitClass const * unit = Units.Ptr(idx);
+
+		if (unit == harvester || unit->IsInLimbo || house->Is_Ally(unit) || harvester->Distance((AbstractClass const *)unit) > range) {
+			continue;
+		}
+		if (*unit != UNIT_HARVESTER && *unit != UNIT_MCV && unit->Class->Primary != WEAPON_NONE) {
+			defenders++;
+		}
+	}
+
+	for (int idx = 0; idx < Infantry.Count(); idx++) {
+		InfantryClass const * infantry = Infantry.Ptr(idx);
+
+		if (infantry->IsInLimbo || house->Is_Ally(infantry) || harvester->Distance((AbstractClass const *)infantry) > range) {
+			continue;
+		}
+		if (infantry->Class->Primary != WEAPON_NONE) {
+			defenders++;
+		}
+	}
+
+	for (int idx = 0; idx < Buildings.Count(); idx++) {
+		BuildingClass const * building = Buildings.Ptr(idx);
+
+		if (building->IsInLimbo || house->Is_Ally(building) || harvester->Distance((AbstractClass const *)building) > range) {
+			continue;
+		}
+		if (building->Class->Primary != WEAPON_NONE) {
+			defenders += 2;
+		}
+	}
+
+	return(defenders);
+}
+
+
+static TARGET Skirmish_AI_Harvester_Target(HouseClass const * house, FootClass const * unit)
+{
+	if (!house || !unit || !Skirmish_AI_Is_Harass_Unit(unit)) {
+		return(TARGET_NONE);
+	}
+
+	TARGET best = TARGET_NONE;
+	int best_score = -0x7FFFFFFF;
+
+	for (int idx = 0; idx < Units.Count(); idx++) {
+		UnitClass const * harvester = Units.Ptr(idx);
+
+		if (harvester->IsInLimbo || *harvester != UNIT_HARVESTER || house->Is_Ally(harvester)) {
+			continue;
+		}
+
+		int distance = unit->Distance((AbstractClass const *)harvester);
+		if (distance > 0x0C00) {
+			continue;
+		}
+
+		int defenders = Skirmish_AI_Harvester_Defenders(house, harvester, 0x0500);
+		if (defenders > 3) {
+			continue;
+		}
+
+		int score = 6000 + harvester->Tiberium_Load() * 8 - distance / 4 - defenders * 800;
+		if (score > best_score) {
+			best = harvester->As_Target();
+			best_score = score;
+		}
+	}
+
+	return(best);
+}
+
+
+static int Skirmish_AI_Approach_Bonus(BuildingClass const * building)
+{
+	if (!building) {
+		return(0);
+	}
+
+	switch (*building) {
+		case STRUCT_GTOWER:
+		case STRUCT_TURRET:
+			return(2600);
+
+		case STRUCT_ATOWER:
+		case STRUCT_OBELISK:
+		case STRUCT_SAM:
+			return(3200);
+
+		case STRUCT_REFINERY:
+			return(2400);
+
+		case STRUCT_WEAP:
+		case STRUCT_AIRSTRIP:
+			return(2200);
+
+		case STRUCT_POWER:
+		case STRUCT_ADVANCED_POWER:
+			return(2000);
+
+		case STRUCT_RADAR:
+		case STRUCT_REPAIR:
+			return(1800);
+
+		default:
+			break;
+	}
+
+	if (building->Class->Primary != WEAPON_NONE) {
+		return(1800);
+	}
+
+	return(0);
+}
+
+
+static TARGET Skirmish_AI_Approach_Target(HouseClass const * house, FootClass const * unit, TARGET current)
+{
+	if (!house || !unit) {
+		return(TARGET_NONE);
+	}
+
+	int current_distance = Target_Legal(current) ? unit->Distance(current) : 0x7FFFFFFF;
+	TARGET best = TARGET_NONE;
+	int best_score = -0x7FFFFFFF;
+
+	for (int idx = 0; idx < Buildings.Count(); idx++) {
+		BuildingClass const * building = Buildings.Ptr(idx);
+
+		if (!building || building->IsInLimbo || house->Is_Ally(building)) {
+			continue;
+		}
+
+		int bonus = Skirmish_AI_Approach_Bonus(building);
+		if (bonus <= 0) {
+			continue;
+		}
+
+		int distance = unit->Distance((AbstractClass const *)building);
+		if (distance > 0x0A00) {
+			continue;
+		}
+		if (Target_Legal(current) && distance >= current_distance) {
+			continue;
+		}
+
+		int score = building->Value() * 6 + bonus - distance / 6;
+		if (score > best_score) {
+			best = building->As_Target();
+			best_score = score;
+		}
+	}
+
+	return(best);
+}
+
+
+static TARGET Skirmish_AI_Attack_Target(HouseClass const * house, TeamTypeClass const * teamtype, int current_mission, FootClass * member, TARGET current)
+{
+	if (GameToPlay != GAME_SKIRMISH || !house || house->IsHuman || !member) {
+		return(current);
+	}
+
+	ThreatType method = Skirmish_AI_Team_Threat_Method(teamtype, current_mission);
+	FootClass * unit = member;
+	TARGET best_local = TARGET_NONE;
+	int best_score = -0x7FFFFFFF;
+
+	while (unit) {
+		if (unit->IsInitiated && !unit->IsInLimbo) {
+			TARGET local = unit->Greatest_Threat((ThreatType)(method | THREAT_AREA));
+			int score = Skirmish_AI_Target_Score(unit, local);
+
+			if (score > best_score) {
+				best_local = local;
+				best_score = score;
+			}
+		}
+		unit = unit->Member;
+	}
+
+	if (!Target_Legal(best_local)) {
+		best_local = current;
+	}
+
+	TARGET approach = Skirmish_AI_Approach_Target(house, member, best_local);
+	if (Target_Legal(approach)) {
+		int approach_score = Skirmish_AI_Target_Score(member, approach) + 2000;
+		int current_score = Skirmish_AI_Target_Score(member, best_local);
+
+		if (!Target_Legal(best_local) || approach_score > current_score) {
+			best_local = approach;
+		}
+	}
+
+	TARGET harvester = Skirmish_AI_Harvester_Target(house, member);
+	if (Target_Legal(harvester)) {
+		int harvester_score = Skirmish_AI_Target_Score(member, harvester) + 3000;
+		int current_score = Skirmish_AI_Target_Score(member, best_local);
+
+		if (!Target_Legal(best_local) || harvester_score > current_score) {
+			best_local = harvester;
+		}
+	}
+
+	if (!Target_Legal(best_local)) {
+		return(current);
+	}
+
+	if (!Target_Legal(current)) {
+		return(best_local);
+	}
+
+	int current_score = Skirmish_AI_Target_Score(member, current);
+	int current_distance = member->Distance(current);
+	int local_distance = member->Distance(best_local);
+	bool persistent = Skirmish_AI_Persistent_Target(current);
+
+	if (persistent && current_distance < 0x0800) {
+		if (best_score <= current_score + 2000) {
+			return(current);
+		}
+	}
+
+	if (persistent && member->In_Range(current)) {
+		if (best_score <= current_score + 3000) {
+			return(current);
+		}
+	}
+
+	if (best_score > current_score) {
+		return(best_local);
+	}
+
+	if (current_distance > 0x0A00 && local_distance < 0x0600 && best_score > current_score / 2) {
+		return(best_local);
+	}
+
+	return(current);
+}
+
+
 /***************************************************************************
  * TeamClass::Assign_Mission_Target -- Sets mission target and clears old  *
  *                                                                         *
@@ -1120,6 +1464,8 @@ void TeamClass::Coordinate_Attack(void)
 		Target = MissionTarget;
 	}
 
+	Target = Skirmish_AI_Attack_Target(House, Class, CurrentMission, Member, Target);
+
 	if (!Target_Legal(Target)) {
 		IsNextMission = true;
 
@@ -1170,6 +1516,11 @@ bool TeamClass::Coordinate_Regroup(void)
 	Validate();
 	FootClass * unit   = Member;
 	bool			retval = true;
+	int regroup_range = STRAY_DISTANCE;
+
+	if (GameToPlay == GAME_SKIRMISH && House && !House->IsHuman) {
+		regroup_range = 1;
+	}
 
 	/*
 	**	Regroup default logic.
@@ -1180,8 +1531,8 @@ bool TeamClass::Coordinate_Regroup(void)
 
 		if (unit->IsInitiated && !unit->IsInLimbo) {
 
-			if (unit->Distance(Center) > STRAY_DISTANCE && (unit->Mission != MISSION_GUARD_AREA || !Target_Legal(unit->TarCom))) {
-				if (unit->Mission != MISSION_MOVE || !Target_Legal(unit->NavCom) || ::Distance(As_Cell(unit->NavCom), Center) > STRAY_DISTANCE) {
+			if (unit->Distance(Center) > regroup_range && (unit->Mission != MISSION_GUARD_AREA || !Target_Legal(unit->TarCom))) {
+				if (unit->Mission != MISSION_MOVE || !Target_Legal(unit->NavCom) || ::Distance(As_Cell(unit->NavCom), Center) > regroup_range) {
 					unit->Assign_Mission(MISSION_MOVE);
 					unit->Assign_Destination(::As_Target(Center));
 				}
