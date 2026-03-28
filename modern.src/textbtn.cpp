@@ -79,7 +79,7 @@ TextButtonClass::TextButtonClass(unsigned id, char const * text, TextPrintType s
 //			if (SeenBuff.Get_Width() != 320) Width *= 2;
 		}
 		if (h == -1) {
-			Height = FontHeight + FontYSpacing + 2;
+			Height = Default_Text_Button_Height();
 //			if (SeenBuff.Get_Height() != 200) Height *= 2;
 		}
 	}
@@ -151,7 +151,7 @@ TextButtonClass::TextButtonClass (unsigned id, int text, TextPrintType style, in
 //			if (SeenBuff.Get_Width() != 320) Width *= 2;
 		}
 		if (h == -1) {
-			Height = FontHeight + FontYSpacing + 2;
+			Height = Default_Text_Button_Height();
 //			if (SeenBuff.Get_Height() != 200) Height *= 2;
 		}
 	}
@@ -228,7 +228,7 @@ void TextButtonClass::Set_Text(char const * text, bool resize)
 	if (resize && String) {
 		Fancy_Text_Print(TXT_NONE, 0, 0, TBLACK, TBLACK, PrintFlags);
 		Width = String_Pixel_Width(String)+8;
-		Height = FontHeight + FontYSpacing + 2;
+		Height = Default_Text_Button_Height();
 	}
 }
 
@@ -338,6 +338,11 @@ void TextButtonClass::Draw_Text(char const * text)
 	if (String) {
 		int color;
 		//if (FontPtr == GradFont6Ptr) {
+		/* Set font to get FontHeight for vertical centering */
+		Fancy_Text_Print(TXT_NONE, 0, 0, BLACK, TBLACK, PrintFlags);
+		int ty = Y + (Height - FontHeight) / 2;
+		if (ty < Y) ty = Y;
+
 		if (PrintFlags & TPF_6PT_GRAD) {
 			TextPrintType flags;
 
@@ -353,7 +358,7 @@ void TextButtonClass::Draw_Text(char const * text)
 				}
 			}
 
-			Fancy_Text_Print(text, X+(Width>>1)-1, Y+1, color, TBLACK, PrintFlags|flags|TPF_CENTER);
+			Fancy_Text_Print(text, X+(Width>>1)-1, ty, color, TBLACK, PrintFlags|flags|TPF_CENTER);
 		} else {
 			if (IsDisabled) {
 //				color = DKGREY;
@@ -370,7 +375,7 @@ void TextButtonClass::Draw_Text(char const * text)
 				}
 			}
 
-			Fancy_Text_Print(text, X+(Width>>1)-1, Y+1, IsOn ? RED : color, TBLACK, PrintFlags|TPF_CENTER);
+			Fancy_Text_Print(text, X+(Width>>1)-1, ty, IsOn ? RED : color, TBLACK, PrintFlags|TPF_CENTER);
 		}
 
 	}

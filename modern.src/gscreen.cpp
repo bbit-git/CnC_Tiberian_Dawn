@@ -48,6 +48,7 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "function.h"
+#include "actmenu.h"
 
 #include "filepcx.h"
 
@@ -428,6 +429,7 @@ void GScreenClass::Render(void)
 			Messages.Set_Width(Lepton_To_Cell(Map.TacLeptonWidth) * ICON_PIXEL_W);
 		}
 		Messages.Draw();
+		ActionMenu.Draw_It();
 		//DBG("Render: Blit_Display");
 
 		Blit_Display();

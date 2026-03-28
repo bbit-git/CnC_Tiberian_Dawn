@@ -498,6 +498,54 @@ static bool Skirmish_AI_Economy_Harassed(long flags, bool under_pressure, int re
 }
 
 
+static bool Skirmish_AI_Core_Reserve(StructType reserve_build)
+{
+	switch (reserve_build) {
+		case STRUCT_POWER:
+		case STRUCT_REFINERY:
+		case STRUCT_BARRACKS:
+		case STRUCT_HAND:
+		case STRUCT_WEAP:
+		case STRUCT_AIRSTRIP:
+			return(true);
+
+		default:
+			break;
+	}
+
+	return(false);
+}
+
+
+static int Skirmish_AI_Min_Combat_Force(int skill, int personality)
+{
+	int minimum = 4;
+
+	switch (skill) {
+		default:
+		case 0:
+			minimum = 3;
+			break;
+
+		case 1:
+			minimum = 4;
+			break;
+
+		case 2:
+			minimum = 5;
+			break;
+	}
+
+	if (personality == 0) {
+		minimum++;
+	} else if (personality == 1) {
+		minimum = MAX(3, minimum - 1);
+	}
+
+	return(minimum);
+}
+
+
 static int Skirmish_AI_Personality(HouseClass const * house)
 {
 	int index = Skirmish_AI_Index(house);
@@ -3946,10 +3994,10 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 		} else if (!(flags & STRUCTF_STORAGE) && Capacity > 0 &&
 			Tiberium > (huge_map ? ((Capacity * 2) / 3) : ((Capacity * 3) / 4))) {
 			reserve_build = STRUCT_STORAGE;
-		} else if (economy_harassed && refinery_count < 2 && harvester_count >= refinery_count) {
+		} else if (economy_harassed && refinery_count < 2 && harvester_count >= MAX(2, refinery_count)) {
 			reserve_build = STRUCT_REFINERY;
-		} else if ((huge_map && refinery_count < 3 && harvester_count >= refinery_count) ||
-			(big_map && refinery_count < 2 && harvester_count >= refinery_count)) {
+		} else if ((huge_map && refinery_count < 3 && harvester_count >= MAX(2, refinery_count)) ||
+			(big_map && refinery_count < 2 && harvester_count >= MAX(2, refinery_count))) {
 			reserve_build = STRUCT_REFINERY;
 		} else if (!(flags & STRUCTF_RADAR)) {
 			reserve_build = STRUCT_RADAR;
@@ -4083,19 +4131,21 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 					int enemy_infantry = 0;
 					int enemy_units = 0;
 					int enemy_buildings = 0;
+					int minimum_force = Skirmish_AI_Min_Combat_Force(MPlayerAISkill, personality);
+					bool hard_reserve = Skirmish_AI_Core_Reserve(reserve_build);
 					bool late_game = ((flags & STRUCTF_RADAR) &&
 						((flags & STRUCTF_REPAIR) || (flags & STRUCTF_EYE) || (flags & STRUCTF_TEMPLE) ||
 						 (flags & STRUCTF_ADVANCED_POWER)));
 
-					if (recovery_mode && reserve_build != STRUCT_NONE) {
+					if (recovery_mode && reserve_build != STRUCT_NONE && (hard_reserve || combat_units >= minimum_force)) {
 						break;
 					}
 
-					if (economy_harassed && reserve_build != STRUCT_NONE) {
+					if (economy_harassed && reserve_build != STRUCT_NONE && (hard_reserve || combat_units >= minimum_force)) {
 						break;
 					}
 
-					if (reserve && money < reserve + 600) {
+					if (reserve && money < reserve + 600 && (hard_reserve || combat_units >= minimum_force)) {
 						break;
 					}
 
@@ -4119,12 +4169,15 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 						}
 					}
 
-					if (refinery_count >= 2 && harvester_count < refinery_count &&
-						Can_Build(UNIT_HARVESTER, ActLike) &&
-						UnitTypeClass::As_Reference(UNIT_HARVESTER).Cost_Of() <= money &&
-						(!reserve || (money - UnitTypeClass::As_Reference(UNIT_HARVESTER).Cost_Of()) >= reserve)) {
-						techno = &UnitTypeClass::As_Reference(UNIT_HARVESTER);
-						break;
+					if ((refinery_count >= 2 && harvester_count < refinery_count) ||
+						(refinery_count >= 1 && (flags & (STRUCTF_WEAP | STRUCTF_AIRSTRIP)) && harvester_count < 2) ||
+						(economy_harassed && refinery_count >= 1 && harvester_count < MAX(2, refinery_count))) {
+						if (Can_Build(UNIT_HARVESTER, ActLike) &&
+							UnitTypeClass::As_Reference(UNIT_HARVESTER).Cost_Of() <= money &&
+							(!reserve || (money - UnitTypeClass::As_Reference(UNIT_HARVESTER).Cost_Of()) >= reserve)) {
+							techno = &UnitTypeClass::As_Reference(UNIT_HARVESTER);
+							break;
+						}
 					}
 
 					for (int idx = 0; idx < list_count; idx++) {
@@ -4311,6 +4364,8 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 					int enemy_infantry = 0;
 					int enemy_units = 0;
 					int enemy_buildings = 0;
+					int minimum_force = Skirmish_AI_Min_Combat_Force(MPlayerAISkill, personality);
+					bool hard_reserve = Skirmish_AI_Core_Reserve(reserve_build);
 					bool late_game = ((flags & STRUCTF_RADAR) &&
 						((flags & STRUCTF_REPAIR) || (flags & STRUCTF_EYE) || (flags & STRUCTF_TEMPLE) ||
 						 (flags & STRUCTF_ADVANCED_POWER)));
@@ -4340,15 +4395,15 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 						break;
 					}
 
-					if (recovery_mode && reserve_build != STRUCT_NONE) {
+					if (recovery_mode && reserve_build != STRUCT_NONE && (hard_reserve || combat_units >= minimum_force)) {
 						break;
 					}
 
-					if (economy_harassed && reserve_build != STRUCT_NONE) {
+					if (economy_harassed && reserve_build != STRUCT_NONE && (hard_reserve || combat_units >= minimum_force)) {
 						break;
 					}
 
-					if (reserve && money < reserve + 400) {
+					if (reserve && money < reserve + 400 && (hard_reserve || combat_units >= minimum_force)) {
 						break;
 					}
 
@@ -4496,11 +4551,13 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 				AircraftType atype = (ActLike == HOUSE_GOOD) ? AIRCRAFT_ORCA : AIRCRAFT_HELICOPTER;
 				long money = Available_Money();
 				int desired_aircraft = 0;
+				int minimum_force = Skirmish_AI_Min_Combat_Force(MPlayerAISkill, personality);
+				bool hard_reserve = Skirmish_AI_Core_Reserve(reserve_build);
 				bool late_game = ((flags & STRUCTF_RADAR) &&
 					((flags & STRUCTF_REPAIR) || (flags & STRUCTF_EYE) || (flags & STRUCTF_TEMPLE) ||
 					 (flags & STRUCTF_ADVANCED_POWER)));
 
-				if (recovery_mode && reserve_build != STRUCT_NONE) {
+				if (recovery_mode && reserve_build != STRUCT_NONE && (hard_reserve || combat_units >= minimum_force)) {
 					break;
 				}
 
@@ -4523,7 +4580,7 @@ TechnoTypeClass const * HouseClass::Suggest_New_Object(RTTIType objecttype) cons
 				if (desired_aircraft <= combat_aircraft_count) {
 					break;
 				}
-				if (reserve && money < reserve + 800) {
+				if (reserve && money < reserve + 800 && (hard_reserve || combat_units >= minimum_force)) {
 					break;
 				}
 				if (Can_Build(atype, ActLike) &&

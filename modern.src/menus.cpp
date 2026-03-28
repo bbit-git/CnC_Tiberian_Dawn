@@ -172,18 +172,20 @@ void Setup_Menu(int menu,char const *text[], unsigned long field, int index, int
 {
 	int *menuptr,lp;
 	int menuy,menux,idx,item,num,drawy;
+	int lineheight;
 
 	menuptr=&MenuList[menu][0];							/* get pointer to menu	*/
 	menuy=WinY+menuptr[MENUY];								/* get the absolute 		*/
 	menux=(WinX+menuptr[MENUX])<<3;						/*		coords of menu		*/
 	item=Select_To_Entry(menuptr[MSELECTED],field,index);
 	num=menuptr[ITEMSHIGH];
+	lineheight=Default_Menu_Line_Height(skip);
 
 	Fancy_Text_Print(0, 0, 0, TBLACK, TBLACK, TPF_8POINT|TPF_DROPSHADOW);
- 	Hide_Mouse();
+	Hide_Mouse();
 	for (lp=0;lp<num;lp++) {
 		idx=Select_To_Entry(lp,field,index);
-		drawy=menuy+(lp*FontHeight)+(lp*skip);
+		drawy=menuy+(lp*lineheight);
 		Fancy_Text_Print(text[idx], menux, drawy, menuptr[((idx==item) && (MenuUpdate )) ? HILITE : NORMCOL], TBLACK, TPF_8POINT|TPF_DROPSHADOW);
 //		if ((idx==item) && (MenuUpdate ))
 //			Text_Print(text[idx],menux,drawy,menuptr[HILITE],TBLACK);
@@ -216,8 +218,8 @@ int Check_Menu(int menu,char const *text[],char *,long field,int index)
 	maxitem = menuptr[ITEMSHIGH]-1;							/* find max items			*/
 	newitem = item = menuptr[MSELECTED]%(maxitem+1);	/* find selected 			*/
 	select = -1;													/* no selection made		*/
-	menuskip = FontHeight+MenuSkip;							/* calc new font height	*/
-	halfskip = MenuSkip>>1;									/* adjustment for menus	*/
+	menuskip = Default_Menu_Line_Height(MenuSkip);			/* calc new font height	*/
+	halfskip = (menuskip-FontHeight)>>1;					/* adjustment for menus	*/
 
 	menuy = WinY+menuptr[MENUY];								/* get the absolute 		*/
 	menux = (WinX+menuptr[MENUX])<<3;						/*		coords of menu		*/
@@ -406,8 +408,8 @@ int Do_Menu(char const **strings, bool blue)
 	*/
 	WindowList[WINDOW_MENU][WINDOWWIDTH] = MenuList[0][ITEMWIDTH] + 2;
 	WindowList[WINDOW_MENU][WINDOWX] = 19 - (length >> 4);
-	WindowList[WINDOW_MENU][WINDOWY] = 174 - (unsigned)(MenuList[0][ITEMSHIGH] * (FontHeight+FontYSpacing));
-	WindowList[WINDOW_MENU][WINDOWHEIGHT] = MenuList[0][ITEMSHIGH] * FontHeight + 5 /*11*/;
+	WindowList[WINDOW_MENU][WINDOWY] = 174 - (unsigned)(MenuList[0][ITEMSHIGH] * Default_Menu_Line_Height(0));
+	WindowList[WINDOW_MENU][WINDOWHEIGHT] = MenuList[0][ITEMSHIGH] * Default_Menu_Line_Height(0) + 5 /*11*/;
 
 	/*
 	**	Display the menu.
@@ -512,6 +514,11 @@ int Main_Menu(unsigned long timeout)
 
 	/* Centering offset: menu layout was designed for 640px width */
 	int menu_xoff = (SeenBuff.Get_Width() > 640) ? (SeenBuff.Get_Width() - 640) / 2 : 0;
+	int dialog_x = D_DIALOG_X + menu_xoff;
+	int dialog_y = D_DIALOG_Y;
+	int dialog_w = D_DIALOG_W;
+	int dialog_h = D_DIALOG_H;
+	int menu_button_height = MAX(D_START_H, Default_Text_Button_Height());
 
 	enum {
 #ifdef NEWMENU
@@ -579,42 +586,42 @@ int Main_Menu(unsigned long timeout)
 
 #ifdef NEWMENU
 #ifdef BONUS_MISSIONS
-	int ystep = 13*2;
+	int ystep = menu_button_height + ((13*2) - D_START_H);
 #else
-	int ystep = 15*2;
+	int ystep = menu_button_height + ((15*2) - D_START_H);
 #endif	//BONUS_MISSIONS
 
 	if (expansions_present) ystep -= 2*2;
 	TextButtonClass expandbtn (BUTTON_EXPAND, TXT_NEW_MISSIONS,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_START_X + menu_xoff, starty, D_START_W, D_START_H);
+		D_START_X + menu_xoff, starty, D_START_W, menu_button_height);
 	if (expansions_present) starty += ystep;
 
 	TextButtonClass startbtn (BUTTON_START, TXT_START_NEW_GAME,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_START_X + menu_xoff, starty, D_START_W, D_START_H);
+		D_START_X + menu_xoff, starty, D_START_W, menu_button_height);
 	starty += ystep;
 
 #ifdef BONUS_MISSIONS
 	TextButtonClass bonusbtn (BUTTON_BONUS, TXT_BONUS_MISSIONS,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_BONUS_X + menu_xoff, starty, D_BONUS_W, D_BONUS_H);
+		D_BONUS_X + menu_xoff, starty, D_BONUS_W, menu_button_height);
 	if (bonus_missions_present) starty += ystep;
 #endif	//BONUS_MISSIONS
 
 	TextButtonClass loadbtn (BUTTON_LOAD, TXT_LOAD_MISSION,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_LOAD_X + menu_xoff, starty, D_LOAD_W, D_LOAD_H);
+		D_LOAD_X + menu_xoff, starty, D_LOAD_W, menu_button_height);
 	starty += ystep;
 #else
 
 	TextButtonClass startbtn (BUTTON_START, TXT_START_NEW_GAME,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_START_X + menu_xoff, D_START_Y, D_START_W, D_START_H);
+		D_START_X + menu_xoff, D_START_Y, D_START_W, menu_button_height);
 
 	TextButtonClass loadbtn (BUTTON_LOAD, TXT_LOAD_MISSION,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_LOAD_X + menu_xoff, D_LOAD_Y, D_LOAD_W, D_LOAD_H);
+		D_LOAD_X + menu_xoff, D_LOAD_Y, D_LOAD_W, menu_button_height);
 
 #endif
 
@@ -622,67 +629,67 @@ int Main_Menu(unsigned long timeout)
 #ifdef DEMO
 	TextButtonClass multibtn (BUTTON_MULTI, TXT_ORDER_INFO,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_MULTI_X + menu_xoff, D_MULTI_Y, D_MULTI_W, D_MULTI_H);
+		D_MULTI_X + menu_xoff, D_MULTI_Y, D_MULTI_W, menu_button_height);
 #ifdef NEWMENU
 	TextButtonClass introbtn (BUTTON_INTRO, TXT_JUST_INTRO,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_INTRO_X + menu_xoff, starty, D_INTRO_W, D_INTRO_H);
+		D_INTRO_X + menu_xoff, starty, D_INTRO_W, menu_button_height);
 	starty += ystep;
 
 	TextButtonClass exitbtn (BUTTON_EXIT, TXT_EXIT_GAME,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
 #if (GERMAN | FRENCH)
-		D_EXIT_X + menu_xoff, starty, D_EXIT_W, D_EXIT_H);
+		D_EXIT_X + menu_xoff, starty, D_EXIT_W, menu_button_height);
 #else
-		D_EXIT_X + menu_xoff, starty, D_EXIT_W, D_EXIT_H);
+		D_EXIT_X + menu_xoff, starty, D_EXIT_W, menu_button_height);
 #endif
 #else
 	TextButtonClass introbtn (BUTTON_INTRO, TXT_JUST_INTRO,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_INTRO_X, D_INTRO_Y, D_INTRO_W, D_INTRO_H);
+		D_INTRO_X, D_INTRO_Y, D_INTRO_W, menu_button_height);
 
 	TextButtonClass exitbtn (BUTTON_EXIT, TXT_EXIT_GAME,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
 #if (GERMAN | FRENCH)
-		D_EXIT_X + menu_xoff, D_EXIT_Y, D_EXIT_W, D_EXIT_H);
+		D_EXIT_X + menu_xoff, D_EXIT_Y, D_EXIT_W, menu_button_height);
 #else
-		D_EXIT_X + menu_xoff, D_EXIT_Y, D_EXIT_W, D_EXIT_H);
+		D_EXIT_X + menu_xoff, D_EXIT_Y, D_EXIT_W, menu_button_height);
 #endif
 #endif
 #else
 #ifdef NEWMENU
 	TextButtonClass multibtn (BUTTON_MULTI, TXT_MULTIPLAYER_GAME,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_MULTI_X + menu_xoff, starty, D_MULTI_W, D_MULTI_H);
+		D_MULTI_X + menu_xoff, starty, D_MULTI_W, menu_button_height);
 	starty += ystep;
 
 	TextButtonClass introbtn (BUTTON_INTRO, TXT_INTRO,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_INTRO_X + menu_xoff, starty, D_INTRO_W, D_INTRO_H);
+		D_INTRO_X + menu_xoff, starty, D_INTRO_W, menu_button_height);
 	starty += ystep;
 
 	TextButtonClass exitbtn (BUTTON_EXIT, TXT_EXIT_GAME,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
 #if (GERMAN | FRENCH)
-		D_EXIT_X + menu_xoff, starty, D_EXIT_W, D_EXIT_H);
+		D_EXIT_X + menu_xoff, starty, D_EXIT_W, menu_button_height);
 #else
-		D_EXIT_X + menu_xoff, starty, D_EXIT_W, D_EXIT_H);
+		D_EXIT_X + menu_xoff, starty, D_EXIT_W, menu_button_height);
 #endif
 #else
 	TextButtonClass multibtn (BUTTON_MULTI, TXT_MULTIPLAYER_GAME,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_MULTI_X + menu_xoff, D_MULTI_Y, D_MULTI_W, D_MULTI_H);
+		D_MULTI_X + menu_xoff, D_MULTI_Y, D_MULTI_W, menu_button_height);
 
 	TextButtonClass introbtn (BUTTON_INTRO, TXT_INTRO,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
-		D_INTRO_X, D_INTRO_Y, D_INTRO_W, D_INTRO_H);
+		D_INTRO_X, D_INTRO_Y, D_INTRO_W, menu_button_height);
 
 	TextButtonClass exitbtn (BUTTON_EXIT, TXT_EXIT_GAME,
 		TPF_CENTER | TPF_6PT_GRAD | TPF_USE_GRAD_PAL | TPF_NOSHADOW,
 #if (GERMAN | FRENCH)
-		D_EXIT_X + menu_xoff, D_EXIT_Y, D_EXIT_W, D_EXIT_H);
+		D_EXIT_X + menu_xoff, D_EXIT_Y, D_EXIT_W, menu_button_height);
 #else
-		D_EXIT_X + menu_xoff, D_EXIT_Y, D_EXIT_W, D_EXIT_H);
+		D_EXIT_X + menu_xoff, D_EXIT_Y, D_EXIT_W, menu_button_height);
 #endif
 #endif
 #endif
@@ -728,6 +735,9 @@ int Main_Menu(unsigned long timeout)
 	append_visible_button(multibtn, RET_MULTIPLAYER_GAME);
 	append_visible_button(introbtn, RET_INTRO);
 	append_visible_button(exitbtn, RET_EXIT);
+	for (int button_index = 0; button_index < button_count; ++button_index) {
+		dialog_h = MAX(dialog_h, buttons[button_index]->Y + buttons[button_index]->Height - dialog_y + 32);
+	}
 
 	curbutton = 0;
 	buttons[curbutton]->Turn_On();
@@ -781,22 +791,22 @@ int Main_Menu(unsigned long timeout)
 			**	Display the title and text overlay for the menu.
 			*/
 			Set_Logic_Page(HidPage);
-			Dialog_Box(D_DIALOG_X + menu_xoff, D_DIALOG_Y, D_DIALOG_W, D_DIALOG_H);
-			Draw_Caption (TXT_NONE, D_DIALOG_X + menu_xoff, D_DIALOG_Y, D_DIALOG_W);
+			Dialog_Box(dialog_x, dialog_y, dialog_w, dialog_h);
+			Draw_Caption (TXT_NONE, dialog_x, dialog_y, dialog_w);
 #ifdef VIRGIN_CHEAT_KEYS
 #ifdef DEMO
 			Version_Number();
-			Fancy_Text_Print("Demo%s", D_DIALOG_X+menu_xoff+D_DIALOG_W-5*2, D_DIALOG_Y+D_DIALOG_H-10*2, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
+			Fancy_Text_Print("Demo%s", dialog_x+dialog_w-5*2, dialog_y+dialog_h-10*2, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
 #else
-			Version_Number(); Fancy_Text_Print("%s", D_DIALOG_X+menu_xoff+D_DIALOG_W-5*2, D_DIALOG_Y+D_DIALOG_H-10*2, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
+			Version_Number(); Fancy_Text_Print("%s", dialog_x+dialog_w-5*2, dialog_y+dialog_h-10*2, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
 #endif
 //			Fancy_Text_Print("V.%d%s%02d", D_DIALOG_X+D_DIALOG_W-5, D_DIALOG_Y+D_DIALOG_H-10, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, Version_Number(), VersionText, FOREIGN_VERSION_NUMBER);
 #else
 #ifdef DEMO
 			Version_Number();
-			Fancy_Text_Print("Demo%s", D_DIALOG_X+menu_xoff+D_DIALOG_W-5*2, D_DIALOG_Y+D_DIALOG_H-10*2, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
+			Fancy_Text_Print("Demo%s", dialog_x+dialog_w-5*2, dialog_y+dialog_h-10*2, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
 #else
-			Version_Number(); Fancy_Text_Print("%s", D_DIALOG_X+menu_xoff+D_DIALOG_W-5*2, D_DIALOG_Y+D_DIALOG_H-10*2, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
+			Version_Number(); Fancy_Text_Print("%s", dialog_x+dialog_w-5*2, dialog_y+dialog_h-10*2, DKGREY, TBLACK, TPF_6POINT|TPF_FULLSHADOW|TPF_RIGHT, VersionText);
 #endif
 #endif
 

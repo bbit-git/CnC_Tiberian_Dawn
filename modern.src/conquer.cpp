@@ -62,6 +62,7 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include	"function.h"
+#include "actmenu.h"
 #include  "tcpip.h"
 
 /* Suppress 32-bit pointer arithmetic warnings — shape buffer code will be
@@ -1551,6 +1552,7 @@ bool Main_Loop()
 
 			WWMouse->Erase_Mouse(HidPage, TRUE);
 			//DBG("Main_Loop: Input");
+			ActionMenu.AI(input, x, y);
 			Map.Input(input, x, y);
 			if (input) {
 				Keyboard_Process(input);
