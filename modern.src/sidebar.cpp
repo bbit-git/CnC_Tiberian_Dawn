@@ -1723,7 +1723,11 @@ bool SidebarClass::StripClass::AI(KeyNumType & input, int , int )
 							switch (pending->What_Am_I()) {
 								case RTTI_UNIT:
 								case RTTI_AIRCRAFT:
-									OutList.Add(EventClass(EventClass::PLACE, pending->What_Am_I(), -1));
+									// LP64: cast -1 to CELL so the (EventType,RTTIType,CELL) constructor
+									// is selected instead of (EventType,RTTIType,int). If RTTIType ever
+									// becomes unsigned char (as in RA), the wrong constructor writes to
+									// Data.Specific instead of Data.Place, corrupting the cell value.
+									OutList.Add(EventClass(EventClass::PLACE, pending->What_Am_I(), (CELL)-1));
 									// Fall into next case.
 
 								case RTTI_BUILDING:
@@ -1731,7 +1735,7 @@ bool SidebarClass::StripClass::AI(KeyNumType & input, int , int )
 									break;
 
 								case RTTI_INFANTRY:
-									OutList.Add(EventClass(EventClass::PLACE, pending->What_Am_I(), -1));
+									OutList.Add(EventClass(EventClass::PLACE, pending->What_Am_I(), (CELL)-1));
 									Speak(VOX_UNIT_READY);
 									break;
 							}
@@ -2428,7 +2432,7 @@ int SidebarClass::StripClass::SelectClass::Action(unsigned flags, KeyNumType & k
 										**	power, queue this event and process through normal house
 										**	production channels.
 										*/
-										OutList.Add(EventClass(EventClass::PLACE, otype, -1));
+										OutList.Add(EventClass(EventClass::PLACE, otype, (CELL)-1)); // LP64: ensure CELL constructor
 									}
 								}
 							}
