@@ -238,7 +238,75 @@ static int Skirmish_AI_Target_Score(FootClass const * unit, TARGET target)
 
 	int value = techno->Value();
 	int distance = unit->Distance(target);
-	return(value * 8 - distance / 8);
+	int score = value * 8 - distance / 8;
+
+	BuildingClass * building = As_Building(target);
+	if (building) {
+		switch (*building) {
+			case STRUCT_STORAGE:
+				score -= 12000;
+				break;
+
+			case STRUCT_CONST:
+				score += 9000;
+				break;
+
+			case STRUCT_REFINERY:
+				score += 7000;
+				break;
+
+			case STRUCT_WEAP:
+			case STRUCT_AIRSTRIP:
+				score += 8000;
+				break;
+
+			case STRUCT_RADAR:
+			case STRUCT_REPAIR:
+			case STRUCT_EYE:
+			case STRUCT_TEMPLE:
+				score += 5000;
+				break;
+
+			case STRUCT_GTOWER:
+			case STRUCT_ATOWER:
+			case STRUCT_TURRET:
+			case STRUCT_OBELISK:
+			case STRUCT_SAM:
+				score += 6500;
+				break;
+
+			case STRUCT_POWER:
+			case STRUCT_ADVANCED_POWER:
+				score += 3500;
+				break;
+
+			default:
+				break;
+		}
+		if (distance < 0x0400) {
+			switch (*building) {
+				case STRUCT_GTOWER:
+				case STRUCT_ATOWER:
+				case STRUCT_TURRET:
+				case STRUCT_OBELISK:
+				case STRUCT_SAM:
+					score += 2500;
+					break;
+
+				default:
+					break;
+			}
+		}
+	} else {
+		if (techno->What_Am_I() == RTTI_UNIT || techno->What_Am_I() == RTTI_INFANTRY) {
+			score += techno->Risk() * 12;
+			if (distance < 0x0300) {
+				score += 2500;
+			}
+		}
+	}
+
+	return(score);
 }
 
 
@@ -269,6 +337,44 @@ static bool Skirmish_AI_Persistent_Target(TARGET target)
 
 		default:
 			break;
+	}
+
+	return(false);
+}
+
+
+static bool Skirmish_AI_Local_Threat_Target(FootClass const * unit, TARGET target)
+{
+	if (!unit || !Target_Legal(target)) {
+		return(false);
+	}
+
+	TechnoClass * techno = As_Techno(target);
+	if (!techno || unit->House->Is_Ally(techno)) {
+		return(false);
+	}
+
+	if (unit->In_Range(target) || unit->Distance(target) < 0x0300) {
+		BuildingClass * building = As_Building(target);
+		if (building) {
+			switch (*building) {
+				case STRUCT_GTOWER:
+				case STRUCT_ATOWER:
+				case STRUCT_TURRET:
+				case STRUCT_OBELISK:
+				case STRUCT_SAM:
+					return(true);
+
+				default:
+					break;
+			}
+		}
+
+		if (techno->What_Am_I() == RTTI_UNIT || techno->What_Am_I() == RTTI_INFANTRY) {
+			if (techno->Techno_Type_Class()->Primary != WEAPON_NONE) {
+				return(true);
+			}
+		}
 	}
 
 	return(false);
@@ -1484,7 +1590,7 @@ void TeamClass::Coordinate_Attack(void)
 					unit->Assign_Destination(TARGET_NONE);
 				}
 
-				if (unit->TarCom != Target) {
+				if (unit->TarCom != Target && !Skirmish_AI_Local_Threat_Target(unit, unit->TarCom)) {
 					unit->Assign_Target(Target);
 				}
 			}

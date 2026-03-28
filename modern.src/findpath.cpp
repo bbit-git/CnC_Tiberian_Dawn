@@ -165,6 +165,37 @@ inline static FacingType Next_Direction(FacingType facing, FacingType dir)
 /*=========================================================================*/
 static uint32_t MainOverlap[MAP_CELL_TOTAL/32];		// kept for PathType.Overlap field compatibility
 
+static bool Infantry_Path_Can_Share_Cell(FootClass const *foot, CELL cell)
+{
+	if (!foot || foot->What_Am_I() != RTTI_INFANTRY) {
+		return(false);
+	}
+
+	if ((unsigned)cell >= MAP_CELL_TOTAL) {
+		return(false);
+	}
+
+	CellClass const &cellptr = Map[cell];
+
+	if (cellptr.InfType == HOUSE_NONE || !foot->House->Is_Ally(cellptr.InfType)) {
+		return(false);
+	}
+
+	if ((cellptr.Flag.Composite & 0x1F) != 0x1F) {
+		return(false);
+	}
+
+	if (cellptr.Flag.Occupy.Vehicle || cellptr.Flag.Occupy.Monolith) {
+		return(false);
+	}
+
+	if (!Ground[cellptr.Land_Type()].Cost[SPEED_FOOT]) {
+		return(false);
+	}
+
+	return(true);
+}
+
 
 //static CELL MoveMask = 0;
 static CELL DestLocation;
@@ -1282,6 +1313,15 @@ CELL FootClass::Safety_Point(CELL src, CELL dst, int start, int max)
 int FootClass::Passable_Cell(CELL cell, FacingType face, int threat, MoveType threshhold)
 {
 	MoveType move = Can_Enter_Cell(cell, face);
+
+	/*
+	**	Infantry reserve sub-spots inside a cell, but A* only searches at cell granularity.
+	**	Treat a fully occupied allied infantry cell as a moving blockage so infantry columns
+	**	can still plan through shared cells and let the runtime sub-spot reservation arbitrate.
+	*/
+	if (move == MOVE_NO && Infantry_Path_Can_Share_Cell(this, cell)) {
+		move = MOVE_MOVING_BLOCK;
+	}
 
 	if (move > threshhold) return(0);
 
