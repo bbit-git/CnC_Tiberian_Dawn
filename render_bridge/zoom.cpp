@@ -44,17 +44,27 @@ static void get_tac(int& x, int& y, int& w, int& h)
 
 static void clamp_viewport()
 {
-    int tx, ty, tw, th;
-    get_tac(tx, ty, tw, th);
+    // Viewport operates within the native tactical buffer,
+    // not the game buffer tactical dimensions.
+    extern int Render_Bridge_Get_Native_Tac_W();
+    extern int Render_Bridge_Get_Native_Tac_H();
+    int tw = Render_Bridge_Get_Native_Tac_W();
+    int th = Render_Bridge_Get_Native_Tac_H();
+
+    // Fall back to game buffer if no native buffer
+    if (tw <= 0 || th <= 0) {
+        tw = Lepton_To_Pixel(Map.TacLeptonWidth);
+        th = Lepton_To_Pixel(Map.TacLeptonHeight);
+    }
     if (tw <= 0 || th <= 0) return;
 
-    float vis_w = tw / g_zoom;
-    float vis_h = th / g_zoom;
+    float vis_w = static_cast<float>(tw) / g_zoom;
+    float vis_h = static_cast<float>(th) / g_zoom;
 
     if (g_viewport_x < 0.0f) g_viewport_x = 0.0f;
     if (g_viewport_y < 0.0f) g_viewport_y = 0.0f;
-    if (g_viewport_x + vis_w > tw) g_viewport_x = tw - vis_w;
-    if (g_viewport_y + vis_h > th) g_viewport_y = th - vis_h;
+    if (g_viewport_x + vis_w > tw) g_viewport_x = static_cast<float>(tw) - vis_w;
+    if (g_viewport_y + vis_h > th) g_viewport_y = static_cast<float>(th) - vis_h;
     if (g_viewport_x < 0.0f) g_viewport_x = 0.0f;
     if (g_viewport_y < 0.0f) g_viewport_y = 0.0f;
 }
@@ -65,23 +75,42 @@ static void zoom_at(float new_zoom, int anchor_x, int anchor_y)
     get_tac(tx, ty, tw, th);
     if (tw <= 0 || th <= 0) return;
 
+    extern int Render_Bridge_Get_Native_Tac_W();
+    extern int Render_Bridge_Get_Native_Tac_H();
+    int ntw = Render_Bridge_Get_Native_Tac_W();
+    int nth = Render_Bridge_Get_Native_Tac_H();
+    if (ntw <= 0) ntw = tw;
+    if (nth <= 0) nth = th;
+
     if (new_zoom < ZOOM_MIN)  new_zoom = ZOOM_MIN;
     if (new_zoom > g_zoom_max) new_zoom = g_zoom_max;
     if (new_zoom == g_zoom) return;
 
-    // Anchor relative to tactical viewport on screen
-    float ax = static_cast<float>(anchor_x - tx);
-    float ay = static_cast<float>(anchor_y - ty);
+    // Anchor in game buffer coords → fraction of tactical area (0..1)
+    float frac_x = static_cast<float>(anchor_x - tx) / static_cast<float>(tw);
+    float frac_y = static_cast<float>(anchor_y - ty) / static_cast<float>(th);
+    if (frac_x < 0.0f) frac_x = 0.0f; if (frac_x > 1.0f) frac_x = 1.0f;
+    if (frac_y < 0.0f) frac_y = 0.0f; if (frac_y > 1.0f) frac_y = 1.0f;
 
-    // Source pixel under the anchor
-    float src_x = g_viewport_x + ax / g_zoom;
-    float src_y = g_viewport_y + ay / g_zoom;
+    // Fraction → native buffer pixel position within visible viewport
+    float vis_w = static_cast<float>(ntw) / g_zoom;
+    float vis_h = static_cast<float>(nth) / g_zoom;
+    float ax = frac_x * vis_w;
+    float ay = frac_y * vis_h;
+
+    // Source pixel in native buffer under the anchor
+    float src_x = g_viewport_x + ax;
+    float src_y = g_viewport_y + ay;
 
     g_zoom = new_zoom;
 
-    // Reposition so anchor stays on same source pixel
-    g_viewport_x = src_x - ax / g_zoom;
-    g_viewport_y = src_y - ay / g_zoom;
+    // New visible area at new zoom
+    float new_vis_w = static_cast<float>(ntw) / g_zoom;
+    float new_vis_h = static_cast<float>(nth) / g_zoom;
+
+    // Reposition so the anchor fraction maps to the same source pixel
+    g_viewport_x = src_x - frac_x * new_vis_w;
+    g_viewport_y = src_y - frac_y * new_vis_h;
     clamp_viewport();
 
     DBG("zoom: %.2f viewport [%.1f, %.1f] tac %dx%d", g_zoom, g_viewport_x, g_viewport_y, tw, th);

@@ -344,44 +344,46 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                       win_w, win_h);
         }
 
-        // Tactical area — use expanded texture if available.
+        // Tactical area — zoom via UV source rect within texture.
         {
             float vp_x = Render_Bridge_Get_Viewport_X();
             float vp_y = Render_Bridge_Get_Viewport_Y();
 
-            float rel_zoom = zoom / ui_scale; // relative to default (fills screen)
-
-            // Dest: tactical area fills its screen region
+            // Dest: tactical area on screen (fixed, doesn't change with zoom)
             int dst_x = offset_x + static_cast<int>(tac_x * ui_scale);
             int dst_y = offset_y + static_cast<int>(tac_y * ui_scale);
             int dst_w = static_cast<int>(tac_w * ui_scale);
             int dst_h = static_cast<int>(tac_h * ui_scale);
 
             if (g_tac_tex_active && g_tac_tex) {
-                // Expanded tactical texture: bind it and sample the full area.
-                // The expanded texture contains MORE cells than the normal buffer.
+                // Native tactical texture path.
+                // The texture is min(screen, map) sized. Zoom controls
+                // how much of it is visible. Aspect ratio is preserved
+                // because both axes use the same zoom factor.
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, g_tac_tex);
 
-                // Source = full expanded texture, viewport applied
-                float exp_vp_x = vp_x;
-                float exp_vp_y = vp_y;
-                float exp_src_w = static_cast<float>(g_tac_tex_w);
-                float exp_src_h = static_cast<float>(g_tac_tex_h);
+                float tex_w = static_cast<float>(g_tac_tex_w);
+                float tex_h = static_cast<float>(g_tac_tex_h);
 
-                // UV coordinates within expanded texture
-                float u0 = exp_vp_x / exp_src_w;
-                float v0 = exp_vp_y / exp_src_h;
-                float u1 = (exp_vp_x + tac_w / rel_zoom) / exp_src_w;
-                float v1 = (exp_vp_y + tac_h / rel_zoom) / exp_src_h;
+                // Visible portion of native texture at current zoom.
+                // zoom 1.0 = full texture. zoom 2.0 = half visible.
+                float vis_w = tex_w / zoom;
+                float vis_h = tex_h / zoom;
 
-                // Clamp UVs
+                // UV coordinates (viewport offset + visible area)
+                float u0 = vp_x / tex_w;
+                float v0 = vp_y / tex_h;
+                float u1 = (vp_x + vis_w) / tex_w;
+                float v1 = (vp_y + vis_h) / tex_h;
+
+                // Clamp
                 if (u0 < 0.0f) u0 = 0.0f;
                 if (v0 < 0.0f) v0 = 0.0f;
                 if (u1 > 1.0f) u1 = 1.0f;
                 if (v1 > 1.0f) v1 = 1.0f;
 
-                // NDC coordinates
+                // NDC
                 float nx0 = static_cast<float>(dst_x) / win_w * 2.0f - 1.0f;
                 float ny0 = 1.0f - static_cast<float>(dst_y) / win_h * 2.0f;
                 float nx1 = static_cast<float>(dst_x + dst_w) / win_w * 2.0f - 1.0f;
@@ -394,25 +396,13 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                 glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, quad);
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-                // Reset to main indexed texture for sidebar/tab
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
-
-                g_tac_tex_active = false; // consumed this frame
+                g_tac_tex_active = false;
             } else {
-                // Normal path: sample from main indexed texture
-                float src_x = static_cast<float>(tac_x) + vp_x;
-                float src_y = static_cast<float>(tac_y) + vp_y;
-                float src_w = static_cast<float>(tac_w) / rel_zoom;
-                float src_h = static_cast<float>(tac_h) / rel_zoom;
-
-                if (src_x < tac_x) src_x = static_cast<float>(tac_x);
-                if (src_y < tac_y) src_y = static_cast<float>(tac_y);
-                if (src_x + src_w > tac_x + tac_w) src_w = tac_x + tac_w - src_x;
-                if (src_y + src_h > tac_y + tac_h) src_h = tac_y + tac_h - src_y;
-
-                draw_quad(static_cast<int>(src_x), static_cast<int>(src_y),
-                          static_cast<int>(src_w), static_cast<int>(src_h),
+                // Fallback: sample from SeenBuff indexed texture.
+                // Used when native buffer unavailable (menus, dialogs).
+                draw_quad(tac_x, tac_y, tac_w, tac_h,
                           dst_x, dst_y, dst_w, dst_h,
                           win_w, win_h);
             }
