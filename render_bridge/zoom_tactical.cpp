@@ -256,3 +256,6 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
         replay_overlays();
     }
 }
+
+int Render_Bridge_Get_Native_Tac_W() { return g_native_w; }
+int Render_Bridge_Get_Native_Tac_H() { return g_native_h; }

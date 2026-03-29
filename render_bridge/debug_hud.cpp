@@ -142,6 +142,11 @@ void Render_Bridge_Debug_HUD()
     int atlas_p = GL_Sprites_Atlas_Page_Count();
     const char* mode = GL_Present_Is_Active() ? "GL" : "SW";
 
+    extern int Render_Bridge_Get_Native_Tac_W();
+    extern int Render_Bridge_Get_Native_Tac_H();
+    int ntac_w = Render_Bridge_Get_Native_Tac_W();
+    int ntac_h = Render_Bridge_Get_Native_Tac_H();
+
     uint8_t* buf = static_cast<uint8_t*>(LogicPage->Get_Buffer());
     if (!buf) return;
     int pitch = LogicPage->Get_Full_Pitch();
@@ -149,8 +154,8 @@ void Render_Bridge_Debug_HUD()
     int bh = LogicPage->Get_Height();
 
     // Panel position: bottom-left of tactical area
-    int panel_w = 85;
-    int panel_h = 58;
+    int panel_w = 95;
+    int panel_h = 66;
     int panel_x = Map.TacPixelX + 2;
     int panel_y = Map.TacPixelY + Lepton_To_Pixel(Map.TacLeptonHeight) - panel_h - 2;
 
@@ -176,15 +181,21 @@ void Render_Bridge_Debug_HUD()
     snprintf(line, sizeof(line), "Z%.1f VP(%d,%d)", zoom, (int)vp_x, (int)vp_y);
     put_str(buf, pitch, bw, bh, x, y, line, 15); y += 8;
 
-    // Line 4: TACTICAL AREA
+    // Line 4: TACTICAL AREA (game buffer)
     snprintf(line, sizeof(line), "TAC %dX%d", tac_w, tac_h);
     put_str(buf, pitch, bw, bh, x, y, line, 15); y += 8;
 
-    // Line 5: DRAW LIST
+    // Line 5: NATIVE TACTICAL BUFFER (screen resolution)
+    if (ntac_w > 0 && ntac_h > 0) {
+        snprintf(line, sizeof(line), "NAT %dX%d", ntac_w, ntac_h);
+        put_str(buf, pitch, bw, bh, x, y, line, 13); y += 8; // green
+    }
+
+    // Line 6: DRAW LIST
     snprintf(line, sizeof(line), "DL %d(%d/%d/%d)", cmd_count, stamps, shapes, prims);
     put_str(buf, pitch, bw, bh, x, y, line, 14); y += 8;
 
-    // Line 6: ATLAS + PEAK
+    // Line 7: ATLAS + PEAK
     snprintf(line, sizeof(line), "ATL %dF %dP PK%d", atlas_f, atlas_p, (int)g_dl_peak);
     put_str(buf, pitch, bw, bh, x, y, line, 14); y += 8;
 }
