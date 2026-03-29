@@ -240,13 +240,10 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         }
     }
 
-    // Upload palette (only when changed)
-    static uint8_t pal_rgb[256 * 3];
-    static const uint8_t* last_pal = nullptr;
-    static uint32_t last_hash = 0;
-    uint32_t hash = vga_palette[0] | (vga_palette[3] << 8) |
-                    (vga_palette[384] << 16) | (vga_palette[765] << 24);
-    if (vga_palette != last_pal || hash != last_hash) {
+    // Upload palette every frame — palette fades modify data in-place
+    // (same pointer, different values). 768 bytes is negligible.
+    {
+        static uint8_t pal_rgb[256 * 3];
         for (int i = 0; i < 256; i++) {
             pal_rgb[i * 3 + 0] = vga_palette[i * 3 + 0] << 2;
             pal_rgb[i * 3 + 1] = vga_palette[i * 3 + 1] << 2;
@@ -255,8 +252,6 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         glBindTexture(GL_TEXTURE_2D, g_palette_tex);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1,
                         GL_RGB, GL_UNSIGNED_BYTE, pal_rgb);
-        last_pal = vga_palette;
-        last_hash = hash;
     }
 
     // Native window size
@@ -264,17 +259,15 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
     SDL_GetWindowSizeInPixels(g_window, &win_w, &win_h);
     if (win_w <= 0 || win_h <= 0) return false;
 
-    // UI scale: always at default zoom (game fills screen). Never changes with zoom.
-    // Tactical scale: follows zoom for the world view.
+    // UI scale: game fills screen, maintaining 640x400 aspect ratio.
+    // Computed directly from window/buffer — independent of zoom state.
+    float sx = static_cast<float>(win_w) / static_cast<float>(w);
+    float sy = static_cast<float>(win_h) / static_cast<float>(h);
+    float ui_scale = (sx < sy) ? sx : sy;  // fit with letterbox/pillarbox
+
     float zoom = Render_Bridge_Get_Zoom_Level();
-    extern float Render_Bridge_Get_Default_Zoom();
-    float default_zoom = Render_Bridge_Get_Default_Zoom();
-    if (default_zoom <= 0.0f) default_zoom = 1.0f;
 
-    float ui_scale = default_zoom;  // UI layers: tab, sidebar
-    float tac_scale = zoom;         // Tactical: world view
-
-    // Centering offset based on UI scale (whole game at default zoom)
+    // Centering offset (UI fills screen with letterbox)
     int offset_x = static_cast<int>((win_w - w * ui_scale) * 0.5f);
     int offset_y = static_cast<int>((win_h - h * ui_scale) * 0.5f);
 
@@ -339,11 +332,9 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
             float vp_x = Render_Bridge_Get_Viewport_X();
             float vp_y = Render_Bridge_Get_Viewport_Y();
 
-            extern float Render_Bridge_Get_Default_Zoom();
-            float default_zoom = Render_Bridge_Get_Default_Zoom();
-            float rel_zoom = (default_zoom > 0.0f) ? zoom / default_zoom : 1.0f;
+            float rel_zoom = zoom / ui_scale; // relative to default (fills screen)
 
-            // Dest: tactical area fills its screen region at current zoom
+            // Dest: tactical area fills its screen region
             int dst_x = offset_x + static_cast<int>(tac_x * ui_scale);
             int dst_y = offset_y + static_cast<int>(tac_y * ui_scale);
             int dst_w = static_cast<int>(tac_w * ui_scale);
@@ -419,10 +410,6 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
 
             float vp_x = Render_Bridge_Get_Viewport_X();
             float vp_y = Render_Bridge_Get_Viewport_Y();
-
-            extern float Render_Bridge_Get_Default_Zoom();
-            float default_zoom = Render_Bridge_Get_Default_Zoom();
-            float rel = (default_zoom > 0.0f) ? zoom / default_zoom : 1.0f;
 
             int sprites = GL_Sprites_Render(
                 win_w, win_h,
