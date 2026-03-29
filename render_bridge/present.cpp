@@ -13,6 +13,7 @@
 #include <SDL3/SDL.h>
 #include "render_bridge.h"
 #include "function.h"
+#include "dbg.h"
 
 extern SDL_Window*   g_window;
 extern SDL_Renderer* g_renderer;
@@ -124,18 +125,41 @@ void TD_SDL_Present(void)
     if (!pal) pal = GamePalette;
     if (!pal) return;
 
-    // Try GL path (once)
+    // GL presentation is available but requires the window to be created with
+    // SDL_WINDOW_OPENGL. Currently opt-in via USE_GL_PRESENT define.
+    // Default: SDL software path (always works).
+#ifdef USE_GL_PRESENT
     if (!g_gl_attempted) {
         g_gl_attempted = true;
+        if (g_texture)  { SDL_DestroyTexture(g_texture);   g_texture  = nullptr; }
+        if (g_renderer) { SDL_DestroyRenderer(g_renderer); g_renderer = nullptr; }
+
         g_use_gl = GL_Present_Init(w, h);
+        DBG("present: %s", g_use_gl ? "GL ES 2.0" : "SDL Software");
+
+        if (!g_use_gl) {
+            g_renderer = SDL_CreateRenderer(g_window, nullptr);
+            if (g_renderer) {
+                SDL_SetRenderLogicalPresentation(g_renderer, w, h,
+                    SDL_LOGICAL_PRESENTATION_LETTERBOX);
+                g_texture = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_ABGR8888,
+                    SDL_TEXTUREACCESS_STREAMING, w, h);
+            }
+        }
     }
 
     if (g_use_gl) {
-        if (GL_Present_Frame(pixels, pitch, w, h, pal))
-            return; // GL succeeded
+        GL_Present_Frame(pixels, pitch, w, h, pal);
+        return;
     }
+#else
+    if (!g_gl_attempted) {
+        g_gl_attempted = true;
+        DBG("present: SDL Software");
+    }
+#endif
 
-    // SDL fallback
+    // SDL software path
     if (g_texture && g_renderer) {
         present_sdl(pixels, pitch, w, h, pal);
     }
