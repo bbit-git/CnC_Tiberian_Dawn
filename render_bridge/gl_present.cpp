@@ -259,11 +259,20 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                         GL_RGB, GL_UNSIGNED_BYTE, pal_rgb);
     }
 
-    // Native screen resolution (display, not window logical size)
+    // GL drawable size = actual pixel dimensions of the GL surface.
+    // For fullscreen: this is the display resolution (1920x1080).
+    // SDL_GL_GetDrawableSize returns the correct value after context creation.
     int win_w = 0, win_h = 0;
-    Render_Bridge_Get_Screen_Size(win_w, win_h);
-    if (win_w <= 0 || win_h <= 0) {
-        SDL_GetWindowSizeInPixels(g_window, &win_w, &win_h);
+    SDL_GetWindowSizeInPixels(g_window, &win_w, &win_h);
+    // Fullscreen windows may report game buffer size — use display mode instead
+    if (win_w <= 0 || win_h <= 0 || (win_w == w && win_h == h)) {
+        SDL_DisplayID disp = SDL_GetDisplayForWindow(g_window);
+        if (!disp) disp = SDL_GetPrimaryDisplay();
+        const SDL_DisplayMode* dm = SDL_GetDesktopDisplayMode(disp);
+        if (dm && dm->w > 0 && dm->h > 0) {
+            win_w = dm->w;
+            win_h = dm->h;
+        }
     }
     if (win_w <= 0 || win_h <= 0) return false;
 
