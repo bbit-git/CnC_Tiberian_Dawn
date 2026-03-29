@@ -363,14 +363,17 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         side_w = Map.SideBarWidth;
     }
 
-    if (!InMainLoop || side_w == 0) {
-        // Menu or no sidebar: single fullscreen quad
+    if (!InMainLoop) {
+        // Menu: single fullscreen quad from SeenBuff
         draw_quad(0, 0, w, h,
                   offset_x, offset_y,
                   static_cast<int>(w * ui_scale),
                   static_cast<int>(h * ui_scale),
                   win_w, win_h);
     } else {
+        // Gameplay: tab + tactical + optional sidebar.
+        // Tactical area expands when sidebar is off.
+
         // Tab bar (top strip, full width)
         if (tac_y > 0) {
             draw_quad(0, 0, w, tac_y,
