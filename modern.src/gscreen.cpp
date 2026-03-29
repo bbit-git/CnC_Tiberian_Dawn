@@ -424,6 +424,9 @@ void GScreenClass::Render(void)
 
 #ifdef USE_RENDER_BRIDGE
 		Render_Bridge_End_Draw_List(HidPage);
+		// Snapshot tactical area BEFORE UI draws (world-only state)
+		{ extern void Render_Bridge_Snapshot_World(GraphicViewPortClass& page);
+		  Render_Bridge_Snapshot_World(HidPage); }
 #endif
 
 		if (Buttons) Buttons->Draw_All(false);
@@ -441,6 +444,12 @@ void GScreenClass::Render(void)
 		}
 		Messages.Draw();
 		ActionMenu.Draw_It();
+
+#ifdef USE_RENDER_BRIDGE
+		// Capture UI overlay: diff HidPage with world snapshot
+		{ extern void Render_Bridge_Capture_UI_Overlay(GraphicViewPortClass& page);
+		  Render_Bridge_Capture_UI_Overlay(HidPage); }
+#endif
 
 		//DBG("Render: Blit_Display");
 		Blit_Display();

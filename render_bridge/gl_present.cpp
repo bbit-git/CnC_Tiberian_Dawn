@@ -27,9 +27,11 @@ static SDL_GLContext g_gl_ctx = nullptr;
 static GLuint g_gl_program    = 0;
 static GLuint g_indexed_tex   = 0;
 static GLuint g_palette_tex   = 0;
-static GLuint g_tac_tex       = 0;     // expanded tactical texture (if different from main)
+static GLuint g_tac_tex       = 0;     // expanded tactical texture
 static int    g_tac_tex_w = 0, g_tac_tex_h = 0;
 static bool   g_tac_tex_active = false;
+static GLuint g_ui_tex        = 0;     // UI overlay texture
+static int    g_ui_tex_w = 0, g_ui_tex_h = 0;
 static int    g_tex_w = 0, g_tex_h = 0;
 static bool   g_gl_ready = false;
 static bool   g_gl_failed = false;
@@ -61,14 +63,30 @@ static const char* frag_src = R"(
     uniform sampler2D u_palette;
     void main() {
         float idx = texture2D(u_indexed, v_uv).r;
-        // GL_LUMINANCE normalizes 0-255 → 0.0-1.0 (divides by 255).
-        // Palette texture is 256 texels. Map to texel center:
-        // texel N center = (N + 0.5) / 256.
-        // idx = N/255, so N = idx * 255. Texel center = (idx*255 + 0.5) / 256.
         float pal_u = (idx * 255.0 + 0.5) / 256.0;
         gl_FragColor = texture2D(u_palette, vec2(pal_u, 0.5));
     }
 )";
+
+// UI overlay shader: same as palette shader but discards index 0 (transparent)
+static const char* frag_ui_src = R"(
+    precision mediump float;
+    varying vec2 v_uv;
+    uniform sampler2D u_indexed;
+    uniform sampler2D u_palette;
+    void main() {
+        float idx = texture2D(u_indexed, v_uv).r;
+        if (idx < 0.002) discard;  // index 0 = transparent
+        float pal_u = (idx * 255.0 + 0.5) / 256.0;
+        gl_FragColor = texture2D(u_palette, vec2(pal_u, 0.5));
+    }
+)";
+
+static GLuint g_ui_program = 0;
+static GLint  g_ui_u_indexed = -1;
+static GLint  g_ui_u_palette = -1;
+static GLint  g_ui_u_src_rect = -1;
+static GLint  g_ui_u_dst_rect = -1;
 
 static GLuint compile_shader(GLenum type, const char* src)
 {
@@ -152,6 +170,24 @@ bool GL_Present_Init(int w, int h)
     GLint ok = 0;
     glGetProgramiv(g_gl_program, GL_LINK_STATUS, &ok);
     if (!ok) { g_gl_failed = true; return false; }
+
+    // UI overlay shader (same vertex, transparent index 0)
+    {
+        GLuint vs2 = compile_shader(GL_VERTEX_SHADER, vert_src);
+        GLuint fs2 = compile_shader(GL_FRAGMENT_SHADER, frag_ui_src);
+        if (vs2 && fs2) {
+            g_ui_program = glCreateProgram();
+            glAttachShader(g_ui_program, vs2);
+            glAttachShader(g_ui_program, fs2);
+            glBindAttribLocation(g_ui_program, 0, "a_pos");
+            glLinkProgram(g_ui_program);
+            glDeleteShader(vs2); glDeleteShader(fs2);
+            g_ui_u_indexed  = glGetUniformLocation(g_ui_program, "u_indexed");
+            g_ui_u_palette  = glGetUniformLocation(g_ui_program, "u_palette");
+            g_ui_u_src_rect = glGetUniformLocation(g_ui_program, "u_src_rect");
+            g_ui_u_dst_rect = glGetUniformLocation(g_ui_program, "u_dst_rect");
+        }
+    }
 
     g_u_indexed  = glGetUniformLocation(g_gl_program, "u_indexed");
     g_u_palette  = glGetUniformLocation(g_gl_program, "u_palette");
@@ -344,16 +380,16 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                       win_w, win_h);
         }
 
+        // Screen area for tactical (used by tactical quad + UI overlay)
+        int avail_x = offset_x + static_cast<int>(tac_x * ui_scale);
+        int avail_y = offset_y + static_cast<int>(tac_y * ui_scale);
+        int avail_w = static_cast<int>(tac_w * ui_scale);
+        int avail_h = static_cast<int>(tac_h * ui_scale);
+
         // Tactical area — zoom via UV source rect within texture.
         {
             float vp_x = Render_Bridge_Get_Viewport_X();
             float vp_y = Render_Bridge_Get_Viewport_Y();
-
-            // Max available screen area for tactical
-            int avail_x = offset_x + static_cast<int>(tac_x * ui_scale);
-            int avail_y = offset_y + static_cast<int>(tac_y * ui_scale);
-            int avail_w = static_cast<int>(tac_w * ui_scale);
-            int avail_h = static_cast<int>(tac_h * ui_scale);
 
             if (g_tac_tex_active && g_tac_tex) {
                 glActiveTexture(GL_TEXTURE0);
@@ -430,10 +466,63 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
             }
         }
 
-        // GL sprite overlay disabled — CPU replay through palette shader
-        // already handles house colors, transparency, and all 16 rendering
-        // modes correctly. GL sprite atlas builds in background for future use.
-        // TODO: enable when GL sprites support house color remap + fading.
+        // UI overlay: dialogs, buttons, messages drawn after Draw_It.
+        // Rendered on top of tactical quad with transparent index 0.
+        {
+            extern const uint8_t* Render_Bridge_Get_UI_Overlay(int& w, int& h);
+            int ui_w = 0, ui_h = 0;
+            const uint8_t* ui_pixels = Render_Bridge_Get_UI_Overlay(ui_w, ui_h);
+            if (ui_pixels && ui_w > 0 && ui_h > 0 && g_ui_program) {
+                // Upload UI overlay texture
+                if (!g_ui_tex || g_ui_tex_w != ui_w || g_ui_tex_h != ui_h) {
+                    if (g_ui_tex) glDeleteTextures(1, &g_ui_tex);
+                    glGenTextures(1, &g_ui_tex);
+                    glBindTexture(GL_TEXTURE_2D, g_ui_tex);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, ui_w, ui_h, 0,
+                                 GL_LUMINANCE, GL_UNSIGNED_BYTE, ui_pixels);
+                    g_ui_tex_w = ui_w;
+                    g_ui_tex_h = ui_h;
+                } else {
+                    glBindTexture(GL_TEXTURE_2D, g_ui_tex);
+                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ui_w, ui_h,
+                                    GL_LUMINANCE, GL_UNSIGNED_BYTE, ui_pixels);
+                }
+
+                // Render UI overlay at the tactical screen area (covers tactical quad)
+                glUseProgram(g_ui_program);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, g_ui_tex);
+                glUniform1i(g_ui_u_indexed, 0);
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_2D, g_palette_tex);
+                glUniform1i(g_ui_u_palette, 1);
+
+                // Full UI texture → full available tactical area
+                glUniform4f(g_ui_u_src_rect, 0.0f, 0.0f, 1.0f, 1.0f);
+                float nx0 = static_cast<float>(avail_x) / win_w * 2.0f - 1.0f;
+                float ny0 = 1.0f - static_cast<float>(avail_y) / win_h * 2.0f;
+                float nx1 = static_cast<float>(avail_x + avail_w) / win_w * 2.0f - 1.0f;
+                float ny1 = 1.0f - static_cast<float>(avail_y + avail_h) / win_h * 2.0f;
+                glUniform4f(g_ui_u_dst_rect, nx0, ny0, nx1, ny1);
+
+                static const float quad[] = { 0,0, 1,0, 0,1, 1,1 };
+                glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, quad);
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+                // Restore palette shader for sidebar
+                glUseProgram(g_gl_program);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
+                glUniform1i(g_u_indexed, 0);
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_2D, g_palette_tex);
+                glUniform1i(g_u_palette, 1);
+            }
+        }
 
         // Sidebar
         if (side_w > 0) {
