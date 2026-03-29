@@ -22,8 +22,10 @@ extern void CC_Draw_Shape(void const* shapefile, int shapenum, int x, int y,
                           WindowNumberType window, ShapeFlags_Type flags,
                           void const* fadingdata, void const* ghostdata);
 
-// Scaled sprite rendering via ISpriteProvider (sprite_render.cpp)
+// Scaled rendering via ISpriteProvider / direct decode (sprite_render.cpp, stamp_render.cpp)
 extern bool Render_Bridge_Draw_Shape_Scaled(const ShapeCmd& cmd, float zoom,
+                                             float vp_x, float vp_y);
+extern bool Render_Bridge_Draw_Stamp_Scaled(const StampCmd& cmd, float zoom,
                                              float vp_x, float vp_y);
 
 void Render_Bridge_Begin_Draw_List()
@@ -187,21 +189,23 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
         float vp_x = Render_Bridge_Get_Viewport_X();
         float vp_y = Render_Bridge_Get_Viewport_Y();
 
-        // Step 1: Replay terrain at 1:1, then pixel-zoom terrain in-place
+        // Step 1: Terrain tiles — scaled per-tile directly
         for (int i = 0; i < g_draw_list.Command_Count(); i++) {
             const DrawCommand& cmd = g_draw_list.Get(i);
             if (cmd.type == CMD_STAMP) {
-                const StampCmd& s = cmd.stamp;
-                LogicPage->Draw_Stamp(s.icondata, s.icon, s.x, s.y, s.remap, s.window);
+                if (!Render_Bridge_Draw_Stamp_Scaled(cmd.stamp, zoom, vp_x, vp_y)) {
+                    // Fallback: render at 1:1 (tile won't be zoomed)
+                    LogicPage->Draw_Stamp(cmd.stamp.icondata, cmd.stamp.icon,
+                                           cmd.stamp.x, cmd.stamp.y,
+                                           cmd.stamp.remap, cmd.stamp.window);
+                }
             }
         }
-        zoom_tactical_inplace(page, zoom, vp_x, vp_y);
 
-        // Step 2: Replay sprites at zoomed positions + sizes via ISpriteProvider
+        // Step 2: Sprites — scaled per-sprite via ISpriteProvider
         for (int i = 0; i < g_draw_list.Command_Count(); i++) {
             const DrawCommand& cmd = g_draw_list.Get(i);
             if (cmd.type == CMD_SHAPE) {
-                // Try scaled provider path; fall back to CC_Draw_Shape if it fails
                 if (!Render_Bridge_Draw_Shape_Scaled(cmd.shape, zoom, vp_x, vp_y)) {
                     int x = static_cast<int>((static_cast<float>(cmd.shape.x) - vp_x) * zoom);
                     int y = static_cast<int>((static_cast<float>(cmd.shape.y) - vp_y) * zoom);
@@ -213,7 +217,7 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
             }
         }
 
-        // Step 3: Replay overlays at zoomed positions, native pixel size
+        // Step 3: Overlays at zoomed positions, native pixel size
         replay_overlays_zoomed(zoom, vp_x, vp_y);
     } else {
         // No zoom: replay everything at 1:1 (identical to legacy)
