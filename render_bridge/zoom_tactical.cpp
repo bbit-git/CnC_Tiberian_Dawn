@@ -270,10 +270,17 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
         replay_world();
         replay_overlays();
 
+        if (!use_native) {
+            // No native buffer — draw HUD to HidPage directly
+            extern void Render_Bridge_Debug_HUD();
+            Render_Bridge_Debug_HUD();
+        }
+
     } else {
         // CPU-only path: replay at 1:1 to HidPage
         replay_world();
         replay_overlays();
+        { extern void Render_Bridge_Debug_HUD(); Render_Bridge_Debug_HUD(); }
     }
 }
 
