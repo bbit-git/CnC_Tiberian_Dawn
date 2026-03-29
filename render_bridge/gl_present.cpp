@@ -367,15 +367,21 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                 float tex_h = static_cast<float>(g_tac_tex_h);
 
                 // Visible portion of native texture at current zoom.
-                // zoom 1.0 = full texture. zoom 2.0 = half visible.
+                // zoom 1.0 = full texture. zoom 2.0 = center half visible.
                 float vis_w = tex_w / zoom;
                 float vis_h = tex_h / zoom;
 
-                // UV coordinates (viewport offset + visible area)
-                float u0 = vp_x / tex_w;
-                float v0 = vp_y / tex_h;
-                float u1 = (vp_x + vis_w) / tex_w;
-                float v1 = (vp_y + vis_h) / tex_h;
+                // Center the viewport within the texture
+                float cx = (tex_w - vis_w) * 0.5f;
+                float cy = (tex_h - vis_h) * 0.5f;
+                if (cx < 0.0f) cx = 0.0f;
+                if (cy < 0.0f) cy = 0.0f;
+
+                // UV coordinates (centered viewport)
+                float u0 = cx / tex_w;
+                float v0 = cy / tex_h;
+                float u1 = (cx + vis_w) / tex_w;
+                float v1 = (cy + vis_h) / tex_h;
 
                 // Clamp
                 if (u0 < 0.0f) u0 = 0.0f;
