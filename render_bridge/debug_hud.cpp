@@ -147,17 +147,35 @@ void Render_Bridge_Debug_HUD()
     int ntac_w = Render_Bridge_Get_Native_Tac_W();
     int ntac_h = Render_Bridge_Get_Native_Tac_H();
 
-    uint8_t* buf = static_cast<uint8_t*>(LogicPage->Get_Buffer());
-    if (!buf) return;
-    int pitch = LogicPage->Get_Full_Pitch();
-    int bw = LogicPage->Get_Width();
-    int bh = LogicPage->Get_Height();
+    // Draw to native tactical buffer if available (GL covers HidPage),
+    // otherwise fall back to HidPage (SDL path or options dialog).
+    uint8_t* buf;
+    int pitch, bw, bh;
+    int panel_origin_y; // Y offset for panel within the buffer
+
+    extern uint8_t* Render_Bridge_Get_Native_Buffer(int& w, int& h);
+    uint8_t* native = Render_Bridge_Get_Native_Buffer(bw, bh);
+
+    if (native && bw > 0 && bh > 0) {
+        buf = native;
+        pitch = bw; // native buffer pitch = width
+        panel_origin_y = 0; // native buffer starts at tactical origin
+    } else {
+        buf = static_cast<uint8_t*>(LogicPage->Get_Buffer());
+        if (!buf) return;
+        pitch = LogicPage->Get_Full_Pitch();
+        bw = LogicPage->Get_Width();
+        bh = LogicPage->Get_Height();
+        panel_origin_y = Map.TacPixelY;
+    }
 
     // Panel position: bottom-left of tactical area
     int panel_w = 95;
     int panel_h = 66;
-    int panel_x = Map.TacPixelX + 2;
-    int panel_y = Map.TacPixelY + Lepton_To_Pixel(Map.TacLeptonHeight) - panel_h - 2;
+    int panel_x = 2;
+    int panel_y = panel_origin_y + Lepton_To_Pixel(Map.TacLeptonHeight) - panel_h - 2;
+    if (panel_y < 0) panel_y = 2;
+    if (panel_y + panel_h > bh) panel_y = bh - panel_h - 2;
 
     // Draw semi-transparent panel background
     for (int r = 0; r < panel_h && (panel_y+r) < bh; r++)

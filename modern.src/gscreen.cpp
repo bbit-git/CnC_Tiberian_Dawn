@@ -442,10 +442,6 @@ void GScreenClass::Render(void)
 		Messages.Draw();
 		ActionMenu.Draw_It();
 
-#ifdef USE_RENDER_BRIDGE
-		{ extern void Render_Bridge_Debug_HUD(); Render_Bridge_Debug_HUD(); }
-#endif
-
 		//DBG("Render: Blit_Display");
 		Blit_Display();
 		//DBG("Render: done");

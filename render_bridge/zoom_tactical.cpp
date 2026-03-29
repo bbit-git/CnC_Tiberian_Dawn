@@ -242,6 +242,9 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
             WindowList[WINDOW_TACTICAL][WINDOWWIDTH]  = saved_win[2];
             WindowList[WINDOW_TACTICAL][WINDOWHEIGHT] = saved_win[3];
 
+            // Draw debug HUD to native buffer before GL upload
+            { extern void Render_Bridge_Debug_HUD(); Render_Bridge_Debug_HUD(); }
+
             // Upload native tactical texture to GL
             GL_Present_Upload_Tactical(g_native_buf, native_w, native_h);
         }
@@ -259,3 +262,10 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
 
 int Render_Bridge_Get_Native_Tac_W() { return g_native_w; }
 int Render_Bridge_Get_Native_Tac_H() { return g_native_h; }
+
+uint8_t* Render_Bridge_Get_Native_Buffer(int& w, int& h)
+{
+    w = g_native_w;
+    h = g_native_h;
+    return g_native_buf;
+}
