@@ -278,6 +278,7 @@ int GL_Sprites_Render(int win_w, int win_h,
         if (!g_atlas.Get_Region(it->second, region)) continue;
 
         // Bind atlas page texture (batch by page)
+        if (!g_page_textures || region.atlas_id >= g_page_tex_count) continue;
         GLuint page_tex = g_page_textures[region.atlas_id];
         if (page_tex != current_page_tex) {
             glBindTexture(GL_TEXTURE_2D, page_tex);

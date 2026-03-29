@@ -264,14 +264,19 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
     SDL_GetWindowSizeInPixels(g_window, &win_w, &win_h);
     if (win_w <= 0 || win_h <= 0) return false;
 
-    // Zoom = screen pixels per game pixel. At default zoom, game fills screen.
-    // At zoom 1.0, game pixels map 1:1 (game appears small on big screen).
+    // UI scale: always at default zoom (game fills screen). Never changes with zoom.
+    // Tactical scale: follows zoom for the world view.
     float zoom = Render_Bridge_Get_Zoom_Level();
-    float scale = zoom;
+    extern float Render_Bridge_Get_Default_Zoom();
+    float default_zoom = Render_Bridge_Get_Default_Zoom();
+    if (default_zoom <= 0.0f) default_zoom = 1.0f;
 
-    // Offset for centering at current zoom
-    int offset_x = static_cast<int>((win_w - w * scale) * 0.5f);
-    int offset_y = static_cast<int>((win_h - h * scale) * 0.5f);
+    float ui_scale = default_zoom;  // UI layers: tab, sidebar
+    float tac_scale = zoom;         // Tactical: world view
+
+    // Centering offset based on UI scale (whole game at default zoom)
+    int offset_x = static_cast<int>((win_w - w * ui_scale) * 0.5f);
+    int offset_y = static_cast<int>((win_h - h * ui_scale) * 0.5f);
 
     // Screen shake
     if (g_shake_remaining > 0) {
@@ -316,16 +321,16 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         // Menu or no sidebar: single fullscreen quad
         draw_quad(0, 0, w, h,
                   offset_x, offset_y,
-                  static_cast<int>(w * scale),
-                  static_cast<int>(h * scale),
+                  static_cast<int>(w * ui_scale),
+                  static_cast<int>(h * ui_scale),
                   win_w, win_h);
     } else {
         // Tab bar (top strip, full width)
         if (tac_y > 0) {
             draw_quad(0, 0, w, tac_y,
                       offset_x, offset_y,
-                      static_cast<int>(w * scale),
-                      static_cast<int>(tac_y * scale),
+                      static_cast<int>(w * ui_scale),
+                      static_cast<int>(tac_y * ui_scale),
                       win_w, win_h);
         }
 
@@ -339,10 +344,10 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
             float rel_zoom = (default_zoom > 0.0f) ? zoom / default_zoom : 1.0f;
 
             // Dest: tactical area fills its screen region at current zoom
-            int dst_x = offset_x + static_cast<int>(tac_x * scale);
-            int dst_y = offset_y + static_cast<int>(tac_y * scale);
-            int dst_w = static_cast<int>(tac_w * scale);
-            int dst_h = static_cast<int>(tac_h * scale);
+            int dst_x = offset_x + static_cast<int>(tac_x * ui_scale);
+            int dst_y = offset_y + static_cast<int>(tac_y * ui_scale);
+            int dst_w = static_cast<int>(tac_w * ui_scale);
+            int dst_h = static_cast<int>(tac_h * ui_scale);
 
             if (g_tac_tex_active && g_tac_tex) {
                 // Expanded tactical texture: bind it and sample the full area.
@@ -421,12 +426,12 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
 
             int sprites = GL_Sprites_Render(
                 win_w, win_h,
-                offset_x + static_cast<int>(tac_x * scale),
-                offset_y + static_cast<int>(tac_y * scale),
-                static_cast<int>(tac_w * scale),
-                static_cast<int>(tac_h * scale),
+                offset_x + static_cast<int>(tac_x * ui_scale),
+                offset_y + static_cast<int>(tac_y * ui_scale),
+                static_cast<int>(tac_w * ui_scale),
+                static_cast<int>(tac_h * ui_scale),
                 tac_x, tac_y, tac_w, tac_h,
-                scale, vp_x, vp_y);
+                ui_scale, vp_x, vp_y);
 
             static int log_count = 0;
             if (++log_count % 300 == 1 && sprites > 0) {
@@ -436,7 +441,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                     sprites, GL_Sprites_Atlas_Frame_Count(), GL_Sprites_Atlas_Page_Count());
             }
 
-            // Restore palette shader state for sidebar
+            // Restore full palette shader state for sidebar/tab rendering
             glUseProgram(g_gl_program);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
@@ -444,15 +449,16 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, g_palette_tex);
             glUniform1i(g_u_palette, 1);
+            glEnableVertexAttribArray(0); // re-enable after sprite render disabled it
         }
 
         // Sidebar
         if (side_w > 0) {
             draw_quad(side_x, 0, side_w, h,
-                      offset_x + static_cast<int>(side_x * scale),
+                      offset_x + static_cast<int>(side_x * ui_scale),
                       offset_y,
-                      static_cast<int>(side_w * scale),
-                      static_cast<int>(h * scale),
+                      static_cast<int>(side_w * ui_scale),
+                      static_cast<int>(h * ui_scale),
                       win_w, win_h);
         }
     }
