@@ -98,52 +98,13 @@ float Render_Bridge_Get_Viewport_Y()     { return 0.0f; }
 
 void Render_Bridge_Transform_Mouse()
 {
-    extern bool InMainLoop;
-    if (!InMainLoop || g_zoom == 1.0f) return;
-
-    // At zoom > 1.0, the native buffer shows more cells than the zoomed
-    // viewport displays. The GL UV crops to the center portion.
-    // Mouse coords need to map from screen tactical area to the
-    // corresponding native buffer position.
-    int tx = Map.TacPixelX, ty = Map.TacPixelY;
-    int tw = Lepton_To_Pixel(Map.TacLeptonWidth);
-    int th = Lepton_To_Pixel(Map.TacLeptonHeight);
-    if (tw <= 0 || th <= 0) return;
-
-    extern int Render_Bridge_Get_Native_Tac_W();
-    extern int Render_Bridge_Get_Native_Tac_H();
-    int ntw = Render_Bridge_Get_Native_Tac_W();
-    int nth = Render_Bridge_Get_Native_Tac_H();
-    if (ntw <= 0 || nth <= 0) return;
-
-    if (g_raw_mouse_x >= tx && g_raw_mouse_x < tx + tw &&
-        g_raw_mouse_y >= ty && g_raw_mouse_y < ty + th) {
-
-        // Screen fraction within tactical area
-        float frac_x = static_cast<float>(g_raw_mouse_x - tx) / tw;
-        float frac_y = static_cast<float>(g_raw_mouse_y - ty) / th;
-
-        // Visible viewport within native buffer (centered)
-        float vis_w = static_cast<float>(ntw) / g_zoom;
-        float vis_h = static_cast<float>(nth) / g_zoom;
-        float vp_x = (ntw - vis_w) * 0.5f;
-        float vp_y = (nth - vis_h) * 0.5f;
-
-        // Map to native buffer position
-        float native_x = vp_x + frac_x * vis_w;
-        float native_y = vp_y + frac_y * vis_h;
-
-        // Convert back to game buffer coords (fraction of native → fraction of game tac)
-        float game_frac_x = native_x / ntw;
-        float game_frac_y = native_y / nth;
-
-        g_mouse_x = tx + static_cast<int>(game_frac_x * tw);
-        g_mouse_y = ty + static_cast<int>(game_frac_y * th);
-
-        // Clamp
-        if (g_mouse_x < tx) g_mouse_x = tx;
-        if (g_mouse_y < ty) g_mouse_y = ty;
-        if (g_mouse_x >= tx + tw) g_mouse_x = tx + tw - 1;
-        if (g_mouse_y >= ty + th) g_mouse_y = ty + th - 1;
-    }
+    // Don't transform mouse at all — the game's scroll system and
+    // tactical interaction both use the same coordinate space (game buffer).
+    // Edge scrolling needs mouse at screen/buffer edges (x=0, y=0, etc.).
+    // Tactical clicks need mouse within the tactical area.
+    // Both work correctly with untransformed game-buffer coordinates
+    // because the draw list expansion only affects Draw_It rendering,
+    // not the game logic coordinate space.
+    (void)g_raw_mouse_x;
+    (void)g_raw_mouse_y;
 }
