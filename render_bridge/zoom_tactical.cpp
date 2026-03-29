@@ -49,34 +49,24 @@ static int      g_native_w = 0;
 static int      g_native_h = 0;
 static int      g_native_alloc = 0;
 
-/// Compute native tactical dimensions from screen size.
+/// Compute tactical buffer dimensions: min(screen, map) per axis.
+/// This is the maximum content that could ever be visible at 1:1 zoom.
 static void get_native_tactical(int& out_w, int& out_h)
 {
     int screen_w = 0, screen_h = 0;
     Render_Bridge_Get_Screen_Size(screen_w, screen_h);
     if (screen_w <= 0 || screen_h <= 0) { out_w = 0; out_h = 0; return; }
 
-    int buf_w = SeenBuff.Get_Width();
-    int buf_h = SeenBuff.Get_Height();
-    if (buf_w <= 0 || buf_h <= 0) { out_w = 0; out_h = 0; return; }
+    // Map size in pixels
+    int map_px_w = Map.MapCellWidth * ICON_PIXEL_W;
+    int map_px_h = Map.MapCellHeight * ICON_PIXEL_W; // cells are square (24x24)
+    if (map_px_w <= 0 || map_px_h <= 0) { out_w = 0; out_h = 0; return; }
 
-    // UI scale: how the 712x400 buffer maps to screen
-    float ui_sx = static_cast<float>(screen_w) / buf_w;
-    float ui_sy = static_cast<float>(screen_h) / buf_h;
-    float ui_scale = (ui_sx < ui_sy) ? ui_sx : ui_sy;
+    // Tactical buffer = min(screen, map) — never larger than needed
+    out_w = (screen_w < map_px_w) ? screen_w : map_px_w;
+    out_h = (screen_h < map_px_h) ? screen_h : map_px_h;
 
-    // Tactical area on screen (in screen pixels)
-    int tac_x = Map.TacPixelX;
-    int tac_y = Map.TacPixelY;
-    int tac_w = Lepton_To_Pixel(Map.TacLeptonWidth);
-    int tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
-
-    // Native tactical size = screen tactical area / 1.0 (at zoom 1.0, 1:1 pixels)
-    // This is how many game pixels we need to fill the screen tactical area
-    out_w = static_cast<int>(tac_w * ui_scale);
-    out_h = static_cast<int>(tac_h * ui_scale);
-
-    // Align to cell boundaries
+    // Align to cell boundaries (24px)
     out_w = ((out_w + 23) / 24) * 24;
     out_h = ((out_h + 23) / 24) * 24;
 }

@@ -103,13 +103,17 @@ void Render_Bridge_Set_Screen_Size(int screen_w, int screen_h)
     int bh = SeenBuff.Get_Height();
     if (bw <= 0 || bh <= 0) return;
 
-    // Default zoom: game buffer fills the screen.
+    // Default zoom: game buffer fills the screen (UI scale factor).
+    // This is the scale at which the 712x400 buffer maps to screen.
     float dx = static_cast<float>(screen_w) / static_cast<float>(bw);
     float dy = static_cast<float>(screen_h) / static_cast<float>(bh);
     g_zoom_default = (dx < dy) ? dx : dy;
     if (g_zoom_default < 1.0f) g_zoom_default = 1.0f;
 
-    // Max zoom: 320x200 DOS view fills the screen.
+    // Max zoom: 320x200 DOS view fills the screen (accounting for sidebar).
+    // Sidebar width in screen pixels = SideBarWidth * g_zoom_default.
+    // Tactical screen area = screen_w - sidebar_screen_w.
+    // Max zoom = tactical_screen_w / 320 (or screen_h / 200, whichever is less).
     float mx = static_cast<float>(screen_w) / DOS_W;
     float my = static_cast<float>(screen_h) / DOS_H;
     g_zoom_max = (mx < my) ? mx : my;
