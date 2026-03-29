@@ -40,8 +40,8 @@ static GLuint g_hud_prog = 0;
 static bool   g_hud_gl_ready = false;
 
 // HUD bitmap: 128x64 RGBA
-static constexpr int HUD_W = 128;
-static constexpr int HUD_H = 64;
+static constexpr int HUD_W = 140;
+static constexpr int HUD_H = 80;
 static uint32_t g_hud_pixels[HUD_W * HUD_H];
 
 // 4x6 bitmap font
@@ -136,6 +136,19 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     int ntac_w = Render_Bridge_Get_Native_Tac_W(), ntac_h = Render_Bridge_Get_Native_Tac_H();
     int atlas_f = GL_Sprites_Atlas_Frame_Count(), atlas_p = GL_Sprites_Atlas_Page_Count();
 
+    // Viewport = visible portion of native buffer at current zoom
+    // At zoom 1.0: viewport = native buffer (all visible)
+    // At zoom 2.0: viewport = half the native buffer
+    int vp_w = (ntac_w > 0) ? static_cast<int>(ntac_w / zoom) : tac_w;
+    int vp_h = (ntac_h > 0) ? static_cast<int>(ntac_h / zoom) : tac_h;
+    if (vp_w > ntac_w && ntac_w > 0) vp_w = ntac_w;
+    if (vp_h > ntac_h && ntac_h > 0) vp_h = ntac_h;
+    float vp_x = Render_Bridge_Get_Viewport_X();
+    float vp_y = Render_Bridge_Get_Viewport_Y();
+
+    // Map size in cells
+    int map_cw = Map.MapCellWidth, map_ch = Map.MapCellHeight;
+
     // Clear HUD bitmap
     memset(g_hud_pixels, 0, sizeof(g_hud_pixels));
 
@@ -151,16 +164,20 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     snprintf(line, sizeof(line), "%s %dFPS %.0fMS", GL_Present_Is_Active()?"GL":"SW", g_fps, g_frame_ms);
     hud_puts(2, y, line, white); y += 8;
 
-    snprintf(line, sizeof(line), "%dX%d..%dX%d", buf_w, buf_h, win_w, win_h);
+    snprintf(line, sizeof(line), "SCR %dX%d", win_w, win_h);
     hud_puts(2, y, line, white); y += 8;
 
-    snprintf(line, sizeof(line), "Z%.1f TAC%dX%d", zoom, tac_w, tac_h);
+    snprintf(line, sizeof(line), "MAP %dX%d", map_cw, map_ch);
     hud_puts(2, y, line, white); y += 8;
 
-    if (ntac_w > 0) {
-        snprintf(line, sizeof(line), "NAT %dX%d", ntac_w, ntac_h);
-        hud_puts(2, y, line, green); y += 8;
-    }
+    snprintf(line, sizeof(line), "NAT %dX%d", ntac_w, ntac_h);
+    hud_puts(2, y, line, green); y += 8;
+
+    snprintf(line, sizeof(line), "VP %dX%d", vp_w, vp_h);
+    hud_puts(2, y, line, 0xFF00FFFF); y += 8; // cyan
+
+    snprintf(line, sizeof(line), "Z%.2f AT(%d.%d)", zoom, (int)vp_x, (int)vp_y);
+    hud_puts(2, y, line, white); y += 8;
 
     snprintf(line, sizeof(line), "DL%d S%d T%d P%d", cmd_count, shapes, stamps, prims);
     hud_puts(2, y, line, yellow); y += 8;
@@ -179,9 +196,9 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     glBindTexture(GL_TEXTURE_2D, g_hud_tex);
     glUniform1i(glGetUniformLocation(g_hud_prog, "u_tex"), 0);
 
-    // Bottom-left corner, 256x128 screen pixels
-    float qw = 256.0f / win_w * 2.0f;
-    float qh = 128.0f / win_h * 2.0f;
+    // Bottom-left corner, 280x160 screen pixels
+    float qw = 280.0f / win_w * 2.0f;
+    float qh = 160.0f / win_h * 2.0f;
     float verts[] = {
         -1.0f,        -1.0f + qh,  0.0f, 0.0f,
         -1.0f + qw,   -1.0f + qh,  1.0f, 0.0f,
