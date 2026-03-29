@@ -19,12 +19,13 @@ extern int   g_mouse_x, g_mouse_y;
 extern SDL_Window* g_window;
 
 static constexpr float ZOOM_STEP  = 0.1f;
-static constexpr float ZOOM_MIN  = 1.0f;  // 1:1 native screen pixels
+static constexpr float ZOOM_MIN  = 1.0f;  // 1:1 — each game pixel = 1 screen pixel
 static constexpr float DOS_W     = 320.0f;
 static constexpr float DOS_H     = 200.0f;
 
-static float g_zoom       = 1.0f;
-static float g_zoom_max   = 4.0f;  // computed at runtime from screen/320x200
+static float g_zoom         = 1.0f;  // current zoom (screen px per game px)
+static float g_zoom_default = 1.0f;  // fills screen = min(screen/buffer)
+static float g_zoom_max     = 4.0f;  // computed: min(screen/320, screen/200)
 static float g_viewport_x = 0.0f;
 static float g_viewport_y = 0.0f;
 static int   g_raw_mouse_x = 0;
@@ -88,16 +89,27 @@ void Render_Bridge_Set_Screen_Size(int screen_w, int screen_h)
 {
     if (screen_w <= 0 || screen_h <= 0) return;
 
-    // Max zoom: 320x200 DOS view fills the screen.
-    // At max zoom, visible area = screen / zoom = 320x200 (limited by shorter side).
-    float zx = static_cast<float>(screen_w) / DOS_W;
-    float zy = static_cast<float>(screen_h) / DOS_H;
-    g_zoom_max = (zx < zy) ? zx : zy;
-    if (g_zoom_max < 2.0f) g_zoom_max = 2.0f;
+    int bw = SeenBuff.Get_Width();
+    int bh = SeenBuff.Get_Height();
+    if (bw <= 0 || bh <= 0) return;
 
-    DBG("zoom: range [%.1f, %.1f] (screen %dx%d, max shows %.0fx%.0f)",
-        ZOOM_MIN, g_zoom_max, screen_w, screen_h,
-        screen_w / g_zoom_max, screen_h / g_zoom_max);
+    // Default zoom: game buffer fills the screen.
+    float dx = static_cast<float>(screen_w) / static_cast<float>(bw);
+    float dy = static_cast<float>(screen_h) / static_cast<float>(bh);
+    g_zoom_default = (dx < dy) ? dx : dy;
+    if (g_zoom_default < 1.0f) g_zoom_default = 1.0f;
+
+    // Max zoom: 320x200 DOS view fills the screen.
+    float mx = static_cast<float>(screen_w) / DOS_W;
+    float my = static_cast<float>(screen_h) / DOS_H;
+    g_zoom_max = (mx < my) ? mx : my;
+    if (g_zoom_max < g_zoom_default) g_zoom_max = g_zoom_default;
+
+    // Start at default zoom (game fills screen)
+    g_zoom = g_zoom_default;
+
+    DBG("zoom: range [%.1f, %.1f, %.1f] (1:1, default, max) screen %dx%d buffer %dx%d",
+        ZOOM_MIN, g_zoom_default, g_zoom_max, screen_w, screen_h, bw, bh);
 }
 
 void Render_Bridge_Apply_Scroll_Zoom()
@@ -121,6 +133,7 @@ void Render_Bridge_Zoom_At(float new_zoom, int center_x, int center_y)
 }
 
 float Render_Bridge_Get_Zoom_Level()     { return g_zoom; }
+float Render_Bridge_Get_Default_Zoom()   { return g_zoom_default; }
 float Render_Bridge_Get_Viewport_X()     { return g_viewport_x; }
 float Render_Bridge_Get_Viewport_Y()     { return g_viewport_y; }
 

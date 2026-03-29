@@ -233,12 +233,12 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
     SDL_GetWindowSizeInPixels(g_window, &win_w, &win_h);
     if (win_w <= 0 || win_h <= 0) return false;
 
-    // Scale factor: game buffer → screen pixels (uniform, maintain aspect)
-    float scale_x = static_cast<float>(win_w) / w;
-    float scale_y = static_cast<float>(win_h) / h;
-    float scale = (scale_x < scale_y) ? scale_x : scale_y;
+    // Zoom = screen pixels per game pixel. At default zoom, game fills screen.
+    // At zoom 1.0, game pixels map 1:1 (game appears small on big screen).
+    float zoom = Render_Bridge_Get_Zoom_Level();
+    float scale = zoom;
 
-    // Offset for centering (letterbox/pillarbox)
+    // Offset for centering at current zoom
     int offset_x = static_cast<int>((win_w - w * scale) * 0.5f);
     int offset_y = static_cast<int>((win_h - h * scale) * 0.5f);
 
@@ -298,19 +298,23 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                       win_w, win_h);
         }
 
-        // Tactical area — apply zoom via source rect adjustment.
-        // At zoom > 1.0, source rect shrinks (shows sub-region), GPU scales up.
-        // At zoom < 1.0, source rect stays full (world renders smaller).
+        // Tactical area — zoom applied via source rect.
+        // Source sub-region = viewport offset + visible area (tac_size / relative_zoom).
+        // Destination fills the tactical screen area (tac_size * scale).
         {
-            float zoom = Render_Bridge_Get_Zoom_Level();
             float vp_x = Render_Bridge_Get_Viewport_X();
             float vp_y = Render_Bridge_Get_Viewport_Y();
 
-            // Source region in game buffer pixels
+            // Default scale = the zoom where game fills screen
+            extern float Render_Bridge_Get_Default_Zoom();
+            float default_zoom = Render_Bridge_Get_Default_Zoom();
+            float rel_zoom = (default_zoom > 0.0f) ? zoom / default_zoom : 1.0f;
+
+            // Source: sub-region of tactical area based on relative zoom
             float src_x = static_cast<float>(tac_x) + vp_x;
             float src_y = static_cast<float>(tac_y) + vp_y;
-            float src_w = static_cast<float>(tac_w) / zoom;
-            float src_h = static_cast<float>(tac_h) / zoom;
+            float src_w = static_cast<float>(tac_w) / rel_zoom;
+            float src_h = static_cast<float>(tac_h) / rel_zoom;
 
             // Clamp source to tactical bounds
             if (src_x < tac_x) src_x = static_cast<float>(tac_x);
@@ -318,25 +322,11 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
             if (src_x + src_w > tac_x + tac_w) src_w = tac_x + tac_w - src_x;
             if (src_y + src_h > tac_y + tac_h) src_h = tac_y + tac_h - src_y;
 
-            // Dest: always fills the full tactical screen area
+            // Dest: tactical area on screen
             int dst_x = offset_x + static_cast<int>(tac_x * scale);
             int dst_y = offset_y + static_cast<int>(tac_y * scale);
             int dst_w = static_cast<int>(tac_w * scale);
             int dst_h = static_cast<int>(tac_h * scale);
-
-            // When zoomed out (zoom < 1.0), world is smaller — center it
-            if (zoom < 1.0f) {
-                int scaled_w = static_cast<int>(tac_w * scale * zoom);
-                int scaled_h = static_cast<int>(tac_h * scale * zoom);
-                dst_x += (dst_w - scaled_w) / 2;
-                dst_y += (dst_h - scaled_h) / 2;
-                dst_w = scaled_w;
-                dst_h = scaled_h;
-                src_x = static_cast<float>(tac_x);
-                src_y = static_cast<float>(tac_y);
-                src_w = static_cast<float>(tac_w);
-                src_h = static_cast<float>(tac_h);
-            }
 
             draw_quad(static_cast<int>(src_x), static_cast<int>(src_y),
                       static_cast<int>(src_w), static_cast<int>(src_h),
