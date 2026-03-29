@@ -51,13 +51,16 @@ static uint64_t make_cache_key(const void* shapefile, int frame)
            (frame & 0xFFFF);
 }
 
-/// Check if palette changed — invalidates the atlas.
+// Snapshot of the palette used to build the atlas (768 bytes)
+static uint8_t g_cached_pal_data[768] = {};
+static bool    g_cached_pal_valid = false;
+
+/// Check if palette content actually changed (full comparison).
 static bool palette_changed(const uint8_t* pal)
 {
-    uint32_t hash = pal[0] | (pal[3] << 8) | (pal[384] << 16) | (pal[765] << 24);
-    if (pal != g_cached_pal || hash != g_cached_pal_hash) {
-        g_cached_pal = pal;
-        g_cached_pal_hash = hash;
+    if (!g_cached_pal_valid || memcmp(g_cached_pal_data, pal, 768) != 0) {
+        memcpy(g_cached_pal_data, pal, 768);
+        g_cached_pal_valid = true;
         return true;
     }
     return false;
@@ -130,28 +133,54 @@ void GL_Sprites_Init()
     g_atlas.Init(2048);
 }
 
-/// Build atlas from current draw list shapes. Call once per frame before rendering.
+/// Build atlas from current draw list shapes.
+/// Only rebuilds when palette changes or new shapes appear.
 int GL_Sprites_Build_Atlas(const uint8_t* vga_palette)
 {
-    if (palette_changed(vga_palette)) {
+    bool pal_changed = palette_changed(vga_palette);
+    if (pal_changed) {
         invalidate_atlas();
     }
 
-    int packed = 0;
+    // Check if any new (uncached) shapes exist in this frame's draw list
+    bool has_new = false;
+    if (g_atlas_ready) {
+        for (int i = 0; i < g_draw_list.Command_Count(); i++) {
+            const DrawCommand& cmd = g_draw_list.Get(i);
+            if (cmd.type != CMD_SHAPE) continue;
+            uint64_t key = make_cache_key(cmd.shape.shapefile, cmd.shape.shapenum);
+            if (g_atlas_cache.find(key) == g_atlas_cache.end()) {
+                has_new = true;
+                break;
+            }
+        }
+        if (!has_new) return static_cast<int>(g_atlas_cache.size()); // all cached
+        // New shapes: must rebuild (atlas was finalized)
+        invalidate_atlas();
+    }
+
+    int new_shapes = 0;
     for (int i = 0; i < g_draw_list.Command_Count(); i++) {
         const DrawCommand& cmd = g_draw_list.Get(i);
         if (cmd.type != CMD_SHAPE) continue;
 
+        uint64_t key = make_cache_key(cmd.shape.shapefile, cmd.shape.shapenum);
+        if (g_atlas_cache.find(key) != g_atlas_cache.end()) continue;
+
         AtlasFrameID id = ensure_in_atlas(cmd.shape.shapefile,
                                            cmd.shape.shapenum, vga_palette);
-        if (id != static_cast<AtlasFrameID>(-1)) packed++;
+        if (id != static_cast<AtlasFrameID>(-1)) new_shapes++;
     }
 
-    if (packed > 0 && !g_atlas_ready) {
+    if (new_shapes > 0 || (g_atlas_cache.size() > 0 && !g_atlas_ready)) {
         g_atlas.Finalize();
         g_atlas_ready = true;
 
         // Upload atlas pages to GL
+        for (int i = 0; i < g_page_tex_count; i++)
+            if (g_page_textures[i]) glDeleteTextures(1, &g_page_textures[i]);
+        free(g_page_textures);
+
         int pages = g_atlas.Page_Count();
         g_page_textures = static_cast<GLuint*>(calloc(pages, sizeof(GLuint)));
         g_page_tex_count = pages;
@@ -168,11 +197,11 @@ int GL_Sprites_Build_Atlas(const uint8_t* vga_palette)
                          GL_RGBA, GL_UNSIGNED_BYTE, g_atlas.Page_Pixels(p));
         }
 
-        DBG("gl_sprites: atlas built — %d frames, %d pages (%dpx)",
-            packed, pages, g_atlas.Page_Size());
+        DBG("gl_sprites: atlas built — %d frames (+%d new), %d pages",
+            static_cast<int>(g_atlas_cache.size()), new_shapes, pages);
     }
 
-    return packed;
+    return static_cast<int>(g_atlas_cache.size());
 }
 
 /// Get atlas stats for debug display.

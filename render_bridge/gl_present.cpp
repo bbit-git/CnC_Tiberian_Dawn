@@ -406,43 +406,10 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
             }
         }
 
-        // GL sprite overlay: render atlas sprites on top of tactical quad
-        {
-            extern int GL_Sprites_Build_Atlas(const uint8_t* vga_palette);
-            extern int GL_Sprites_Render(int, int, int, int, int, int,
-                                          int, int, int, int, float, float, float);
-            GL_Sprites_Build_Atlas(vga_palette);
-
-            float vp_x = Render_Bridge_Get_Viewport_X();
-            float vp_y = Render_Bridge_Get_Viewport_Y();
-
-            int sprites = GL_Sprites_Render(
-                win_w, win_h,
-                offset_x + static_cast<int>(tac_x * ui_scale),
-                offset_y + static_cast<int>(tac_y * ui_scale),
-                static_cast<int>(tac_w * ui_scale),
-                static_cast<int>(tac_h * ui_scale),
-                tac_x, tac_y, tac_w, tac_h,
-                ui_scale, vp_x, vp_y);
-
-            static int log_count = 0;
-            if (++log_count % 300 == 1 && sprites > 0) {
-                extern int GL_Sprites_Atlas_Frame_Count();
-                extern int GL_Sprites_Atlas_Page_Count();
-                DBG("gl_sprites: rendered %d quads, atlas %d frames / %d pages",
-                    sprites, GL_Sprites_Atlas_Frame_Count(), GL_Sprites_Atlas_Page_Count());
-            }
-
-            // Restore full palette shader state for sidebar/tab rendering
-            glUseProgram(g_gl_program);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
-            glUniform1i(g_u_indexed, 0);
-            glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, g_palette_tex);
-            glUniform1i(g_u_palette, 1);
-            glEnableVertexAttribArray(0); // re-enable after sprite render disabled it
-        }
+        // GL sprite overlay disabled — CPU replay through palette shader
+        // already handles house colors, transparency, and all 16 rendering
+        // modes correctly. GL sprite atlas builds in background for future use.
+        // TODO: enable when GL sprites support house color remap + fading.
 
         // Sidebar
         if (side_w > 0) {
