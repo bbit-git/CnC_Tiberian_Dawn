@@ -349,39 +349,55 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
             float vp_x = Render_Bridge_Get_Viewport_X();
             float vp_y = Render_Bridge_Get_Viewport_Y();
 
-            // Dest: tactical area on screen (fixed, doesn't change with zoom)
-            int dst_x = offset_x + static_cast<int>(tac_x * ui_scale);
-            int dst_y = offset_y + static_cast<int>(tac_y * ui_scale);
-            int dst_w = static_cast<int>(tac_w * ui_scale);
-            int dst_h = static_cast<int>(tac_h * ui_scale);
+            // Max available screen area for tactical
+            int avail_x = offset_x + static_cast<int>(tac_x * ui_scale);
+            int avail_y = offset_y + static_cast<int>(tac_y * ui_scale);
+            int avail_w = static_cast<int>(tac_w * ui_scale);
+            int avail_h = static_cast<int>(tac_h * ui_scale);
 
             if (g_tac_tex_active && g_tac_tex) {
-                // Native tactical texture path.
-                // The texture is min(screen, map) sized. Zoom controls
-                // how much of it is visible. Aspect ratio is preserved
-                // because both axes use the same zoom factor.
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, g_tac_tex);
 
                 float tex_w = static_cast<float>(g_tac_tex_w);
                 float tex_h = static_cast<float>(g_tac_tex_h);
 
-                // Visible portion of native texture at current zoom.
-                // zoom 1.0 = full texture. zoom 2.0 = center half visible.
+                // Visible portion at current zoom
                 float vis_w = tex_w / zoom;
                 float vis_h = tex_h / zoom;
 
-                // Center the viewport within the texture
+                // Center viewport within texture
                 float cx = (tex_w - vis_w) * 0.5f;
                 float cy = (tex_h - vis_h) * 0.5f;
                 if (cx < 0.0f) cx = 0.0f;
                 if (cy < 0.0f) cy = 0.0f;
 
-                // UV coordinates (centered viewport)
+                // UV (full texture at zoom 1.0, center crop when zoomed)
                 float u0 = cx / tex_w;
                 float v0 = cy / tex_h;
                 float u1 = (cx + vis_w) / tex_w;
                 float v1 = (cy + vis_h) / tex_h;
+
+                // Dest: fit native texture into available area, preserve aspect.
+                // The texture may be smaller than the available screen area
+                // (map smaller than screen). Scale uniformly and center.
+                float tex_aspect = tex_w / tex_h;
+                float avail_aspect = static_cast<float>(avail_w) / avail_h;
+
+                int dst_x, dst_y, dst_w, dst_h;
+                if (tex_aspect > avail_aspect) {
+                    // Texture wider: fit width, letterbox height
+                    dst_w = avail_w;
+                    dst_h = static_cast<int>(avail_w / tex_aspect);
+                    dst_x = avail_x;
+                    dst_y = avail_y + (avail_h - dst_h) / 2;
+                } else {
+                    // Texture taller: fit height, pillarbox width
+                    dst_h = avail_h;
+                    dst_w = static_cast<int>(avail_h * tex_aspect);
+                    dst_x = avail_x + (avail_w - dst_w) / 2;
+                    dst_y = avail_y;
+                }
 
                 // Clamp
                 if (u0 < 0.0f) u0 = 0.0f;
@@ -409,7 +425,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                 // Fallback: sample from SeenBuff indexed texture.
                 // Used when native buffer unavailable (menus, dialogs).
                 draw_quad(tac_x, tac_y, tac_w, tac_h,
-                          dst_x, dst_y, dst_w, dst_h,
+                          avail_x, avail_y, avail_w, avail_h,
                           win_w, win_h);
             }
         }
