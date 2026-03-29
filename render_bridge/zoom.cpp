@@ -12,15 +12,19 @@
 #include "render_bridge.h"
 #include "function.h"
 #include "dbg.h"
+#include <SDL3/SDL.h>
 
 extern float g_scroll_zoom_delta;
 extern int   g_mouse_x, g_mouse_y;
+extern SDL_Window* g_window;
 
 static constexpr float ZOOM_STEP = 0.1f;
-static constexpr float ZOOM_MIN  = 1.0f;
 static constexpr float ZOOM_MAX  = 4.0f;
+static constexpr float REF_W     = 640.0f;
+static constexpr float REF_H     = 400.0f;
 
 static float g_zoom       = 1.0f;
+static float g_zoom_min   = 0.25f;  // computed at runtime
 static float g_viewport_x = 0.0f;
 static float g_viewport_y = 0.0f;
 static int   g_raw_mouse_x = 0;
@@ -58,8 +62,8 @@ static void zoom_at(float new_zoom, int anchor_x, int anchor_y)
     get_tac(tx, ty, tw, th);
     if (tw <= 0 || th <= 0) return;
 
-    if (new_zoom < ZOOM_MIN) new_zoom = ZOOM_MIN;
-    if (new_zoom > ZOOM_MAX) new_zoom = ZOOM_MAX;
+    if (new_zoom < g_zoom_min) new_zoom = g_zoom_min;
+    if (new_zoom > ZOOM_MAX)  new_zoom = ZOOM_MAX;
     if (new_zoom == g_zoom) return;
 
     // Anchor relative to tactical viewport on screen
@@ -85,6 +89,29 @@ void Render_Bridge_Apply_Scroll_Zoom()
     // Snapshot raw mouse position for zoom anchor (before any transform)
     g_raw_mouse_x = g_mouse_x;
     g_raw_mouse_y = g_mouse_y;
+
+    // Compute zoom min from screen size (once)
+    static bool zoom_min_computed = false;
+    if (!zoom_min_computed && g_window) {
+        int sw = 0, sh = 0;
+        SDL_GetWindowSizeInPixels(g_window, &sw, &sh);
+        if (sw > 0 && sh > 0) {
+            // At zoom_min, game pixels map 1:1 to screen pixels.
+            // Screen stretch factor = screen_size / buffer_size.
+            // zoom_min = 1 / stretch = buffer_size / screen_size.
+            int bw = SeenBuff.Get_Width();
+            int bh = SeenBuff.Get_Height();
+            if (bw > 0 && bh > 0) {
+                float zx = static_cast<float>(bw) / static_cast<float>(sw);
+                float zy = static_cast<float>(bh) / static_cast<float>(sh);
+                g_zoom_min = (zx < zy) ? zx : zy;
+                if (g_zoom_min < 0.1f) g_zoom_min = 0.1f;
+                zoom_min_computed = true;
+                DBG("zoom: min=%.3f (screen %dx%d, buffer %dx%d)",
+                    g_zoom_min, sw, sh, bw, bh);
+            }
+        }
+    }
 
     float delta = g_scroll_zoom_delta;
     g_scroll_zoom_delta = 0.0f;
