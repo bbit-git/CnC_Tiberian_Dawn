@@ -61,7 +61,12 @@ static const char* frag_src = R"(
     uniform sampler2D u_palette;
     void main() {
         float idx = texture2D(u_indexed, v_uv).r;
-        gl_FragColor = texture2D(u_palette, vec2(idx, 0.5));
+        // GL_LUMINANCE normalizes 0-255 → 0.0-1.0 (divides by 255).
+        // Palette texture is 256 texels. Map to texel center:
+        // texel N center = (N + 0.5) / 256.
+        // idx = N/255, so N = idx * 255. Texel center = (idx*255 + 0.5) / 256.
+        float pal_u = (idx * 255.0 + 0.5) / 256.0;
+        gl_FragColor = texture2D(u_palette, vec2(pal_u, 0.5));
     }
 )";
 
