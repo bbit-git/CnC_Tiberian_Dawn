@@ -1,165 +1,146 @@
-# Render Bridge — Layer Separation & Draw List Architecture
+# Render Bridge — Draw List Architecture
 
-## Overview
-
-The render bridge intercepts the C&C TD rendering pipeline to enable tactical map zoom while keeping all UI elements at native resolution.
-
-## Rendering Pipeline (Legacy)
+## Pipeline
 
 ```
 GScreenClass::Render()
-  ├─ Set_Logic_Page(HidPage)           ← 8-bit indexed off-screen buffer
-  ├─ Draw_It(IsToRedraw)               ← EVERYTHING: terrain, sprites, health bars, selection
-  ├─ Buttons->Draw_All()               ← Dialog buttons (gadgets)
-  ├─ Messages.Draw()                   ← Chat/event messages
-  ├─ ActionMenu.Draw_It()              ← Right-click action menu
-  ├─ Blit_Display()                    ← HidPage → SeenBuff (VisiblePage)
-  └─ TD_SDL_Present()                  ← SeenBuff → palette LUT → RGBA → SDL texture → screen
-```
-
-All draws go to a single 8-bit indexed buffer. No layer separation exists.
-
-## Rendering Pipeline (Bridge)
-
-```
-GScreenClass::Render()
-  ├─ Set_Logic_Page(HidPage)
   │
-  ├─ Render_Bridge_Begin_Draw_List()   ← Start recording CC_Draw_Shape calls
-  ├─ Draw_It(IsToRedraw)               ← World renders normally + draw list captures shapes
-  ├─ Render_Bridge_End_Draw_List()     ← Apply zoom in-place to tactical area
+  ├─ Begin_Draw_List()              ← recording ON
   │
-  ├─ Buttons->Draw_All()               ← Drawn AFTER zoom, at 1:1
-  ├─ Messages.Draw()                   ← At 1:1
-  ├─ ActionMenu.Draw_It()              ← At 1:1
-  ├─ Blit_Display()                    ← HidPage → SeenBuff
-  └─ TD_SDL_Present()                  ← Passthrough → SDL present
-```
-
-The `#ifdef USE_RENDER_BRIDGE` hooks in `gscreen.cpp` (2 lines) and `conquer.cpp` (1 block) are the only changes to `modern.src/`.
-
-## Screen Regions
-
-```
-┌────────────────────────────────────────────┬──────────┐
-│              Tab Bar (UI_TAB)              │          │
-│           credits, EVA, options            │          │
-├────────────────────────────────────────────┤ Sidebar  │
-│                                            │ (UI)     │
-│          Tactical Viewport                 │          │
-│                                            │ Build    │
-│   ┌─────────────────────────────────┐      │ queue    │
-│   │     World (zoomed)              │      │          │
-│   │   terrain tiles, units,         │      │ Radar    │
-│   │   buildings, animations,        │      │          │
-│   │   health bars, selection        │      │ Power    │
-│   └─────────────────────────────────┘      │ bar      │
-│                                            │          │
-└────────────────────────────────────────────┴──────────┘
-```
-
-| Region | Source | Zoom | Position |
-|--------|--------|------|----------|
-| Tab bar | SeenBuff row 0..TacPixelY | 1:1 always | Fixed top |
-| Sidebar | SeenBuff col SideX..end | 1:1 always | Fixed right |
-| Tactical viewport | HidPage tactical rect | Zoomed | Fixed position, content scrolls |
-| Buttons/Messages | Drawn after zoom | 1:1 always | Over tactical area |
-
-## Draw List
-
-The draw list captures rendering commands during `Draw_It()` for analysis and future GPU replay.
-
-### Captured Commands
-
-| Command | Source Function | Layer | Notes |
-|---------|----------------|-------|-------|
-| `CMD_SHAPE` | `CC_Draw_Shape()` | LAYER_SPRITE | Units, buildings, animations, overlays, shadows |
-| `CMD_STAMP` | `Draw_Stamp()` | LAYER_TERRAIN | Terrain template tiles (future) |
-| `CMD_FILL_RECT` | `Fill_Rect()` | LAYER_OVERLAY | Health bars, shadow rects (future) |
-| `CMD_DRAW_RECT` | `Draw_Rect()` | LAYER_OVERLAY | Selection boxes (future) |
-| `CMD_DRAW_LINE` | `Draw_Line()` | LAYER_OVERLAY | Selection corners, aim lines (future) |
-| `CMD_PUT_PIXEL` | `Put_Pixel()` | LAYER_OVERLAY | Debug markers (future) |
-
-Currently only `CC_Draw_Shape` is hooked. Primitive hooks are defined in the draw list API for future use.
-
-### Recording Flow
-
-```
-Render_Bridge_Begin_Draw_List()     ← g_draw_list.Clear(), SetRecording(true)
+  ├─ Draw_It(IsToRedraw)           ← ALL tactical calls deferred:
+  │   ├─ Draw_Stamp()              →  CMD_STAMP   (terrain tiles)
+  │   ├─ CC_Draw_Shape()           →  CMD_SHAPE   (sprites, shadows)
+  │   ├─ Fill_Rect()               →  CMD_FILL_RECT (health bars, shadow rects)
+  │   ├─ Draw_Rect()               →  CMD_DRAW_RECT (selection boxes)
+  │   ├─ Draw_Line()               →  CMD_DRAW_LINE (selection corners)
+  │   └─ Put_Pixel()               →  CMD_PUT_PIXEL (debug markers)
   │
-  └─ Draw_It()
-       ├─ CellClass::Draw_It()     ← Draw_Stamp (terrain) — not yet recorded
-       ├─ obj->Render()
-       │    ├─ Techno_Draw_Object() ← CC_Draw_Shape → recorded to draw list
-       │    ├─ Draw health bar      ← Fill_Rect, Draw_Rect — direct to buffer
-       │    └─ Draw selection       ← Draw_Line — direct to buffer
-       └─ Redraw_Shadow()           ← CC_Draw_Shape → recorded to draw list
-
-Render_Bridge_End_Draw_List()       ← SetRecording(false), apply zoom
+  ├─ End_Draw_List()                ← recording OFF, replay:
+  │   │
+  │   ├─ zoom == 1.0:
+  │   │   replay_world()            terrain + sprites at 1:1
+  │   │   replay_overlays()         primitives at 1:1
+  │   │   (output identical to legacy)
+  │   │
+  │   └─ zoom > 1.0:
+  │       replay_world()            terrain + sprites at 1:1
+  │       zoom_tactical_inplace()   pixel-zoom world (nearest-neighbor)
+  │       replay_overlays_zoomed()  primitives at zoomed positions, 1:1 size
+  │
+  ├─ Buttons->Draw_All()           ← 1:1, after zoom
+  ├─ Messages.Draw()               ← 1:1
+  ├─ ActionMenu.Draw_It()          ← 1:1
+  ├─ Blit_Display()                ← HidPage → SeenBuff
+  └─ TD_SDL_Present()              ← SeenBuff → RGBA → SDL → screen
 ```
 
-### Zoom Application (Current)
+## Layer Separation
 
-When zoom ≠ 1.0, `Render_Bridge_End_Draw_List()` applies nearest-neighbor scaling to the tactical rectangle in HidPage in-place. This zooms everything Draw_It produced (world + in-game overlays). Buttons/Messages draw after at 1:1.
+| Layer | Content | Zoom behavior |
+|-------|---------|---------------|
+| **World** | Terrain tiles (CMD_STAMP), unit/building sprites (CMD_SHAPE) | Pixel-scaled by zoom factor |
+| **Overlay** | Health bars, selection boxes, aim lines, debug markers | Positioned at zoomed coordinates, native pixel size |
+| **UI** | Buttons, messages, action menu | Always 1:1, drawn after zoom |
+| **Chrome** | Sidebar, tab bar | Always 1:1, outside tactical area |
 
-### Zoom Application (Future — Draw List Replay)
+## Screen Layout
 
-When the draw list captures ALL commands (including primitives):
+```
+┌──────────────────────────────────────────┬──────────┐
+│            Tab Bar (always 1:1)          │          │
+├──────────────────────────────────────────┤ Sidebar  │
+│                                          │ (1:1)    │
+│   Tactical Viewport                     │          │
+│   ┌──────────────────────────────┐      │ Build    │
+│   │ WORLD layer (zoomed):        │      │ queue    │
+│   │   terrain, units, buildings  │      │          │
+│   │                              │      │ Radar    │
+│   │ OVERLAY layer (1:1 size):    │      │          │
+│   │   health bars, selection     │      │ Power    │
+│   └──────────────────────────────┘      │          │
+│   UI layer (1:1): buttons, messages     │          │
+│                                          │          │
+└──────────────────────────────────────────┴──────────┘
+```
 
-1. Clear tactical area in HidPage
-2. Replay LAYER_TERRAIN and LAYER_SPRITE with zoomed coordinates and scaled shapes
-3. Replay LAYER_OVERLAY with zoomed coordinates but 1:1 sizes
-4. Result: world scales, overlay text/bars stay readable
+## Draw List Commands
 
-This requires intercepting Draw_Stamp and GraphicViewPortClass primitive methods (future work).
+| Type | Engine function | Count (typical) | Layer |
+|------|----------------|-----------------|-------|
+| CMD_STAMP | Draw_Stamp | ~300 | World |
+| CMD_SHAPE | CC_Draw_Shape | ~400 | World |
+| CMD_FILL_RECT | Fill_Rect | ~50 | Overlay |
+| CMD_DRAW_RECT | Draw_Rect | ~10 | Overlay |
+| CMD_DRAW_LINE | Draw_Line | ~40 | Overlay |
+| CMD_PUT_PIXEL | Put_Pixel | ~5 | Overlay |
+
+## Zoom
+
+- **Scroll up**: zoom in (1.0 → 4.0)
+- **Scroll down**: zoom out (→ 1.0 minimum)
+- **Anchor**: mouse cursor — point under cursor stays fixed
+- **Viewport**: tracks which sub-region of tactical area is visible when zoomed
+
+## Mouse Coordinate Transform
+
+```
+SDL events → g_mouse_x/y (raw screen position)
+    ↓
+TD_SDL_Present() → Apply_Scroll_Zoom() (snapshot raw, apply wheel delta)
+    ↓
+PumpEvents end → Transform_Mouse()
+    maps screen tactical position → source tactical position:
+    src = viewport + (screen - tac_origin) / zoom
+    ↓
+g_mouse_x/y + _Kbd->MouseQX/Y updated with transformed values
+    ↓
+Game logic reads correct coordinates
+```
+
+## Hooked Functions
+
+| File | Function | Hook |
+|------|----------|------|
+| `modern.src/gscreen.cpp` | `GScreenClass::Render()` | Begin/End draw list around Draw_It |
+| `modern.src/conquer.cpp` | `CC_Draw_Shape()` | Record + skip when recording |
+| `platform.sdl3/cnc/sdl3_render.cpp` | `Draw_Stamp()` | Record + skip |
+| `platform.sdl3/cnc/sdl3_render.cpp` | `Fill_Rect()` | Record + skip |
+| `platform.sdl3/cnc/sdl3_render.cpp` | `Draw_Rect()` | Record + skip |
+| `platform.sdl3/cnc/sdl3_render.cpp` | `Draw_Line()` | Record + skip |
+| `platform.sdl3/cnc/sdl3_render.cpp` | `Put_Pixel()` | Record + skip |
+| `platform.sdl3/cnc/sdl3_input.cpp` | `PumpEvents()` | Mouse transform + wheel capture |
+
+All hooks are `#ifdef USE_RENDER_BRIDGE`. Legacy build compiles identically.
 
 ## Files
 
 ```
 render_bridge/
-  render_bridge.h          Public API
-  render_bridge.cpp        Compositor init, passthrough blit
-  present.cpp              TD_SDL_Present replacement
-  init.cpp                 Game init hook
-  zoom.cpp                 Scroll wheel input, viewport tracking, mouse transform
-  zoom_tactical.cpp        Draw list begin/end, in-place tactical zoom
-  draw_list.h              Draw command types and DrawList class
-  draw_list.cpp            DrawList implementation
-  draw_list_hooks.cpp      Recording hooks called from modern.src
-  CMakeLists.txt           Source lists
-  RENDERING.md             This document
+  RENDERING.md           This document
+  render_bridge.h/cpp    Bridge init, compositor, passthrough blit
+  present.cpp            TD_SDL_Present replacement (passthrough + SDL)
+  init.cpp               Game init hook
+  zoom.cpp               Scroll input, viewport tracking, mouse transform
+  zoom_tactical.cpp      Draw list begin/end, replay, in-place zoom
+  draw_list.h/cpp        DrawCommand types and DrawList class
+  draw_list_hooks.cpp    Recording hooks (extern functions called from engine)
+  CMakeLists.txt         Source lists
 ```
 
-## modern.src Changes (ifdef USE_RENDER_BRIDGE)
+## Future: GL Rendering Path
 
-| File | Change | Lines |
-|------|--------|-------|
-| `gscreen.cpp` | Begin/End draw list hooks around Draw_It() | +8 |
-| `conquer.cpp` | CC_Draw_Shape records to draw list | +5 |
+The draw list is the foundation for GPU-accelerated rendering:
 
-Legacy build (`USE_RENDER_BRIDGE` not defined): zero change, code compiles identically.
-
-## Build
-
-```bash
-make linux-cnc          # Legacy (no zoom, no draw list)
-make bridge-cnc         # Bridge (zoom + draw list recording)
+```
+Current:  draw list → replay via CPU (CC_Draw_Shape, Draw_Stamp) → pixel zoom
+Future:   draw list → ISpriteProvider → GL sprite batch → GPU zoom + render
 ```
 
-## Zoom Behavior
-
-- **Scroll up**: zoom in (magnify tactical area, see less map)
-- **Scroll down**: zoom out (return to 1:0)
-- **Min zoom**: 1.0 (normal view)
-- **Max zoom**: 4.0
-- **Anchor**: mouse cursor position stays fixed during zoom
-- **Sidebar/tab/buttons**: always 1:1, unaffected
-- **Menu screens**: passthrough, no zoom
-
-## Known Limitations
-
-1. **In-game overlays zoom with world** — health bars, selection boxes, pips scale with zoom. This matches standard RTS behavior (SC2, AoE2 DE). Full separation requires intercepting primitive draw calls (future).
-
-2. **Mouse accuracy** — coordinate transform from screen→game space needs refinement. Will improve with draw list replay approach.
-
-3. **Zoom out not supported** — the game renders a fixed number of cells. Showing more map requires changing the tactical viewport dimensions (Set_View_Dimensions), which cascades into sidebar/window recalculation.
+Steps:
+1. ✓ Draw list captures all tactical rendering
+2. ✓ World/overlay separation during zoom
+3. Route CMD_SHAPE through LegacySpriteProvider → SpriteFrame
+4. Pack SpriteFrames into TextureAtlas
+5. Replay via GLSpriteBatch (one draw call per atlas page)
+6. GL palette shader for terrain (CMD_STAMP → indexed texture)
+7. GL primitives for overlays (lines, rects as GL quads)
