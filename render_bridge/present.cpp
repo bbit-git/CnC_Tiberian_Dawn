@@ -125,19 +125,15 @@ void TD_SDL_Present(void)
     if (!pal) pal = GamePalette;
     if (!pal) return;
 
-    // GL presentation is available but requires the window to be created with
-    // SDL_WINDOW_OPENGL. Currently opt-in via USE_GL_PRESENT define.
-    // Default: SDL software path (always works).
-#ifdef USE_GL_PRESENT
+    // Try GL first (window created with SDL_WINDOW_OPENGL in bridge build).
+    // Fall back to SDL_Renderer if GL fails.
     if (!g_gl_attempted) {
         g_gl_attempted = true;
-        if (g_texture)  { SDL_DestroyTexture(g_texture);   g_texture  = nullptr; }
-        if (g_renderer) { SDL_DestroyRenderer(g_renderer); g_renderer = nullptr; }
-
         g_use_gl = GL_Present_Init(w, h);
         DBG("present: %s", g_use_gl ? "GL ES 2.0" : "SDL Software");
 
         if (!g_use_gl) {
+            // GL failed — create SDL_Renderer as fallback
             g_renderer = SDL_CreateRenderer(g_window, nullptr);
             if (g_renderer) {
                 SDL_SetRenderLogicalPresentation(g_renderer, w, h,
@@ -152,14 +148,8 @@ void TD_SDL_Present(void)
         GL_Present_Frame(pixels, pitch, w, h, pal);
         return;
     }
-#else
-    if (!g_gl_attempted) {
-        g_gl_attempted = true;
-        DBG("present: SDL Software");
-    }
-#endif
 
-    // SDL software path
+    // SDL software fallback
     if (g_texture && g_renderer) {
         present_sdl(pixels, pitch, w, h, pal);
     }
