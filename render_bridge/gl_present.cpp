@@ -27,6 +27,9 @@ static SDL_GLContext g_gl_ctx = nullptr;
 static GLuint g_gl_program    = 0;
 static GLuint g_indexed_tex   = 0;
 static GLuint g_palette_tex   = 0;
+static GLuint g_tac_tex       = 0;     // expanded tactical texture (if different from main)
+static int    g_tac_tex_w = 0, g_tac_tex_h = 0;
+static bool   g_tac_tex_active = false;
 static int    g_tex_w = 0, g_tex_h = 0;
 static bool   g_gl_ready = false;
 static bool   g_gl_failed = false;
@@ -82,6 +85,34 @@ static GLuint compile_shader(GLenum type, const char* src)
 bool GL_Present_Is_Active()
 {
     return g_gl_ready;
+}
+
+void GL_Present_Upload_Tactical(const uint8_t* pixels, int w, int h)
+{
+    if (!g_gl_ready) return;
+
+    SDL_GL_MakeCurrent(g_window, g_gl_ctx);
+
+    // Create or resize tactical texture
+    if (!g_tac_tex || g_tac_tex_w != w || g_tac_tex_h != h) {
+        if (g_tac_tex) glDeleteTextures(1, &g_tac_tex);
+        glGenTextures(1, &g_tac_tex);
+        glBindTexture(GL_TEXTURE_2D, g_tac_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, w, h, 0,
+                     GL_LUMINANCE, GL_UNSIGNED_BYTE, pixels);
+        g_tac_tex_w = w;
+        g_tac_tex_h = h;
+    } else {
+        glBindTexture(GL_TEXTURE_2D, g_tac_tex);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h,
+                        GL_LUMINANCE, GL_UNSIGNED_BYTE, pixels);
+    }
+
+    g_tac_tex_active = true;
 }
 
 bool GL_Present_Init(int w, int h)
@@ -298,40 +329,80 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                       win_w, win_h);
         }
 
-        // Tactical area — zoom applied via source rect.
-        // Source sub-region = viewport offset + visible area (tac_size / relative_zoom).
-        // Destination fills the tactical screen area (tac_size * scale).
+        // Tactical area — use expanded texture if available.
         {
             float vp_x = Render_Bridge_Get_Viewport_X();
             float vp_y = Render_Bridge_Get_Viewport_Y();
 
-            // Default scale = the zoom where game fills screen
             extern float Render_Bridge_Get_Default_Zoom();
             float default_zoom = Render_Bridge_Get_Default_Zoom();
             float rel_zoom = (default_zoom > 0.0f) ? zoom / default_zoom : 1.0f;
 
-            // Source: sub-region of tactical area based on relative zoom
-            float src_x = static_cast<float>(tac_x) + vp_x;
-            float src_y = static_cast<float>(tac_y) + vp_y;
-            float src_w = static_cast<float>(tac_w) / rel_zoom;
-            float src_h = static_cast<float>(tac_h) / rel_zoom;
-
-            // Clamp source to tactical bounds
-            if (src_x < tac_x) src_x = static_cast<float>(tac_x);
-            if (src_y < tac_y) src_y = static_cast<float>(tac_y);
-            if (src_x + src_w > tac_x + tac_w) src_w = tac_x + tac_w - src_x;
-            if (src_y + src_h > tac_y + tac_h) src_h = tac_y + tac_h - src_y;
-
-            // Dest: tactical area on screen
+            // Dest: tactical area fills its screen region at current zoom
             int dst_x = offset_x + static_cast<int>(tac_x * scale);
             int dst_y = offset_y + static_cast<int>(tac_y * scale);
             int dst_w = static_cast<int>(tac_w * scale);
             int dst_h = static_cast<int>(tac_h * scale);
 
-            draw_quad(static_cast<int>(src_x), static_cast<int>(src_y),
-                      static_cast<int>(src_w), static_cast<int>(src_h),
-                      dst_x, dst_y, dst_w, dst_h,
-                      win_w, win_h);
+            if (g_tac_tex_active && g_tac_tex) {
+                // Expanded tactical texture: bind it and sample the full area.
+                // The expanded texture contains MORE cells than the normal buffer.
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, g_tac_tex);
+
+                // Source = full expanded texture, viewport applied
+                float exp_vp_x = vp_x;
+                float exp_vp_y = vp_y;
+                float exp_src_w = static_cast<float>(g_tac_tex_w);
+                float exp_src_h = static_cast<float>(g_tac_tex_h);
+
+                // UV coordinates within expanded texture
+                float u0 = exp_vp_x / exp_src_w;
+                float v0 = exp_vp_y / exp_src_h;
+                float u1 = (exp_vp_x + tac_w / rel_zoom) / exp_src_w;
+                float v1 = (exp_vp_y + tac_h / rel_zoom) / exp_src_h;
+
+                // Clamp UVs
+                if (u0 < 0.0f) u0 = 0.0f;
+                if (v0 < 0.0f) v0 = 0.0f;
+                if (u1 > 1.0f) u1 = 1.0f;
+                if (v1 > 1.0f) v1 = 1.0f;
+
+                // NDC coordinates
+                float nx0 = static_cast<float>(dst_x) / win_w * 2.0f - 1.0f;
+                float ny0 = 1.0f - static_cast<float>(dst_y) / win_h * 2.0f;
+                float nx1 = static_cast<float>(dst_x + dst_w) / win_w * 2.0f - 1.0f;
+                float ny1 = 1.0f - static_cast<float>(dst_y + dst_h) / win_h * 2.0f;
+
+                glUniform4f(g_u_src_rect, u0, v0, u1, v1);
+                glUniform4f(g_u_dst_rect, nx0, ny0, nx1, ny1);
+
+                static const float quad[] = { 0,0, 1,0, 0,1, 1,1 };
+                glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, quad);
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+                // Reset to main indexed texture for sidebar/tab
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
+
+                g_tac_tex_active = false; // consumed this frame
+            } else {
+                // Normal path: sample from main indexed texture
+                float src_x = static_cast<float>(tac_x) + vp_x;
+                float src_y = static_cast<float>(tac_y) + vp_y;
+                float src_w = static_cast<float>(tac_w) / rel_zoom;
+                float src_h = static_cast<float>(tac_h) / rel_zoom;
+
+                if (src_x < tac_x) src_x = static_cast<float>(tac_x);
+                if (src_y < tac_y) src_y = static_cast<float>(tac_y);
+                if (src_x + src_w > tac_x + tac_w) src_w = tac_x + tac_w - src_x;
+                if (src_y + src_h > tac_y + tac_h) src_h = tac_y + tac_h - src_y;
+
+                draw_quad(static_cast<int>(src_x), static_cast<int>(src_y),
+                          static_cast<int>(src_w), static_cast<int>(src_h),
+                          dst_x, dst_y, dst_w, dst_h,
+                          win_w, win_h);
+            }
         }
 
         // Sidebar
