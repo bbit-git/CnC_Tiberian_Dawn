@@ -43,4 +43,21 @@ float Render_Bridge_Get_Zoom();
 /// Get the compositor (for direct layer access if needed).
 RenderCompositor* Render_Bridge_Get_Compositor();
 
+/// Apply accumulated mouse scroll zoom delta (centered on cursor). Call once per frame.
+void Render_Bridge_Apply_Scroll_Zoom();
+
+/// Transform g_mouse_x/y from screen space to source tactical space.
+/// Call after Apply_Scroll_Zoom, before the game reads mouse position.
+void Render_Bridge_Transform_Mouse();
+
+/// Zoom to a specific level centered on a screen-space point (for pinch zoom).
+void Render_Bridge_Zoom_At(float new_zoom, int center_x, int center_y);
+
+/// Current zoom level (1.0 = normal, >1.0 = zoomed in).
+float Render_Bridge_Get_Zoom_Level();
+
+/// Viewport offset in source tactical pixels (top-left of visible region).
+float Render_Bridge_Get_Viewport_X();
+float Render_Bridge_Get_Viewport_Y();
+
 #endif // CNC_RENDER_BRIDGE_H

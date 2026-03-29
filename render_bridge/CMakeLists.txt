@@ -14,6 +14,7 @@ set(RENDER_BRIDGE_DIR ${CMAKE_SOURCE_DIR}/engine/cnc/render_bridge)
 set(CNC_RENDER_BRIDGE_SRCS
     ${RENDER_BRIDGE_DIR}/render_bridge.cpp
     ${RENDER_BRIDGE_DIR}/init.cpp
+    ${RENDER_BRIDGE_DIR}/zoom.cpp
 )
 
 # This file provides TD_SDL_Present() and Shake_Screen() — replaces sdl3_present.cpp

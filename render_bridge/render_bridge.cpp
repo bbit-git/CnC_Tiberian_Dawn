@@ -37,7 +37,7 @@ static void update_palette_lut(const uint8_t* pal)
     g_pal_lut_hash = hash;
 }
 
-/// Copy a rectangular region from an 8-bit indexed buffer into an RGBA layer.
+/// Copy a rectangular region from an 8-bit indexed buffer into an RGBA layer (1:1).
 static void copy_indexed_region(
     const uint8_t* src, int src_pitch,
     int src_x, int src_y,
@@ -48,6 +48,41 @@ static void copy_indexed_region(
         uint32_t* dp = reinterpret_cast<uint32_t*>(dst_rgba + row * dst_w * 4);
         for (int col = 0; col < dst_w; col++) {
             dp[col] = g_pal_lut[sp[col]];
+        }
+    }
+}
+
+/// Copy a viewport sub-region with nearest-neighbor zoom into an RGBA layer.
+/// viewport_x/y are source-space coordinates of the visible region's top-left.
+/// zoom < 1.0 = zoomed out (source shrinks, black borders), zoom > 1.0 = zoomed in.
+static void copy_indexed_zoomed(
+    const uint8_t* src, int src_pitch,
+    int src_origin_x, int src_origin_y,   // tactical area origin in SeenBuff
+    int src_w, int src_h,                  // tactical area dimensions
+    float viewport_x, float viewport_y,   // top-left of visible region in source space
+    float zoom,
+    uint8_t* dst_rgba, int dst_w, int dst_h)
+{
+    static constexpr uint32_t BLACK = 0xFF000000u;
+
+    for (int row = 0; row < dst_h; row++) {
+        uint32_t* dp = reinterpret_cast<uint32_t*>(dst_rgba + row * dst_w * 4);
+        int sy = static_cast<int>(viewport_y + static_cast<float>(row) / zoom);
+
+        if (sy < 0 || sy >= src_h) {
+            for (int col = 0; col < dst_w; col++) dp[col] = BLACK;
+            continue;
+        }
+
+        const uint8_t* sp = src + (src_origin_y + sy) * src_pitch + src_origin_x;
+
+        for (int col = 0; col < dst_w; col++) {
+            int sx = static_cast<int>(viewport_x + static_cast<float>(col) / zoom);
+            if (sx < 0 || sx >= src_w) {
+                dp[col] = BLACK;
+            } else {
+                dp[col] = g_pal_lut[sp[sx]];
+            }
         }
     }
 }
@@ -129,70 +164,54 @@ void Render_Bridge_Update_Layout()
     }
 }
 
-void Render_Bridge_Blit_Display()
+/// Passthrough: convert full SeenBuff to RGBA without compositor (menus, dialogs).
+static void blit_passthrough()
 {
-    if (!g_bridge_active) return;
-
-    // Source: SeenBuff (8-bit indexed, already blitted from HidPage by legacy Blit_Display)
     const uint8_t* seen = static_cast<const uint8_t*>(SeenBuff.Get_Buffer());
     if (!seen) return;
-    int seen_pitch = SeenBuff.Get_Full_Pitch();
+    int w = SeenBuff.Get_Width();
+    int h = SeenBuff.Get_Height();
+    int pitch = SeenBuff.Get_Full_Pitch();
 
-    // Update palette LUT
     const uint8_t* pal = static_cast<const uint8_t*>((void*)Get_Palette());
     if (!pal) pal = GamePalette;
     if (!pal) return;
     update_palette_lut(pal);
 
-    // Copy tactical area → WORLD_TERRAIN layer
-    {
-        uint8_t* layer = static_cast<uint8_t*>(
-            g_compositor.Get_Layer_Buffer(RenderLayerID::WORLD_TERRAIN));
-        int lw = g_compositor.Get_Layer_Width(RenderLayerID::WORLD_TERRAIN);
-        int lh = g_compositor.Get_Layer_Height(RenderLayerID::WORLD_TERRAIN);
-        if (layer && lw > 0 && lh > 0) {
-            copy_indexed_region(seen, seen_pitch,
-                                Map.TacPixelX, Map.TacPixelY,
-                                layer, lw, lh);
-            g_compositor.Invalidate_Layer(RenderLayerID::WORLD_TERRAIN);
+    // Write directly to compositor output (full screen, 1:1)
+    uint8_t* out = static_cast<uint8_t*>(
+        const_cast<void*>(g_compositor.Get_Output()));
+    int ow = g_compositor.Get_Output_Width();
+    int oh = g_compositor.Get_Output_Height();
+    if (!out || ow <= 0 || oh <= 0) return;
+
+    int rows = (h < oh) ? h : oh;
+    int cols = (w < ow) ? w : ow;
+    for (int row = 0; row < rows; row++) {
+        const uint8_t* sp = seen + row * pitch;
+        uint32_t* dp = reinterpret_cast<uint32_t*>(out + row * ow * 4);
+        for (int col = 0; col < cols; col++) {
+            dp[col] = g_pal_lut[sp[col]];
         }
     }
+}
 
-    // Copy sidebar → UI_SIDEBAR layer
-    {
-        uint8_t* layer = static_cast<uint8_t*>(
-            g_compositor.Get_Layer_Buffer(RenderLayerID::UI_SIDEBAR));
-        int lw = g_compositor.Get_Layer_Width(RenderLayerID::UI_SIDEBAR);
-        int lh = g_compositor.Get_Layer_Height(RenderLayerID::UI_SIDEBAR);
-        if (layer && lw > 0 && lh > 0) {
-            copy_indexed_region(seen, seen_pitch,
-                                Map.SideX, 0,
-                                layer, lw, lh);
-            g_compositor.Invalidate_Layer(RenderLayerID::UI_SIDEBAR);
-        }
-    }
+void Render_Bridge_Blit_Display()
+{
+    if (!g_bridge_active) return;
 
-    // Copy tab bar → UI_TAB layer
-    {
-        uint8_t* layer = static_cast<uint8_t*>(
-            g_compositor.Get_Layer_Buffer(RenderLayerID::UI_TAB));
-        int lw = g_compositor.Get_Layer_Width(RenderLayerID::UI_TAB);
-        int lh = g_compositor.Get_Layer_Height(RenderLayerID::UI_TAB);
-        if (layer && lw > 0 && lh > 0) {
-            copy_indexed_region(seen, seen_pitch,
-                                0, 0,
-                                layer, lw, lh);
-            g_compositor.Invalidate_Layer(RenderLayerID::UI_TAB);
-        }
-    }
-
-    // Composite all layers
-    g_compositor.Composite();
+    // Zoom is now applied in-place to HidPage by Render_Bridge_Zoom_Tactical()
+    // (called from GScreenClass::Render between Draw_It and Buttons).
+    // By the time we get here, SeenBuff already has the zoomed world + 1:1 UI.
+    // Just passthrough.
+    blit_passthrough();
 }
 
 void Render_Bridge_Set_Zoom(float zoom)
 {
-    g_compositor.Set_World_Zoom(zoom);
+    // Zoom is applied during the SeenBuff → layer copy (copy_indexed_zoomed),
+    // not by the compositor. The compositor always blits layers 1:1.
+    (void)zoom;
 }
 
 float Render_Bridge_Get_Zoom()

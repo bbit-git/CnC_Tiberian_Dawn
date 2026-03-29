@@ -415,6 +415,11 @@ void GScreenClass::Render(void)
 		Draw_It(IsToRedraw);
 		//DBG("Render: Draw_It done");
 
+#ifdef USE_RENDER_BRIDGE
+		extern void Render_Bridge_Zoom_Tactical(GraphicViewPortClass& page);
+		Render_Bridge_Zoom_Tactical(HidPage);
+#endif
+
 		if (Buttons) Buttons->Draw_All(false);
 		//DBG("Render: Buttons done");
 
