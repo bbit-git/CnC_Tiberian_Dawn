@@ -427,6 +427,9 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
 
     glDisableVertexAttribArray(0);
 
+    // Debug HUD overlay (GL quad at screen resolution)
+    { extern void Render_Bridge_Debug_HUD_GL(int, int); Render_Bridge_Debug_HUD_GL(win_w, win_h); }
+
     SDL_GL_SwapWindow(g_window);
     return true;
 }

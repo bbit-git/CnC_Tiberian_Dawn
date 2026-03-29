@@ -249,9 +249,6 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
             WindowList[WINDOW_TACTICAL][WINDOWWIDTH]  = saved_win[2];
             WindowList[WINDOW_TACTICAL][WINDOWHEIGHT] = saved_win[3];
 
-            // Draw debug HUD to native buffer before GL upload
-            { extern void Render_Bridge_Debug_HUD(); Render_Bridge_Debug_HUD(); }
-
             // Upload native tactical texture to GL
             GL_Present_Upload_Tactical(g_native_buf, native_w, native_h);
         }
@@ -260,18 +257,12 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
         replay_world();
         replay_overlays();
 
-        if (!use_native) {
-            // No native buffer — draw HUD to HidPage directly
-            extern void Render_Bridge_Debug_HUD();
-            Render_Bridge_Debug_HUD();
-        }
-
     } else {
-        // CPU-only path: replay at 1:1 to HidPage
+        // CPU-only or default zoom: replay at 1:1 to HidPage
         replay_world();
         replay_overlays();
-        { extern void Render_Bridge_Debug_HUD(); Render_Bridge_Debug_HUD(); }
     }
+    // Debug HUD is now a GL overlay — drawn in GL_Present_Frame before SwapWindow
 }
 
 int Render_Bridge_Get_Native_Tac_W() { return g_native_w; }
