@@ -259,9 +259,12 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                         GL_RGB, GL_UNSIGNED_BYTE, pal_rgb);
     }
 
-    // Native window size
+    // Native screen resolution (display, not window logical size)
     int win_w = 0, win_h = 0;
-    SDL_GetWindowSizeInPixels(g_window, &win_w, &win_h);
+    Render_Bridge_Get_Screen_Size(win_w, win_h);
+    if (win_w <= 0 || win_h <= 0) {
+        SDL_GetWindowSizeInPixels(g_window, &win_w, &win_h);
+    }
     if (win_w <= 0 || win_h <= 0) return false;
 
     // UI scale: game fills screen, maintaining 640x400 aspect ratio.

@@ -40,7 +40,17 @@ void Present_Ensure_Buffer(int w, int h)
 
     if (g_window) {
         int sw = 0, sh = 0;
-        SDL_GetWindowSizeInPixels(g_window, &sw, &sh);
+        // Use display resolution, not window size (fullscreen windows
+        // report the game buffer size, not the actual screen resolution)
+        SDL_DisplayID disp = SDL_GetDisplayForWindow(g_window);
+        if (!disp) disp = SDL_GetPrimaryDisplay();
+        const SDL_DisplayMode* dm = SDL_GetDesktopDisplayMode(disp);
+        if (dm && dm->w > 0 && dm->h > 0) {
+            sw = dm->w;
+            sh = dm->h;
+        } else {
+            SDL_GetWindowSizeInPixels(g_window, &sw, &sh);
+        }
         Render_Bridge_Set_Screen_Size(sw, sh);
     }
 }
