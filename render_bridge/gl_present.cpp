@@ -405,6 +405,47 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
             }
         }
 
+        // GL sprite overlay: render atlas sprites on top of tactical quad
+        {
+            extern int GL_Sprites_Build_Atlas(const uint8_t* vga_palette);
+            extern int GL_Sprites_Render(int, int, int, int, int, int,
+                                          int, int, int, int, float, float, float);
+            GL_Sprites_Build_Atlas(vga_palette);
+
+            float vp_x = Render_Bridge_Get_Viewport_X();
+            float vp_y = Render_Bridge_Get_Viewport_Y();
+
+            extern float Render_Bridge_Get_Default_Zoom();
+            float default_zoom = Render_Bridge_Get_Default_Zoom();
+            float rel = (default_zoom > 0.0f) ? zoom / default_zoom : 1.0f;
+
+            int sprites = GL_Sprites_Render(
+                win_w, win_h,
+                offset_x + static_cast<int>(tac_x * scale),
+                offset_y + static_cast<int>(tac_y * scale),
+                static_cast<int>(tac_w * scale),
+                static_cast<int>(tac_h * scale),
+                tac_x, tac_y, tac_w, tac_h,
+                scale, vp_x, vp_y);
+
+            static int log_count = 0;
+            if (++log_count % 300 == 1 && sprites > 0) {
+                extern int GL_Sprites_Atlas_Frame_Count();
+                extern int GL_Sprites_Atlas_Page_Count();
+                DBG("gl_sprites: rendered %d quads, atlas %d frames / %d pages",
+                    sprites, GL_Sprites_Atlas_Frame_Count(), GL_Sprites_Atlas_Page_Count());
+            }
+
+            // Restore palette shader state for sidebar
+            glUseProgram(g_gl_program);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
+            glUniform1i(g_u_indexed, 0);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, g_palette_tex);
+            glUniform1i(g_u_palette, 1);
+        }
+
         // Sidebar
         if (side_w > 0) {
             draw_quad(side_x, 0, side_w, h,

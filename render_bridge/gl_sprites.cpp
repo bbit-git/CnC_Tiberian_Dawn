@@ -178,3 +178,155 @@ int GL_Sprites_Build_Atlas(const uint8_t* vga_palette)
 /// Get atlas stats for debug display.
 int GL_Sprites_Atlas_Frame_Count() { return static_cast<int>(g_atlas_cache.size()); }
 int GL_Sprites_Atlas_Page_Count()  { return g_atlas.Page_Count(); }
+
+// ---- RGBA sprite shader for atlas quad rendering ----
+
+static GLuint g_sprite_prog = 0;
+static GLint  g_sp_u_texture = -1;
+static bool   g_sprite_shader_ready = false;
+
+static const char* sprite_vert = R"(
+    attribute vec2 a_pos;
+    attribute vec2 a_uv;
+    varying vec2 v_uv;
+    void main() {
+        gl_Position = vec4(a_pos, 0.0, 1.0);
+        v_uv = a_uv;
+    }
+)";
+
+static const char* sprite_frag = R"(
+    precision mediump float;
+    varying vec2 v_uv;
+    uniform sampler2D u_texture;
+    void main() {
+        vec4 c = texture2D(u_texture, v_uv);
+        if (c.a < 0.01) discard;
+        gl_FragColor = c;
+    }
+)";
+
+static bool init_sprite_shader()
+{
+    if (g_sprite_shader_ready) return true;
+
+    GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vs, 1, &sprite_vert, nullptr);
+    glCompileShader(vs);
+    GLint ok = 0;
+    glGetShaderiv(vs, GL_COMPILE_STATUS, &ok);
+    if (!ok) { glDeleteShader(vs); return false; }
+
+    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fs, 1, &sprite_frag, nullptr);
+    glCompileShader(fs);
+    glGetShaderiv(fs, GL_COMPILE_STATUS, &ok);
+    if (!ok) { glDeleteShader(vs); glDeleteShader(fs); return false; }
+
+    g_sprite_prog = glCreateProgram();
+    glAttachShader(g_sprite_prog, vs);
+    glAttachShader(g_sprite_prog, fs);
+    glBindAttribLocation(g_sprite_prog, 0, "a_pos");
+    glBindAttribLocation(g_sprite_prog, 1, "a_uv");
+    glLinkProgram(g_sprite_prog);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    glGetProgramiv(g_sprite_prog, GL_LINK_STATUS, &ok);
+    if (!ok) return false;
+
+    g_sp_u_texture = glGetUniformLocation(g_sprite_prog, "u_texture");
+    g_sprite_shader_ready = true;
+    DBG("gl_sprites: shader compiled");
+    return true;
+}
+
+/// Render all CMD_SHAPE from draw list as GL textured quads.
+/// win_w/h: native window pixels. tac_*: tactical area in screen pixels.
+/// scale: zoom (screen pixels per game pixel). vp_x/y: viewport offset.
+int GL_Sprites_Render(int win_w, int win_h,
+                       int tac_screen_x, int tac_screen_y,
+                       int tac_screen_w, int tac_screen_h,
+                       int tac_game_x, int tac_game_y,
+                       int tac_game_w, int tac_game_h,
+                       float scale, float vp_x, float vp_y)
+{
+    if (!g_atlas_ready || g_page_tex_count == 0) return 0;
+    if (!init_sprite_shader()) return 0;
+
+    glUseProgram(g_sprite_prog);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glActiveTexture(GL_TEXTURE0);
+    glUniform1i(g_sp_u_texture, 0);
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+
+    int rendered = 0;
+    GLuint current_page_tex = 0;
+
+    for (int i = 0; i < g_draw_list.Command_Count(); i++) {
+        const DrawCommand& cmd = g_draw_list.Get(i);
+        if (cmd.type != CMD_SHAPE) continue;
+
+        uint64_t key = make_cache_key(cmd.shape.shapefile, cmd.shape.shapenum);
+        auto it = g_atlas_cache.find(key);
+        if (it == g_atlas_cache.end()) continue;
+
+        AtlasRegion region;
+        if (!g_atlas.Get_Region(it->second, region)) continue;
+
+        // Bind atlas page texture (batch by page)
+        GLuint page_tex = g_page_textures[region.atlas_id];
+        if (page_tex != current_page_tex) {
+            glBindTexture(GL_TEXTURE_2D, page_tex);
+            current_page_tex = page_tex;
+        }
+
+        // Sprite position: game-buffer relative to tactical window
+        float game_x = static_cast<float>(cmd.shape.x);
+        float game_y = static_cast<float>(cmd.shape.y);
+
+        // Apply SHAPE_CENTER
+        if (cmd.shape.flags & SHAPE_CENTER) {
+            game_x -= region.w * 0.5f;
+            game_y -= region.h * 0.5f;
+        }
+
+        // Transform game position → screen position
+        float screen_x = tac_screen_x + (game_x - vp_x) * scale;
+        float screen_y = tac_screen_y + (game_y - vp_y) * scale;
+        float screen_w = region.w * scale;
+        float screen_h = region.h * scale;
+
+        // Clip: skip if entirely outside tactical screen area
+        if (screen_x + screen_w < tac_screen_x || screen_x > tac_screen_x + tac_screen_w) continue;
+        if (screen_y + screen_h < tac_screen_y || screen_y > tac_screen_y + tac_screen_h) continue;
+
+        // Convert screen pixels → NDC
+        float nx0 = screen_x / win_w * 2.0f - 1.0f;
+        float ny0 = 1.0f - screen_y / win_h * 2.0f;
+        float nx1 = (screen_x + screen_w) / win_w * 2.0f - 1.0f;
+        float ny1 = 1.0f - (screen_y + screen_h) / win_h * 2.0f;
+
+        // Quad vertices: position + UV
+        float verts[] = {
+            nx0, ny0, region.u0, region.v0,
+            nx1, ny0, region.u1, region.v0,
+            nx0, ny1, region.u0, region.v1,
+            nx1, ny1, region.u1, region.v1,
+        };
+
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, &verts[0]);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, &verts[2]);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        rendered++;
+    }
+
+    glDisableVertexAttribArray(0);
+    glDisableVertexAttribArray(1);
+    glDisable(GL_BLEND);
+
+    return rendered;
+}
