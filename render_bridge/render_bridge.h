@@ -19,6 +19,10 @@
 /// Initialize the render bridge. Call once after game viewport is configured.
 bool Render_Bridge_Init(int output_width, int output_height);
 
+/// Set screen pixel dimensions for zoom range calculation.
+/// Call after window creation. zoom_min = buffer_size / screen_size.
+void Render_Bridge_Set_Screen_Size(int screen_w, int screen_h);
+
 /// Shut down and free bridge resources.
 void Render_Bridge_Shutdown();
 

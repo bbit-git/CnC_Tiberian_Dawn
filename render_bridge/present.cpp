@@ -15,6 +15,7 @@
 #include "render_bridge.h"
 #include "function.h"
 
+extern SDL_Window*   g_window;
 extern SDL_Renderer* g_renderer;
 extern SDL_Texture*  g_texture;
 
@@ -28,6 +29,13 @@ void Shake_Screen(int shakes)
 void Present_Ensure_Buffer(int w, int h)
 {
     Render_Bridge_Init(w, h);
+
+    // Set screen size for zoom range (window exists by this point)
+    if (g_window) {
+        int sw = 0, sh = 0;
+        SDL_GetWindowSizeInPixels(g_window, &sw, &sh);
+        Render_Bridge_Set_Screen_Size(sw, sh);
+    }
 }
 
 void Present_Shutdown(void)

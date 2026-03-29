@@ -84,34 +84,27 @@ static void zoom_at(float new_zoom, int anchor_x, int anchor_y)
     DBG("zoom: %.2f viewport [%.1f, %.1f] tac %dx%d", g_zoom, g_viewport_x, g_viewport_y, tw, th);
 }
 
+void Render_Bridge_Set_Screen_Size(int screen_w, int screen_h)
+{
+    if (screen_w <= 0 || screen_h <= 0) return;
+
+    int bw = SeenBuff.Get_Width();
+    int bh = SeenBuff.Get_Height();
+    if (bw <= 0 || bh <= 0) return;
+
+    float zx = static_cast<float>(bw) / static_cast<float>(screen_w);
+    float zy = static_cast<float>(bh) / static_cast<float>(screen_h);
+    g_zoom_min = (zx < zy) ? zx : zy;
+    if (g_zoom_min < 0.1f) g_zoom_min = 0.1f;
+
+    DBG("zoom: min=%.3f (screen %dx%d, buffer %dx%d)",
+        g_zoom_min, screen_w, screen_h, bw, bh);
+}
+
 void Render_Bridge_Apply_Scroll_Zoom()
 {
-    // Snapshot raw mouse position for zoom anchor (before any transform)
     g_raw_mouse_x = g_mouse_x;
     g_raw_mouse_y = g_mouse_y;
-
-    // Compute zoom min from screen size (once)
-    static bool zoom_min_computed = false;
-    if (!zoom_min_computed && g_window) {
-        int sw = 0, sh = 0;
-        SDL_GetWindowSizeInPixels(g_window, &sw, &sh);
-        if (sw > 0 && sh > 0) {
-            // At zoom_min, game pixels map 1:1 to screen pixels.
-            // Screen stretch factor = screen_size / buffer_size.
-            // zoom_min = 1 / stretch = buffer_size / screen_size.
-            int bw = SeenBuff.Get_Width();
-            int bh = SeenBuff.Get_Height();
-            if (bw > 0 && bh > 0) {
-                float zx = static_cast<float>(bw) / static_cast<float>(sw);
-                float zy = static_cast<float>(bh) / static_cast<float>(sh);
-                g_zoom_min = (zx < zy) ? zx : zy;
-                if (g_zoom_min < 0.1f) g_zoom_min = 0.1f;
-                zoom_min_computed = true;
-                DBG("zoom: min=%.3f (screen %dx%d, buffer %dx%d)",
-                    g_zoom_min, sw, sh, bw, bh);
-            }
-        }
-    }
 
     float delta = g_scroll_zoom_delta;
     g_scroll_zoom_delta = 0.0f;
