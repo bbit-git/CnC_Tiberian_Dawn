@@ -374,12 +374,24 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         // Gameplay: tab + tactical + optional sidebar.
         // Tactical area expands when sidebar is off.
 
-        // Tab bar (top strip, full width)
+        // Tab bar — from SeenBuff, full buffer width, only tab height.
+        // SeenBuff has tab content here (drawn directly, not via draw list).
         if (tac_y > 0) {
             draw_quad(0, 0, w, tac_y,
                       offset_x, offset_y,
                       static_cast<int>(w * ui_scale),
                       static_cast<int>(tac_y * ui_scale),
+                      win_w, win_h);
+        }
+
+        // Sidebar background — from SeenBuff, sidebar column only.
+        // Drawn BEFORE tactical so tactical can overlay if needed.
+        if (side_w > 0) {
+            draw_quad(side_x, 0, side_w, h,
+                      offset_x + static_cast<int>(side_x * ui_scale),
+                      offset_y,
+                      static_cast<int>(side_w * ui_scale),
+                      static_cast<int>(h * ui_scale),
                       win_w, win_h);
         }
 
@@ -389,11 +401,9 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         int avail_w = static_cast<int>(tac_w * ui_scale);
         int avail_h = static_cast<int>(tac_h * ui_scale);
 
-        // Tactical area — zoom via UV source rect within texture.
+        // Tactical area — ALWAYS from native texture (draw list content).
+        // SeenBuff does NOT contain tactical content (draw list is deferred).
         {
-            float vp_x = Render_Bridge_Get_Viewport_X();
-            float vp_y = Render_Bridge_Get_Viewport_Y();
-
             if (g_tac_tex_active && g_tac_tex) {
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, g_tac_tex);
@@ -460,13 +470,9 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
                 g_tac_tex_active = false;
-            } else {
-                // Fallback: sample from SeenBuff indexed texture.
-                // Used when native buffer unavailable (menus, dialogs).
-                draw_quad(tac_x, tac_y, tac_w, tac_h,
-                          avail_x, avail_y, avail_w, avail_h,
-                          win_w, win_h);
             }
+            // No fallback — tactical area stays black if native buffer missing.
+            // SeenBuff must NOT be drawn here (it has UI content, not tactical).
         }
 
         // UI overlay: dialogs, buttons, messages drawn after Draw_It.
@@ -527,15 +533,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
             }
         }
 
-        // Sidebar
-        if (side_w > 0) {
-            draw_quad(side_x, 0, side_w, h,
-                      offset_x + static_cast<int>(side_x * ui_scale),
-                      offset_y,
-                      static_cast<int>(side_w * ui_scale),
-                      static_cast<int>(h * ui_scale),
-                      win_w, win_h);
-        }
+        // Sidebar already drawn above (before tactical).
     }
 
     glDisableVertexAttribArray(0);

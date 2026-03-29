@@ -50,37 +50,23 @@ static int      g_native_alloc = 0;
 /// Compute tactical buffer dimensions: min(screen, map) per axis.
 /// This is the maximum content that could ever be visible at 1:1 zoom.
 /// Compute native tactical buffer dimensions.
-/// Based on: screen tactical area (minus sidebar/tab) and map size.
-/// The buffer is the maximum area visible at zoom 1.0 (1:1 pixels).
+/// STABLE: based on screen and map only, NOT sidebar state.
+/// The buffer covers the maximum possible tactical area regardless
+/// of sidebar toggle. The GL viewport selects the visible portion.
 static void get_native_tactical(int& out_w, int& out_h)
 {
     int screen_w = 0, screen_h = 0;
     Render_Bridge_Get_Screen_Size(screen_w, screen_h);
     if (screen_w <= 0 || screen_h <= 0) { out_w = 0; out_h = 0; return; }
 
-    // Map size in pixels
     int map_px_w = Map.MapCellWidth * ICON_PIXEL_W;
     int map_px_h = Map.MapCellHeight * ICON_PIXEL_W;
     if (map_px_w <= 0 || map_px_h <= 0) { out_w = 0; out_h = 0; return; }
 
-    // UI scale: how the game buffer maps to screen
-    int buf_w = SeenBuff.Get_Width();
-    int buf_h = SeenBuff.Get_Height();
-    if (buf_w <= 0 || buf_h <= 0) { out_w = 0; out_h = 0; return; }
-    float sx = static_cast<float>(screen_w) / buf_w;
-    float sy = static_cast<float>(screen_h) / buf_h;
-    float ui_scale = (sx < sy) ? sx : sy;
-
-    // Screen tactical area in pixels (screen minus sidebar and tab at ui_scale)
-    int tac_w = Lepton_To_Pixel(Map.TacLeptonWidth);
-    int tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
-    int screen_tac_w = static_cast<int>(tac_w * ui_scale);
-    int screen_tac_h = static_cast<int>(tac_h * ui_scale);
-
-    // Native buffer = min(screen tactical area, map) per axis
-    // At zoom 1.0, each game pixel = 1 screen pixel, so native = screen tac area
-    out_w = (screen_tac_w < map_px_w) ? screen_tac_w : map_px_w;
-    out_h = (screen_tac_h < map_px_h) ? screen_tac_h : map_px_h;
+    // Native buffer = min(screen, map) per axis.
+    // Does NOT depend on sidebar/tab state — always the max possible.
+    out_w = (screen_w < map_px_w) ? screen_w : map_px_w;
+    out_h = (screen_h < map_px_h) ? screen_h : map_px_h;
 
     // Align to cell boundaries (24px)
     out_w = ((out_w + 23) / 24) * 24;
@@ -256,12 +242,12 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
             GL_Present_Upload_Tactical(g_native_buf, native_w, native_h);
         }
 
-        // Also replay to HidPage at 712x400 (for sidebar/tab via Blit_Display)
-        replay_world();
-        replay_overlays();
+        // DO NOT replay to HidPage — tactical content lives in native buffer only.
+        // HidPage has sidebar/tab/UI content from Draw_It (not captured by draw list).
+        // This prevents tactical content from leaking into SeenBuff UI quads.
 
     } else {
-        // CPU-only or default zoom: replay at 1:1 to HidPage
+        // CPU-only path (no GL): replay to HidPage at 712x400
         replay_world();
         replay_overlays();
     }
