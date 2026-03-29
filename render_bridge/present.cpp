@@ -39,8 +39,7 @@ void TD_SDL_Present(void)
 {
     if (!g_texture || !g_renderer) return;
 
-    // Snapshot raw mouse, then apply zoom (uses raw for anchor), then transform for game
-    Render_Bridge_Transform_Mouse();
+    // Apply pending scroll zoom (mouse transform moved to input pump)
     Render_Bridge_Apply_Scroll_Zoom();
 
     // Split SeenBuff into compositor layers and composite

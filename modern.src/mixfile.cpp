@@ -532,3 +532,30 @@ bool MixFileClass::Offset(char const *filename, void ** realptr, MixFileClass **
 	return(false);
 }
 
+/* ---- Accessors for asset browser (tools) ---- */
+
+MixFileClass* MixFileClass_First(void) {
+	return MixFileClass::First;
+}
+
+MixFileClass* MixFileClass_Next(MixFileClass* ptr) {
+	if (!ptr) return nullptr;
+	return (MixFileClass*)ptr->Get_Next();
+}
+
+int MixFileClass_GetCount(MixFileClass* ptr) {
+	return ptr ? ptr->Count : 0;
+}
+
+long MixFileClass_GetDataSize(MixFileClass* ptr) {
+	return ptr ? ptr->DataSize : 0;
+}
+
+MixFileClass::SubBlock* MixFileClass_GetEntries(MixFileClass* ptr) {
+	return ptr ? ptr->Buffer : nullptr;
+}
+
+void* MixFileClass_GetData(MixFileClass* ptr) {
+	return ptr ? ptr->Data : nullptr;
+}
+

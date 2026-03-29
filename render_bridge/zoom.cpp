@@ -82,6 +82,10 @@ static void zoom_at(float new_zoom, int anchor_x, int anchor_y)
 
 void Render_Bridge_Apply_Scroll_Zoom()
 {
+    // Snapshot raw mouse position for zoom anchor (before any transform)
+    g_raw_mouse_x = g_mouse_x;
+    g_raw_mouse_y = g_mouse_y;
+
     float delta = g_scroll_zoom_delta;
     g_scroll_zoom_delta = 0.0f;
 
@@ -103,9 +107,6 @@ float Render_Bridge_Get_Viewport_Y()     { return g_viewport_y; }
 
 void Render_Bridge_Transform_Mouse()
 {
-    g_raw_mouse_x = g_mouse_x;
-    g_raw_mouse_y = g_mouse_y;
-
     extern bool InMainLoop;
     if (!InMainLoop || g_zoom == 1.0f) return;
 

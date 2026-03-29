@@ -160,6 +160,7 @@ void Shorten_Attached_Anims(ObjectClass * obj);
 /*
 **	AUDIO.CPP
 */
+char const * Voc_Name(VocType voc);
 int Sound_Effect(VocType voc, VolType volume, int variation=1, signed short panvalue=0);
 void Speak(VoxType voice);
 void Speak_AI(void);

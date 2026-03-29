@@ -2732,8 +2732,10 @@ void CC_Draw_Shape(void const * shapefile, int shapenum, int x, int y, WindowNum
 {
 #ifdef USE_RENDER_BRIDGE
 	{
-		extern void Draw_List_Maybe_Record_Shape(void const*, int, int, int, int, int, void const*, void const*);
-		Draw_List_Maybe_Record_Shape(shapefile, shapenum, x, y, (int)window, (int)flags, fadingdata, ghostdata);
+		extern bool Draw_List_Maybe_Record_Shape(void const*, int, int, int, int, int, void const*, void const*);
+		if (Draw_List_Maybe_Record_Shape(shapefile, shapenum, x, y, (int)window, (int)flags, fadingdata, ghostdata)) {
+			return; // Recorded — will be replayed after Draw_It with transforms
+		}
 	}
 #endif
 

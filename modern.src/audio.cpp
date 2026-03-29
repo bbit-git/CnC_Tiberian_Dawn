@@ -285,6 +285,12 @@ void Sound_Effect(VocType voc, COORDINATE coord, int variation)
  *   11/12/1994 JLB : Handles cache logic.                                                     *
  *   05/04/1995 JLB : Variation adjustments.                                                   *
  *=============================================================================================*/
+char const * Voc_Name(VocType voc)
+{
+	if ((unsigned)voc >= VOC_COUNT) return "none";
+	return SoundEffectName[voc].Name;
+}
+
 int Sound_Effect(VocType voc, VolType volume, int variation, signed short pan_value)
 {
 	char name[_MAX_FNAME+_MAX_EXT];				// Working filename of sound effect.

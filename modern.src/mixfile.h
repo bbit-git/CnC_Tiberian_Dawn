@@ -69,6 +69,14 @@ class MixFileClass : public LinkClass
 		};
 		#pragma pack(pop)
 
+		/* Non-member accessors for tool code */
+		friend MixFileClass* MixFileClass_First(void);
+		friend MixFileClass* MixFileClass_Next(MixFileClass*);
+		friend int MixFileClass_GetCount(MixFileClass*);
+		friend long MixFileClass_GetDataSize(MixFileClass*);
+		friend SubBlock* MixFileClass_GetEntries(MixFileClass*);
+		friend void* MixFileClass_GetData(MixFileClass*);
+
 	private:
 		static MixFileClass * Finder(char const *filename);
 		long Offset(long crc, long *size = 0);
