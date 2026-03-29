@@ -412,12 +412,18 @@ void GScreenClass::Render(void)
 		//	Show_Mouse();
 		//}
 		//DBG("Render: Draw_It");
+
+#ifdef USE_RENDER_BRIDGE
+		extern void Render_Bridge_Begin_Draw_List();
+		extern void Render_Bridge_End_Draw_List(GraphicViewPortClass& page);
+		Render_Bridge_Begin_Draw_List();
+#endif
+
 		Draw_It(IsToRedraw);
 		//DBG("Render: Draw_It done");
 
 #ifdef USE_RENDER_BRIDGE
-		extern void Render_Bridge_Zoom_Tactical(GraphicViewPortClass& page);
-		Render_Bridge_Zoom_Tactical(HidPage);
+		Render_Bridge_End_Draw_List(HidPage);
 #endif
 
 		if (Buttons) Buttons->Draw_All(false);

@@ -2730,6 +2730,13 @@ void CC_Texture_Fill (void const *shapefile, int shapenum, int xpos, int ypos, i
 #pragma off(unreferenced)
 void CC_Draw_Shape(void const * shapefile, int shapenum, int x, int y, WindowNumberType window, ShapeFlags_Type flags, void const * fadingdata, void const * ghostdata)
 {
+#ifdef USE_RENDER_BRIDGE
+	{
+		extern void Draw_List_Maybe_Record_Shape(void const*, int, int, int, int, int, void const*, void const*);
+		Draw_List_Maybe_Record_Shape(shapefile, shapenum, x, y, (int)window, (int)flags, fadingdata, ghostdata);
+	}
+#endif
+
 #if(TRUE)
 	int predoffset;
 	char				*shape_pointer;
