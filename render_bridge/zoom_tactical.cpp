@@ -1,20 +1,18 @@
 /**
  * zoom_tactical.cpp — Native resolution tactical rendering via draw list.
  *
- * Option B: Native tactical, scaled UI.
- *
- * The game buffer stays at 712x400 for UI (sidebar, tab, menus).
- * The tactical area is expanded to native screen resolution:
- *   - Before Draw_It: TacLeptonWidth/Height set to native tactical size
+ * The game buffer (HidPage) stays at its viewport size for UI.
+ * When zoomed out, the tactical area expands to show more cells:
+ *   - Buffer size = min(screen_resolution, map_pixel_size) per axis
+ *   - Before Draw_It: TacLeptonWidth/Height expanded to buffer size
  *   - Draw_It: game iterates more cells, all captured in draw list
  *   - After Draw_It: restore original dimensions
- *   - Replay to native-sized buffer (8-bit indexed)
- *   - Upload to GL as separate tactical texture
- *   - Also replay to HidPage at 712x400 for sidebar/tab
+ *   - Replay to native buffer, upload to GL as tactical texture
+ *   - Also replay to HidPage for sidebar/tab
  *
- * On 1920x1080 with sidebar:
- *   UI buffer:      712x400 (sidebar + tab rendered here)
- *   Tactical buffer: ~1490x1037 (native, more cells visible)
+ * At default zoom: no expansion, SeenBuff used for everything.
+ * At zoom < default: native buffer active, more cells visible.
+ * See BUFFERS.md for complete buffer architecture.
  */
 
 #include "render_bridge.h"
