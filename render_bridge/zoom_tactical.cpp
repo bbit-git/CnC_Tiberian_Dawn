@@ -1,17 +1,20 @@
 /**
- * zoom_tactical.cpp — Draw list recording with expanded tactical area.
+ * zoom_tactical.cpp — Native resolution tactical rendering via draw list.
  *
- * Before Draw_It: expand TacLeptonWidth/Height so the game iterates
- * more cells than the 712x400 buffer would normally show. All calls
- * are captured in the draw list (deferred — nothing renders to HidPage).
+ * Option B: Native tactical, scaled UI.
  *
- * After Draw_It: restore original dimensions. Replay the draw list
- * to an expanded 8-bit buffer, upload to GL as an indexed texture.
- * GL renders at native screen resolution via palette shader.
+ * The game buffer stays at 712x400 for UI (sidebar, tab, menus).
+ * The tactical area is expanded to native screen resolution:
+ *   - Before Draw_It: TacLeptonWidth/Height set to native tactical size
+ *   - Draw_It: game iterates more cells, all captured in draw list
+ *   - After Draw_It: restore original dimensions
+ *   - Replay to native-sized buffer (8-bit indexed)
+ *   - Upload to GL as separate tactical texture
+ *   - Also replay to HidPage at 712x400 for sidebar/tab
  *
- * At default zoom: expanded = normal (712x400), identical to legacy.
- * At zoom < default: expanded area is LARGER — more cells visible.
- * At zoom > default: expanded area is SMALLER — zoomed in sub-region.
+ * On 1920x1080 with sidebar:
+ *   UI buffer:      712x400 (sidebar + tab rendered here)
+ *   Tactical buffer: ~1490x1037 (native, more cells visible)
  */
 
 #include "render_bridge.h"
@@ -29,56 +32,72 @@ extern bool Render_Bridge_Draw_Shape_Scaled(const ShapeCmd& cmd, float zoom,
                                              float vp_x, float vp_y);
 extern bool Render_Bridge_Draw_Stamp_Scaled(const StampCmd& cmd, float zoom,
                                              float vp_x, float vp_y);
+extern bool GL_Present_Is_Active();
+extern void GL_Present_Upload_Tactical(const uint8_t* pixels, int w, int h);
+extern void Render_Bridge_Get_Screen_Size(int& w, int& h);
 
-// Saved tactical dimensions (restored after Draw_It)
+// Saved tactical dimensions
 static int  g_saved_tac_lepton_w = 0;
 static int  g_saved_tac_lepton_h = 0;
 static int  g_saved_window_w = 0;
 static int  g_saved_window_h = 0;
 static bool g_expanded = false;
 
-// Expanded buffer for replay (8-bit indexed)
-static uint8_t* g_exp_buf = nullptr;
-static int      g_exp_w = 0;
-static int      g_exp_h = 0;
-static int      g_exp_alloc = 0;
+// Native tactical buffer (8-bit indexed)
+static uint8_t* g_native_buf = nullptr;
+static int      g_native_w = 0;
+static int      g_native_h = 0;
+static int      g_native_alloc = 0;
 
-// GL texture for expanded tactical area
-extern bool GL_Present_Is_Active();
-extern void GL_Present_Upload_Tactical(const uint8_t* pixels, int w, int h);
+/// Compute native tactical dimensions from screen size.
+static void get_native_tactical(int& out_w, int& out_h)
+{
+    int screen_w = 0, screen_h = 0;
+    Render_Bridge_Get_Screen_Size(screen_w, screen_h);
+    if (screen_w <= 0 || screen_h <= 0) { out_w = 0; out_h = 0; return; }
+
+    int buf_w = SeenBuff.Get_Width();
+    int buf_h = SeenBuff.Get_Height();
+    if (buf_w <= 0 || buf_h <= 0) { out_w = 0; out_h = 0; return; }
+
+    // UI scale: how the 712x400 buffer maps to screen
+    float ui_sx = static_cast<float>(screen_w) / buf_w;
+    float ui_sy = static_cast<float>(screen_h) / buf_h;
+    float ui_scale = (ui_sx < ui_sy) ? ui_sx : ui_sy;
+
+    // Tactical area on screen (in screen pixels)
+    int tac_x = Map.TacPixelX;
+    int tac_y = Map.TacPixelY;
+    int tac_w = Lepton_To_Pixel(Map.TacLeptonWidth);
+    int tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
+
+    // Native tactical size = screen tactical area / 1.0 (at zoom 1.0, 1:1 pixels)
+    // This is how many game pixels we need to fill the screen tactical area
+    out_w = static_cast<int>(tac_w * ui_scale);
+    out_h = static_cast<int>(tac_h * ui_scale);
+
+    // Align to cell boundaries
+    out_w = ((out_w + 23) / 24) * 24;
+    out_h = ((out_h + 23) / 24) * 24;
+}
 
 void Render_Bridge_Begin_Draw_List()
 {
     g_draw_list.Clear();
     g_draw_list.SetRecording(true);
 
-    // Compute expanded tactical dimensions based on zoom
     extern bool InMainLoop;
-    if (!InMainLoop) return;
+    if (!InMainLoop || !GL_Present_Is_Active()) return;
 
-    float zoom = Render_Bridge_Get_Zoom_Level();
-    float default_zoom = 1.0f;
-    { extern float Render_Bridge_Get_Default_Zoom(); default_zoom = Render_Bridge_Get_Default_Zoom(); }
-    if (default_zoom <= 0.0f) default_zoom = 1.0f;
-
-    float rel_zoom = zoom / default_zoom;
-
-    // At default zoom (rel=1.0): normal dimensions.
-    // At zoom < default (rel<1.0): need MORE cells — expand.
-    // At zoom > default (rel>1.0): need FEWER cells — could shrink, but keep normal for now.
-    if (rel_zoom >= 1.0f) return; // No expansion needed
+    int native_w = 0, native_h = 0;
+    get_native_tactical(native_w, native_h);
+    if (native_w <= 0 || native_h <= 0) return;
 
     int tac_w = Lepton_To_Pixel(Map.TacLeptonWidth);
     int tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
-    if (tac_w <= 0 || tac_h <= 0) return;
 
-    // Expanded size = normal / rel_zoom (shows more cells)
-    int exp_w = static_cast<int>(tac_w / rel_zoom);
-    int exp_h = static_cast<int>(tac_h / rel_zoom);
-
-    // Align to cell boundaries (24px)
-    exp_w = ((exp_w + 23) / 24) * 24;
-    exp_h = ((exp_h + 23) / 24) * 24;
+    // Only expand if native is larger than current
+    if (native_w <= tac_w && native_h <= tac_h) return;
 
     // Save original dimensions
     g_saved_tac_lepton_w = Map.TacLeptonWidth;
@@ -86,85 +105,55 @@ void Render_Bridge_Begin_Draw_List()
     g_saved_window_w = WindowList[WINDOW_TACTICAL][WINDOWWIDTH];
     g_saved_window_h = WindowList[WINDOW_TACTICAL][WINDOWHEIGHT];
 
-    // Expand tactical dimensions (game will iterate more cells)
-    Map.TacLeptonWidth  = Pixel_To_Lepton(exp_w);
-    Map.TacLeptonHeight = Pixel_To_Lepton(exp_h);
-    WindowList[WINDOW_TACTICAL][WINDOWWIDTH]  = exp_w >> 3;
-    WindowList[WINDOW_TACTICAL][WINDOWHEIGHT] = exp_h;
-
+    // Expand for Draw_It — game iterates more cells
+    Map.TacLeptonWidth  = Pixel_To_Lepton(native_w);
+    Map.TacLeptonHeight = Pixel_To_Lepton(native_h);
+    WindowList[WINDOW_TACTICAL][WINDOWWIDTH]  = native_w >> 3;
+    WindowList[WINDOW_TACTICAL][WINDOWHEIGHT] = native_h;
     g_expanded = true;
 
-    DBG("expand: %dx%d → %dx%d (rel_zoom=%.2f)", tac_w, tac_h, exp_w, exp_h, rel_zoom);
+    static bool logged = false;
+    if (!logged) {
+        DBG("native tactical: %dx%d (from %dx%d buffer, expanded from %dx%d)",
+            native_w, native_h, SeenBuff.Get_Width(), SeenBuff.Get_Height(), tac_w, tac_h);
+        logged = true;
+    }
 }
 
-/// Replay world commands at 1:1 to the expanded buffer.
-static void replay_world_to_buffer()
+/// Replay world commands (terrain + sprites).
+static void replay_world()
 {
     for (int i = 0; i < g_draw_list.Command_Count(); i++) {
         const DrawCommand& cmd = g_draw_list.Get(i);
-
         if (cmd.type == CMD_STAMP) {
-            const StampCmd& s = cmd.stamp;
-            LogicPage->Draw_Stamp(s.icondata, s.icon, s.x, s.y, s.remap, s.window);
+            LogicPage->Draw_Stamp(cmd.stamp.icondata, cmd.stamp.icon,
+                                   cmd.stamp.x, cmd.stamp.y, cmd.stamp.remap, cmd.stamp.window);
         } else if (cmd.type == CMD_SHAPE) {
-            const ShapeCmd& s = cmd.shape;
-            CC_Draw_Shape(s.shapefile, s.shapenum, s.x, s.y,
-                          static_cast<WindowNumberType>(s.window),
-                          static_cast<ShapeFlags_Type>(s.flags),
-                          s.fadingdata, s.ghostdata);
+            CC_Draw_Shape(cmd.shape.shapefile, cmd.shape.shapenum, cmd.shape.x, cmd.shape.y,
+                          static_cast<WindowNumberType>(cmd.shape.window),
+                          static_cast<ShapeFlags_Type>(cmd.shape.flags),
+                          cmd.shape.fadingdata, cmd.shape.ghostdata);
         }
     }
 }
 
-/// Replay overlay commands at 1:1.
-static void replay_overlays_to_buffer()
+/// Replay overlay commands (health bars, selection, etc.).
+static void replay_overlays()
 {
     for (int i = 0; i < g_draw_list.Command_Count(); i++) {
         const DrawCommand& cmd = g_draw_list.Get(i);
         switch (cmd.type) {
         case CMD_FILL_RECT:
-            LogicPage->Fill_Rect(cmd.prim.x1, cmd.prim.y1,
-                                  cmd.prim.x2, cmd.prim.y2, cmd.prim.color);
+            LogicPage->Fill_Rect(cmd.prim.x1, cmd.prim.y1, cmd.prim.x2, cmd.prim.y2, cmd.prim.color);
             break;
         case CMD_DRAW_RECT:
-            LogicPage->Draw_Rect(cmd.prim.x1, cmd.prim.y1,
-                                  cmd.prim.x2, cmd.prim.y2, cmd.prim.color);
+            LogicPage->Draw_Rect(cmd.prim.x1, cmd.prim.y1, cmd.prim.x2, cmd.prim.y2, cmd.prim.color);
             break;
         case CMD_DRAW_LINE:
-            LogicPage->Draw_Line(cmd.prim.x1, cmd.prim.y1,
-                                  cmd.prim.x2, cmd.prim.y2, cmd.prim.color);
+            LogicPage->Draw_Line(cmd.prim.x1, cmd.prim.y1, cmd.prim.x2, cmd.prim.y2, cmd.prim.color);
             break;
         case CMD_PUT_PIXEL:
             LogicPage->Put_Pixel(cmd.prim.x1, cmd.prim.y1, cmd.prim.color);
-            break;
-        default: break;
-        }
-    }
-}
-
-/// Replay overlay commands with zoom-transformed positions.
-static void replay_overlays_zoomed(float zoom, float vp_x, float vp_y)
-{
-    auto tx = [zoom, vp_x](int x) -> int { return static_cast<int>((x - vp_x) * zoom); };
-    auto ty = [zoom, vp_y](int y) -> int { return static_cast<int>((y - vp_y) * zoom); };
-
-    for (int i = 0; i < g_draw_list.Command_Count(); i++) {
-        const DrawCommand& cmd = g_draw_list.Get(i);
-        switch (cmd.type) {
-        case CMD_FILL_RECT:
-            LogicPage->Fill_Rect(tx(cmd.prim.x1), ty(cmd.prim.y1),
-                                  tx(cmd.prim.x2), ty(cmd.prim.y2), cmd.prim.color);
-            break;
-        case CMD_DRAW_RECT:
-            LogicPage->Draw_Rect(tx(cmd.prim.x1), ty(cmd.prim.y1),
-                                  tx(cmd.prim.x2), ty(cmd.prim.y2), cmd.prim.color);
-            break;
-        case CMD_DRAW_LINE:
-            LogicPage->Draw_Line(tx(cmd.prim.x1), ty(cmd.prim.y1),
-                                  tx(cmd.prim.x2), ty(cmd.prim.y2), cmd.prim.color);
-            break;
-        case CMD_PUT_PIXEL:
-            LogicPage->Put_Pixel(tx(cmd.prim.x1), ty(cmd.prim.y1), cmd.prim.color);
             break;
         default: break;
         }
@@ -184,12 +173,6 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
         g_expanded = false;
     }
 
-    float zoom = Render_Bridge_Get_Zoom_Level();
-    float default_zoom = 1.0f;
-    { extern float Render_Bridge_Get_Default_Zoom(); default_zoom = Render_Bridge_Get_Default_Zoom(); }
-    if (default_zoom <= 0.0f) default_zoom = 1.0f;
-    float rel_zoom = zoom / default_zoom;
-
     static int frame_count = 0;
     if (++frame_count % 300 == 1) {
         int stamps = 0, shapes = 0, prims = 0;
@@ -200,110 +183,76 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
                 default: prims++; break;
             }
         }
-        DBG("draw_list: %d cmds (%d stamps, %d shapes, %d prims), zoom=%.2f rel=%.2f",
-            g_draw_list.Command_Count(), stamps, shapes, prims, zoom, rel_zoom);
+        DBG("draw_list: %d cmds (%d/%d/%d) zoom=%.2f",
+            g_draw_list.Command_Count(), stamps, shapes, prims,
+            Render_Bridge_Get_Zoom_Level());
     }
 
-    // Check GL status
-    extern bool GL_Present_Is_Active();
     bool use_gl = GL_Present_Is_Active();
 
-    if (use_gl && rel_zoom < 1.0f) {
-        // EXPANDED PATH: more cells captured than HidPage can hold.
-        // Replay to an expanded buffer, GL uploads it as a larger indexed texture.
+    if (use_gl) {
+        // Compute native tactical size
+        int native_w = 0, native_h = 0;
+        get_native_tactical(native_w, native_h);
 
         int tac_w = Lepton_To_Pixel(Map.TacLeptonWidth);
         int tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
-        int exp_w = static_cast<int>(tac_w / rel_zoom);
-        int exp_h = static_cast<int>(tac_h / rel_zoom);
-        exp_w = ((exp_w + 23) / 24) * 24;
-        exp_h = ((exp_h + 23) / 24) * 24;
 
-        // Ensure expanded buffer
-        int needed = exp_w * exp_h;
-        if (!g_exp_buf || g_exp_alloc < needed) {
-            free(g_exp_buf);
-            g_exp_buf = static_cast<uint8_t*>(malloc(needed));
-            g_exp_alloc = needed;
-        }
-        g_exp_w = exp_w;
-        g_exp_h = exp_h;
-        memset(g_exp_buf, 0, needed);
+        bool use_native = (native_w > tac_w || native_h > tac_h) && native_w > 0 && native_h > 0;
 
-        // Create temp viewport into expanded buffer
-        GraphicBufferClass exp_page;
-        exp_page.Init(exp_w, exp_h, g_exp_buf, needed, exp_w);
-        GraphicViewPortClass exp_vp(&exp_page, 0, 0, exp_w, exp_h);
+        if (use_native) {
+            // NATIVE PATH: replay to native-sized buffer, upload to GL
 
-        // Redirect rendering to expanded buffer
-        GraphicViewPortClass* saved_logic = Set_Logic_Page(exp_vp);
-        int saved_win[4];
-        saved_win[0] = WindowList[WINDOW_TACTICAL][WINDOWX];
-        saved_win[1] = WindowList[WINDOW_TACTICAL][WINDOWY];
-        saved_win[2] = WindowList[WINDOW_TACTICAL][WINDOWWIDTH];
-        saved_win[3] = WindowList[WINDOW_TACTICAL][WINDOWHEIGHT];
-
-        WindowList[WINDOW_TACTICAL][WINDOWX] = 0;
-        WindowList[WINDOW_TACTICAL][WINDOWY] = 0;
-        WindowList[WINDOW_TACTICAL][WINDOWWIDTH] = exp_w >> 3;
-        WindowList[WINDOW_TACTICAL][WINDOWHEIGHT] = exp_h;
-
-        // Replay all commands to expanded buffer
-        replay_world_to_buffer();
-        replay_overlays_to_buffer();
-
-        // Restore
-        Set_Logic_Page(*saved_logic);
-        WindowList[WINDOW_TACTICAL][WINDOWX]      = saved_win[0];
-        WindowList[WINDOW_TACTICAL][WINDOWY]       = saved_win[1];
-        WindowList[WINDOW_TACTICAL][WINDOWWIDTH]   = saved_win[2];
-        WindowList[WINDOW_TACTICAL][WINDOWHEIGHT]  = saved_win[3];
-
-        // Tell GL present to use expanded texture for tactical area
-        GL_Present_Upload_Tactical(g_exp_buf, exp_w, exp_h);
-
-        // Also replay to HidPage at normal size (for sidebar/tab via Blit_Display)
-        replay_world_to_buffer();
-        replay_overlays_to_buffer();
-
-    } else if (use_gl) {
-        // GL path, zoom >= default: replay at 1:1, GL handles zoom via UV
-        replay_world_to_buffer();
-        replay_overlays_to_buffer();
-
-    } else if (zoom != default_zoom) {
-        // CPU path: per-element scaled rendering
-        float vp_x = Render_Bridge_Get_Viewport_X();
-        float vp_y = Render_Bridge_Get_Viewport_Y();
-
-        for (int i = 0; i < g_draw_list.Command_Count(); i++) {
-            const DrawCommand& cmd = g_draw_list.Get(i);
-            if (cmd.type == CMD_STAMP) {
-                if (!Render_Bridge_Draw_Stamp_Scaled(cmd.stamp, rel_zoom, vp_x, vp_y)) {
-                    LogicPage->Draw_Stamp(cmd.stamp.icondata, cmd.stamp.icon,
-                                           cmd.stamp.x, cmd.stamp.y,
-                                           cmd.stamp.remap, cmd.stamp.window);
-                }
+            int needed = native_w * native_h;
+            if (!g_native_buf || g_native_alloc < needed) {
+                free(g_native_buf);
+                g_native_buf = static_cast<uint8_t*>(malloc(needed));
+                g_native_alloc = needed;
             }
+            g_native_w = native_w;
+            g_native_h = native_h;
+            memset(g_native_buf, 0, needed);
+
+            // Temp viewport for native buffer
+            GraphicBufferClass native_page;
+            native_page.Init(native_w, native_h, g_native_buf, needed, native_w);
+            GraphicViewPortClass native_vp(&native_page, 0, 0, native_w, native_h);
+
+            // Redirect to native buffer
+            GraphicViewPortClass* saved_logic = Set_Logic_Page(native_vp);
+            int saved_win[4] = {
+                WindowList[WINDOW_TACTICAL][WINDOWX],
+                WindowList[WINDOW_TACTICAL][WINDOWY],
+                WindowList[WINDOW_TACTICAL][WINDOWWIDTH],
+                WindowList[WINDOW_TACTICAL][WINDOWHEIGHT]
+            };
+            WindowList[WINDOW_TACTICAL][WINDOWX] = 0;
+            WindowList[WINDOW_TACTICAL][WINDOWY] = 0;
+            WindowList[WINDOW_TACTICAL][WINDOWWIDTH] = native_w >> 3;
+            WindowList[WINDOW_TACTICAL][WINDOWHEIGHT] = native_h;
+
+            // Replay to native buffer
+            replay_world();
+            replay_overlays();
+
+            // Restore
+            Set_Logic_Page(*saved_logic);
+            WindowList[WINDOW_TACTICAL][WINDOWX]     = saved_win[0];
+            WindowList[WINDOW_TACTICAL][WINDOWY]      = saved_win[1];
+            WindowList[WINDOW_TACTICAL][WINDOWWIDTH]  = saved_win[2];
+            WindowList[WINDOW_TACTICAL][WINDOWHEIGHT] = saved_win[3];
+
+            // Upload native tactical texture to GL
+            GL_Present_Upload_Tactical(g_native_buf, native_w, native_h);
         }
-        for (int i = 0; i < g_draw_list.Command_Count(); i++) {
-            const DrawCommand& cmd = g_draw_list.Get(i);
-            if (cmd.type == CMD_SHAPE) {
-                if (!Render_Bridge_Draw_Shape_Scaled(cmd.shape, rel_zoom, vp_x, vp_y)) {
-                    int x = static_cast<int>((cmd.shape.x - vp_x) * rel_zoom);
-                    int y = static_cast<int>((cmd.shape.y - vp_y) * rel_zoom);
-                    CC_Draw_Shape(cmd.shape.shapefile, cmd.shape.shapenum, x, y,
-                                  static_cast<WindowNumberType>(cmd.shape.window),
-                                  static_cast<ShapeFlags_Type>(cmd.shape.flags),
-                                  cmd.shape.fadingdata, cmd.shape.ghostdata);
-                }
-            }
-        }
-        replay_overlays_zoomed(rel_zoom, vp_x, vp_y);
+
+        // Also replay to HidPage at 712x400 (for sidebar/tab via Blit_Display)
+        replay_world();
+        replay_overlays();
 
     } else {
-        // No zoom: replay at 1:1
-        replay_world_to_buffer();
-        replay_overlays_to_buffer();
+        // CPU-only path: replay at 1:1 to HidPage
+        replay_world();
+        replay_overlays();
     }
 }

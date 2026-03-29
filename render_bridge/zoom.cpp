@@ -26,6 +26,8 @@ static constexpr float DOS_H     = 200.0f;
 static float g_zoom         = 1.0f;  // current zoom (screen px per game px)
 static float g_zoom_default = 1.0f;  // fills screen = min(screen/buffer)
 static float g_zoom_max     = 4.0f;  // computed: min(screen/320, screen/200)
+static int   g_screen_w     = 0;
+static int   g_screen_h     = 0;
 static float g_viewport_x = 0.0f;
 static float g_viewport_y = 0.0f;
 static int   g_raw_mouse_x = 0;
@@ -85,9 +87,17 @@ static void zoom_at(float new_zoom, int anchor_x, int anchor_y)
     DBG("zoom: %.2f viewport [%.1f, %.1f] tac %dx%d", g_zoom, g_viewport_x, g_viewport_y, tw, th);
 }
 
+void Render_Bridge_Get_Screen_Size(int& w, int& h)
+{
+    w = g_screen_w;
+    h = g_screen_h;
+}
+
 void Render_Bridge_Set_Screen_Size(int screen_w, int screen_h)
 {
     if (screen_w <= 0 || screen_h <= 0) return;
+    g_screen_w = screen_w;
+    g_screen_h = screen_h;
 
     int bw = SeenBuff.Get_Width();
     int bh = SeenBuff.Get_Height();
