@@ -17,6 +17,8 @@
 
 extern SDL_Window* g_window;
 
+extern int g_shake_remaining; // from present.cpp
+
 static SDL_GLContext g_gl_ctx = nullptr;
 static GLuint g_gl_program    = 0;
 static GLuint g_indexed_tex   = 0;
@@ -185,13 +187,36 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         last_pal = vga_palette;
     }
 
-    // Render fullscreen quad with palette shader
+    // Letterbox: maintain game aspect ratio within window
     int win_w = 0, win_h = 0;
     SDL_GetWindowSizeInPixels(g_window, &win_w, &win_h);
-    glViewport(0, 0, win_w, win_h);
 
+    float game_aspect = static_cast<float>(w) / static_cast<float>(h);
+    float win_aspect  = static_cast<float>(win_w) / static_cast<float>(win_h);
+
+    int vp_x = 0, vp_y = 0, vp_w = win_w, vp_h = win_h;
+    if (win_aspect > game_aspect) {
+        // Window wider than game — pillarbox (black bars on sides)
+        vp_w = static_cast<int>(win_h * game_aspect);
+        vp_x = (win_w - vp_w) / 2;
+    } else {
+        // Window taller than game — letterbox (black bars top/bottom)
+        vp_h = static_cast<int>(win_w / game_aspect);
+        vp_y = (win_h - vp_h) / 2;
+    }
+
+    glViewport(0, 0, win_w, win_h); // clear entire window
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
+
+    // Screen shake: offset the viewport
+    if (g_shake_remaining > 0) {
+        vp_x += (rand() % 5) - 2;
+        vp_y += (rand() % 5) - 2;
+        g_shake_remaining--;
+    }
+
+    glViewport(vp_x, vp_y, vp_w, vp_h); // render into letterboxed area
 
     glUseProgram(g_gl_program);
 

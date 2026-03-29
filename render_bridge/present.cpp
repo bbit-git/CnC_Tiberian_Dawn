@@ -25,7 +25,7 @@ extern void GL_Present_Shutdown();
 extern bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                               int w, int h, const uint8_t* vga_palette);
 
-static int  g_shake_remaining = 0;
+int  g_shake_remaining = 0;
 static bool g_gl_attempted = false;
 static bool g_use_gl = false;
 
