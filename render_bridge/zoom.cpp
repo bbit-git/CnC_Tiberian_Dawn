@@ -18,13 +18,13 @@ extern float g_scroll_zoom_delta;
 extern int   g_mouse_x, g_mouse_y;
 extern SDL_Window* g_window;
 
-static constexpr float ZOOM_STEP = 0.1f;
-static constexpr float ZOOM_MAX  = 4.0f;
-static constexpr float REF_W     = 640.0f;
-static constexpr float REF_H     = 400.0f;
+static constexpr float ZOOM_STEP  = 0.1f;
+static constexpr float ZOOM_MIN  = 1.0f;  // 1:1 native screen pixels
+static constexpr float DOS_W     = 320.0f;
+static constexpr float DOS_H     = 200.0f;
 
 static float g_zoom       = 1.0f;
-static float g_zoom_min   = 0.25f;  // computed at runtime
+static float g_zoom_max   = 4.0f;  // computed at runtime from screen/320x200
 static float g_viewport_x = 0.0f;
 static float g_viewport_y = 0.0f;
 static int   g_raw_mouse_x = 0;
@@ -62,8 +62,8 @@ static void zoom_at(float new_zoom, int anchor_x, int anchor_y)
     get_tac(tx, ty, tw, th);
     if (tw <= 0 || th <= 0) return;
 
-    if (new_zoom < g_zoom_min) new_zoom = g_zoom_min;
-    if (new_zoom > ZOOM_MAX)  new_zoom = ZOOM_MAX;
+    if (new_zoom < ZOOM_MIN)  new_zoom = ZOOM_MIN;
+    if (new_zoom > g_zoom_max) new_zoom = g_zoom_max;
     if (new_zoom == g_zoom) return;
 
     // Anchor relative to tactical viewport on screen
@@ -88,17 +88,16 @@ void Render_Bridge_Set_Screen_Size(int screen_w, int screen_h)
 {
     if (screen_w <= 0 || screen_h <= 0) return;
 
-    int bw = SeenBuff.Get_Width();
-    int bh = SeenBuff.Get_Height();
-    if (bw <= 0 || bh <= 0) return;
+    // Max zoom: 320x200 DOS view fills the screen.
+    // At max zoom, visible area = screen / zoom = 320x200 (limited by shorter side).
+    float zx = static_cast<float>(screen_w) / DOS_W;
+    float zy = static_cast<float>(screen_h) / DOS_H;
+    g_zoom_max = (zx < zy) ? zx : zy;
+    if (g_zoom_max < 2.0f) g_zoom_max = 2.0f;
 
-    float zx = static_cast<float>(bw) / static_cast<float>(screen_w);
-    float zy = static_cast<float>(bh) / static_cast<float>(screen_h);
-    g_zoom_min = (zx < zy) ? zx : zy;
-    if (g_zoom_min < 0.1f) g_zoom_min = 0.1f;
-
-    DBG("zoom: min=%.3f (screen %dx%d, buffer %dx%d)",
-        g_zoom_min, screen_w, screen_h, bw, bh);
+    DBG("zoom: range [%.1f, %.1f] (screen %dx%d, max shows %.0fx%.0f)",
+        ZOOM_MIN, g_zoom_max, screen_w, screen_h,
+        screen_w / g_zoom_max, screen_h / g_zoom_max);
 }
 
 void Render_Bridge_Apply_Scroll_Zoom()
