@@ -1,12 +1,17 @@
 /**
- * gl_present.cpp — OpenGL ES presentation for the render bridge.
+ * gl_present.cpp — GL ES 2.0 presentation at native window resolution.
  *
- * Replaces the CPU palette LUT conversion in present.cpp with a GL
- * palette lookup shader. The 8-bit indexed SeenBuff is uploaded as
- * a GL_LUMINANCE texture, the VGA palette as a 256x1 GL_RGB texture.
- * A fragment shader does the palette lookup on the GPU.
+ * Renders the game's 8-bit indexed SeenBuff through a palette lookup
+ * shader. Instead of one stretched quad, renders multiple quads — one
+ * per screen region — mapped from game-buffer coordinates to native
+ * screen-pixel coordinates. Each layer scales independently.
  *
- * Falls back to CPU path if GL init fails (headless, missing drivers).
+ * At 1920x1080 with a 712x400 game buffer:
+ *   Tab bar:  game [0,0,712,16]      → screen [0,0,1920,43]
+ *   Tactical: game [0,16,552,400]    → screen [0,43,1490,1080]
+ *   Sidebar:  game [552,0,160,400]   → screen [1490,0,430,1080]
+ *
+ * Palette conversion runs entirely on the GPU.
  */
 
 #include <SDL3/SDL.h>
@@ -16,25 +21,33 @@
 #include "dbg.h"
 
 extern SDL_Window* g_window;
-
-extern int g_shake_remaining; // from present.cpp
+extern int g_shake_remaining;
 
 static SDL_GLContext g_gl_ctx = nullptr;
 static GLuint g_gl_program    = 0;
 static GLuint g_indexed_tex   = 0;
 static GLuint g_palette_tex   = 0;
-static GLuint g_quad_vbo      = 0;
 static int    g_tex_w = 0, g_tex_h = 0;
 static bool   g_gl_ready = false;
 static bool   g_gl_failed = false;
 
+// Uniform locations
+static GLint g_u_indexed = -1;
+static GLint g_u_palette = -1;
+static GLint g_u_src_rect = -1;
+static GLint g_u_dst_rect = -1;
+
 static const char* vert_src = R"(
     attribute vec2 a_pos;
-    attribute vec2 a_uv;
     varying vec2 v_uv;
+    uniform vec4 u_src_rect;  // source rect in texture UV space [u0, v0, u1, v1]
+    uniform vec4 u_dst_rect;  // dest rect in NDC [-1,1] space [x0, y0, x1, y1]
     void main() {
-        gl_Position = vec4(a_pos, 0.0, 1.0);
-        v_uv = a_uv;
+        // a_pos is [0,0]-[1,1] unit quad
+        vec2 pos = mix(u_dst_rect.xy, u_dst_rect.zw, a_pos);
+        vec2 uv  = mix(u_src_rect.xy, u_src_rect.zw, a_pos);
+        gl_Position = vec4(pos, 0.0, 1.0);
+        v_uv = uv;
     }
 )";
 
@@ -77,13 +90,12 @@ bool GL_Present_Init(int w, int h)
 
     g_gl_ctx = SDL_GL_CreateContext(g_window);
     if (!g_gl_ctx) {
-        DBG("GL context creation failed: %s", SDL_GetError());
+        DBG("GL context failed: %s", SDL_GetError());
         g_gl_failed = true;
         return false;
     }
     SDL_GL_MakeCurrent(g_window, g_gl_ctx);
 
-    // Compile shader
     GLuint vs = compile_shader(GL_VERTEX_SHADER, vert_src);
     GLuint fs = compile_shader(GL_FRAGMENT_SHADER, frag_src);
     if (!vs || !fs) { g_gl_failed = true; return false; }
@@ -92,7 +104,6 @@ bool GL_Present_Init(int w, int h)
     glAttachShader(g_gl_program, vs);
     glAttachShader(g_gl_program, fs);
     glBindAttribLocation(g_gl_program, 0, "a_pos");
-    glBindAttribLocation(g_gl_program, 1, "a_uv");
     glLinkProgram(g_gl_program);
     glDeleteShader(vs);
     glDeleteShader(fs);
@@ -101,7 +112,12 @@ bool GL_Present_Init(int w, int h)
     glGetProgramiv(g_gl_program, GL_LINK_STATUS, &ok);
     if (!ok) { g_gl_failed = true; return false; }
 
-    // Create indexed texture (8-bit, updated each frame)
+    g_u_indexed  = glGetUniformLocation(g_gl_program, "u_indexed");
+    g_u_palette  = glGetUniformLocation(g_gl_program, "u_palette");
+    g_u_src_rect = glGetUniformLocation(g_gl_program, "u_src_rect");
+    g_u_dst_rect = glGetUniformLocation(g_gl_program, "u_dst_rect");
+
+    // Indexed texture
     glGenTextures(1, &g_indexed_tex);
     glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -111,7 +127,7 @@ bool GL_Present_Init(int w, int h)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, w, h, 0,
                  GL_LUMINANCE, GL_UNSIGNED_BYTE, nullptr);
 
-    // Create palette texture (256x1 RGB, updated on palette change)
+    // Palette texture
     glGenTextures(1, &g_palette_tex);
     glBindTexture(GL_TEXTURE_2D, g_palette_tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -121,22 +137,13 @@ bool GL_Present_Init(int w, int h)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 256, 1, 0,
                  GL_RGB, GL_UNSIGNED_BYTE, nullptr);
 
-    // Fullscreen quad VBO: position + UV
-    static const float quad[] = {
-        -1.0f,  1.0f,  0.0f, 0.0f,  // top-left
-         1.0f,  1.0f,  1.0f, 0.0f,  // top-right
-        -1.0f, -1.0f,  0.0f, 1.0f,  // bottom-left
-         1.0f, -1.0f,  1.0f, 1.0f,  // bottom-right
-    };
-    glGenBuffers(1, &g_quad_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, g_quad_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
-
     g_tex_w = w;
     g_tex_h = h;
     g_gl_ready = true;
 
-    DBG("GL present init: %dx%d", w, h);
+    int sw = 0, sh = 0;
+    SDL_GetWindowSizeInPixels(g_window, &sw, &sh);
+    DBG("GL present: buffer %dx%d, window %dx%d", w, h, sw, sh);
     return true;
 }
 
@@ -144,10 +151,37 @@ void GL_Present_Shutdown()
 {
     if (g_indexed_tex) { glDeleteTextures(1, &g_indexed_tex); g_indexed_tex = 0; }
     if (g_palette_tex) { glDeleteTextures(1, &g_palette_tex); g_palette_tex = 0; }
-    if (g_quad_vbo) { glDeleteBuffers(1, &g_quad_vbo); g_quad_vbo = 0; }
     if (g_gl_program) { glDeleteProgram(g_gl_program); g_gl_program = 0; }
     if (g_gl_ctx) { SDL_GL_DestroyContext(g_gl_ctx); g_gl_ctx = nullptr; }
     g_gl_ready = false;
+}
+
+/// Draw a quad mapping a game-buffer rect to a screen-pixel rect.
+/// src: pixel coordinates in game buffer (712x400 space)
+/// dst: pixel coordinates in native screen space (1920x1080 space)
+static void draw_quad(int src_x, int src_y, int src_w, int src_h,
+                       int dst_x, int dst_y, int dst_w, int dst_h,
+                       int win_w, int win_h)
+{
+    // Source rect → UV space [0,1]
+    float u0 = static_cast<float>(src_x) / g_tex_w;
+    float v0 = static_cast<float>(src_y) / g_tex_h;
+    float u1 = static_cast<float>(src_x + src_w) / g_tex_w;
+    float v1 = static_cast<float>(src_y + src_h) / g_tex_h;
+
+    // Dest rect → NDC [-1,1] (GL: Y up, screen: Y down)
+    float x0 = static_cast<float>(dst_x) / win_w * 2.0f - 1.0f;
+    float y0 = 1.0f - static_cast<float>(dst_y) / win_h * 2.0f;
+    float x1 = static_cast<float>(dst_x + dst_w) / win_w * 2.0f - 1.0f;
+    float y1 = 1.0f - static_cast<float>(dst_y + dst_h) / win_h * 2.0f;
+
+    glUniform4f(g_u_src_rect, u0, v0, u1, v1);
+    glUniform4f(g_u_dst_rect, x0, y0, x1, y1);
+
+    // Unit quad: (0,0) → (1,0) → (0,1) → (1,1)
+    static const float quad[] = { 0,0, 1,0, 0,1, 1,1 };
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, quad);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
 bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
@@ -158,13 +192,11 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
     SDL_GL_MakeCurrent(g_window, g_gl_ctx);
 
     // Upload indexed framebuffer
+    glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
     if (pitch == w) {
-        glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h,
                         GL_LUMINANCE, GL_UNSIGNED_BYTE, indexed_pixels);
     } else {
-        // Row-by-row upload for non-contiguous pitch
-        glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
         for (int row = 0; row < h; row++) {
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, row, w, 1,
                             GL_LUMINANCE, GL_UNSIGNED_BYTE,
@@ -172,10 +204,13 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         }
     }
 
-    // Upload palette (VGA 6-bit → 8-bit conversion)
+    // Upload palette (only when changed)
     static uint8_t pal_rgb[256 * 3];
     static const uint8_t* last_pal = nullptr;
-    if (vga_palette != last_pal) {
+    static uint32_t last_hash = 0;
+    uint32_t hash = vga_palette[0] | (vga_palette[3] << 8) |
+                    (vga_palette[384] << 16) | (vga_palette[765] << 24);
+    if (vga_palette != last_pal || hash != last_hash) {
         for (int i = 0; i < 256; i++) {
             pal_rgb[i * 3 + 0] = vga_palette[i * 3 + 0] << 2;
             pal_rgb[i * 3 + 1] = vga_palette[i * 3 + 1] << 2;
@@ -185,59 +220,99 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1,
                         GL_RGB, GL_UNSIGNED_BYTE, pal_rgb);
         last_pal = vga_palette;
+        last_hash = hash;
     }
 
-    // Letterbox: maintain game aspect ratio within window
+    // Native window size
     int win_w = 0, win_h = 0;
     SDL_GetWindowSizeInPixels(g_window, &win_w, &win_h);
+    if (win_w <= 0 || win_h <= 0) return false;
 
-    float game_aspect = static_cast<float>(w) / static_cast<float>(h);
-    float win_aspect  = static_cast<float>(win_w) / static_cast<float>(win_h);
+    // Scale factor: game buffer → screen pixels (uniform, maintain aspect)
+    float scale_x = static_cast<float>(win_w) / w;
+    float scale_y = static_cast<float>(win_h) / h;
+    float scale = (scale_x < scale_y) ? scale_x : scale_y;
 
-    int vp_x = 0, vp_y = 0, vp_w = win_w, vp_h = win_h;
-    if (win_aspect > game_aspect) {
-        // Window wider than game — pillarbox (black bars on sides)
-        vp_w = static_cast<int>(win_h * game_aspect);
-        vp_x = (win_w - vp_w) / 2;
-    } else {
-        // Window taller than game — letterbox (black bars top/bottom)
-        vp_h = static_cast<int>(win_w / game_aspect);
-        vp_y = (win_h - vp_h) / 2;
-    }
+    // Offset for centering (letterbox/pillarbox)
+    int offset_x = static_cast<int>((win_w - w * scale) * 0.5f);
+    int offset_y = static_cast<int>((win_h - h * scale) * 0.5f);
 
-    glViewport(0, 0, win_w, win_h); // clear entire window
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    // Screen shake: offset the viewport
+    // Screen shake
     if (g_shake_remaining > 0) {
-        vp_x += (rand() % 5) - 2;
-        vp_y += (rand() % 5) - 2;
+        offset_x += (rand() % 5) - 2;
+        offset_y += (rand() % 5) - 2;
         g_shake_remaining--;
     }
 
-    glViewport(vp_x, vp_y, vp_w, vp_h); // render into letterboxed area
+    // Setup GL state
+    glViewport(0, 0, win_w, win_h);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_DEPTH_TEST);
 
     glUseProgram(g_gl_program);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
-    glUniform1i(glGetUniformLocation(g_gl_program, "u_indexed"), 0);
+    glUniform1i(g_u_indexed, 0);
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, g_palette_tex);
-    glUniform1i(glGetUniformLocation(g_gl_program, "u_palette"), 1);
+    glUniform1i(g_u_palette, 1);
 
-    glBindBuffer(GL_ARRAY_BUFFER, g_quad_vbo);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, (void*)0);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, (void*)8);
 
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    // Get tactical area dimensions from game state
+    extern bool InMainLoop;
+    int tac_x = 0, tac_y = 0, tac_w = w, tac_h = h;
+    int side_x = w, side_w = 0;
+
+    if (InMainLoop) {
+        tac_x = Map.TacPixelX;
+        tac_y = Map.TacPixelY;
+        tac_w = Lepton_To_Pixel(Map.TacLeptonWidth);
+        tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
+        side_x = Map.SideX;
+        side_w = Map.SideBarWidth;
+    }
+
+    if (!InMainLoop || side_w == 0) {
+        // Menu or no sidebar: single fullscreen quad
+        draw_quad(0, 0, w, h,
+                  offset_x, offset_y,
+                  static_cast<int>(w * scale),
+                  static_cast<int>(h * scale),
+                  win_w, win_h);
+    } else {
+        // Tab bar (top strip, full width)
+        if (tac_y > 0) {
+            draw_quad(0, 0, w, tac_y,
+                      offset_x, offset_y,
+                      static_cast<int>(w * scale),
+                      static_cast<int>(tac_y * scale),
+                      win_w, win_h);
+        }
+
+        // Tactical area (world + overlays)
+        draw_quad(tac_x, tac_y, tac_w, tac_h,
+                  offset_x + static_cast<int>(tac_x * scale),
+                  offset_y + static_cast<int>(tac_y * scale),
+                  static_cast<int>(tac_w * scale),
+                  static_cast<int>(tac_h * scale),
+                  win_w, win_h);
+
+        // Sidebar
+        if (side_w > 0) {
+            draw_quad(side_x, 0, side_w, h,
+                      offset_x + static_cast<int>(side_x * scale),
+                      offset_y,
+                      static_cast<int>(side_w * scale),
+                      static_cast<int>(h * scale),
+                      win_w, win_h);
+        }
+    }
 
     glDisableVertexAttribArray(0);
-    glDisableVertexAttribArray(1);
 
     SDL_GL_SwapWindow(g_window);
     return true;
