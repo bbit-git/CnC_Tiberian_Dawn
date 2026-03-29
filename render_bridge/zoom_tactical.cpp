@@ -89,6 +89,14 @@ void Render_Bridge_Begin_Draw_List()
     extern bool InMainLoop;
     if (!InMainLoop || !GL_Present_Is_Active()) return;
 
+    // Only expand when zoom needs more cells than the game buffer provides.
+    // At default zoom (game fills screen), SeenBuff is sufficient — dialogs,
+    // options, and other overlays render correctly via the HidPage path.
+    float zoom = Render_Bridge_Get_Zoom_Level();
+    extern float Render_Bridge_Get_Default_Zoom();
+    float default_zoom = Render_Bridge_Get_Default_Zoom();
+    if (default_zoom > 0.0f && zoom >= default_zoom) return; // no expansion needed
+
     int native_w = 0, native_h = 0;
     get_native_tactical(native_w, native_h);
     if (native_w <= 0 || native_h <= 0) return;
@@ -189,16 +197,25 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
     }
 
     bool use_gl = GL_Present_Is_Active();
+    float zoom = Render_Bridge_Get_Zoom_Level();
+    float default_zoom = 1.0f;
+    { extern float Render_Bridge_Get_Default_Zoom(); default_zoom = Render_Bridge_Get_Default_Zoom(); }
 
     if (use_gl) {
-        // Compute native tactical size
-        int native_w = 0, native_h = 0;
-        get_native_tactical(native_w, native_h);
+        // Only use native buffer when zoomed out (more cells needed).
+        // At default zoom or zoomed in: SeenBuff is sufficient and
+        // preserves dialogs/options drawn after Draw_It.
+        bool need_native = (default_zoom > 0.0f && zoom < default_zoom);
 
+        int native_w = 0, native_h = 0;
         int tac_w = Lepton_To_Pixel(Map.TacLeptonWidth);
         int tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
 
-        bool use_native = (native_w > tac_w || native_h > tac_h) && native_w > 0 && native_h > 0;
+        if (need_native) {
+            get_native_tactical(native_w, native_h);
+        }
+
+        bool use_native = need_native && (native_w > tac_w || native_h > tac_h) && native_w > 0;
 
         if (use_native) {
             // NATIVE PATH: replay to native-sized buffer, upload to GL
