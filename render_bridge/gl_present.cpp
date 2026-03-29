@@ -79,6 +79,11 @@ static GLuint compile_shader(GLenum type, const char* src)
     return s;
 }
 
+bool GL_Present_Is_Active()
+{
+    return g_gl_ready;
+}
+
 bool GL_Present_Init(int w, int h)
 {
     if (g_gl_failed) return false;
@@ -293,13 +298,51 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                       win_w, win_h);
         }
 
-        // Tactical area (world + overlays)
-        draw_quad(tac_x, tac_y, tac_w, tac_h,
-                  offset_x + static_cast<int>(tac_x * scale),
-                  offset_y + static_cast<int>(tac_y * scale),
-                  static_cast<int>(tac_w * scale),
-                  static_cast<int>(tac_h * scale),
-                  win_w, win_h);
+        // Tactical area — apply zoom via source rect adjustment.
+        // At zoom > 1.0, source rect shrinks (shows sub-region), GPU scales up.
+        // At zoom < 1.0, source rect stays full (world renders smaller).
+        {
+            float zoom = Render_Bridge_Get_Zoom_Level();
+            float vp_x = Render_Bridge_Get_Viewport_X();
+            float vp_y = Render_Bridge_Get_Viewport_Y();
+
+            // Source region in game buffer pixels
+            float src_x = static_cast<float>(tac_x) + vp_x;
+            float src_y = static_cast<float>(tac_y) + vp_y;
+            float src_w = static_cast<float>(tac_w) / zoom;
+            float src_h = static_cast<float>(tac_h) / zoom;
+
+            // Clamp source to tactical bounds
+            if (src_x < tac_x) src_x = static_cast<float>(tac_x);
+            if (src_y < tac_y) src_y = static_cast<float>(tac_y);
+            if (src_x + src_w > tac_x + tac_w) src_w = tac_x + tac_w - src_x;
+            if (src_y + src_h > tac_y + tac_h) src_h = tac_y + tac_h - src_y;
+
+            // Dest: always fills the full tactical screen area
+            int dst_x = offset_x + static_cast<int>(tac_x * scale);
+            int dst_y = offset_y + static_cast<int>(tac_y * scale);
+            int dst_w = static_cast<int>(tac_w * scale);
+            int dst_h = static_cast<int>(tac_h * scale);
+
+            // When zoomed out (zoom < 1.0), world is smaller — center it
+            if (zoom < 1.0f) {
+                int scaled_w = static_cast<int>(tac_w * scale * zoom);
+                int scaled_h = static_cast<int>(tac_h * scale * zoom);
+                dst_x += (dst_w - scaled_w) / 2;
+                dst_y += (dst_h - scaled_h) / 2;
+                dst_w = scaled_w;
+                dst_h = scaled_h;
+                src_x = static_cast<float>(tac_x);
+                src_y = static_cast<float>(tac_y);
+                src_w = static_cast<float>(tac_w);
+                src_h = static_cast<float>(tac_h);
+            }
+
+            draw_quad(static_cast<int>(src_x), static_cast<int>(src_y),
+                      static_cast<int>(src_w), static_cast<int>(src_h),
+                      dst_x, dst_y, dst_w, dst_h,
+                      win_w, win_h);
+        }
 
         // Sidebar
         if (side_w > 0) {

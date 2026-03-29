@@ -185,16 +185,26 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
             g_draw_list.Command_Count(), stamps, shapes, prims, zoom);
     }
 
-    if (zoom != 1.0f) {
+    // Check if GL is handling zoom (via UV-based source rect in gl_present.cpp).
+    // If so, always replay at 1:1 — GL does the scaling at native resolution.
+    extern bool GL_Present_Is_Active();
+    bool gl_zoom = GL_Present_Is_Active() && zoom != 1.0f;
+
+    if (gl_zoom) {
+        // GL path: replay at 1:1 into HidPage. GL_Present_Frame reads the
+        // viewport sub-region and scales it to the screen tactical area.
+        replay_world();
+        replay_overlays();
+    } else if (zoom != 1.0f) {
+        // CPU path: per-element scaled rendering
         float vp_x = Render_Bridge_Get_Viewport_X();
         float vp_y = Render_Bridge_Get_Viewport_Y();
 
-        // Step 1: Terrain tiles — scaled per-tile directly
+        // Terrain — scaled per-tile
         for (int i = 0; i < g_draw_list.Command_Count(); i++) {
             const DrawCommand& cmd = g_draw_list.Get(i);
             if (cmd.type == CMD_STAMP) {
                 if (!Render_Bridge_Draw_Stamp_Scaled(cmd.stamp, zoom, vp_x, vp_y)) {
-                    // Fallback: render at 1:1 (tile won't be zoomed)
                     LogicPage->Draw_Stamp(cmd.stamp.icondata, cmd.stamp.icon,
                                            cmd.stamp.x, cmd.stamp.y,
                                            cmd.stamp.remap, cmd.stamp.window);
@@ -202,7 +212,7 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
             }
         }
 
-        // Step 2: Sprites — scaled per-sprite via ISpriteProvider
+        // Sprites — scaled per-sprite via ISpriteProvider
         for (int i = 0; i < g_draw_list.Command_Count(); i++) {
             const DrawCommand& cmd = g_draw_list.Get(i);
             if (cmd.type == CMD_SHAPE) {
@@ -217,10 +227,10 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
             }
         }
 
-        // Step 3: Overlays at zoomed positions, native pixel size
+        // Overlays at zoomed positions, native pixel size
         replay_overlays_zoomed(zoom, vp_x, vp_y);
     } else {
-        // No zoom: replay everything at 1:1 (identical to legacy)
+        // No zoom: replay at 1:1
         replay_world();
         replay_overlays();
     }
