@@ -411,21 +411,23 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                 float tex_w = static_cast<float>(g_tac_tex_w);
                 float tex_h = static_cast<float>(g_tac_tex_h);
 
-                // Visible portion at current zoom
+                // Viewport within native buffer: (vp_x, vp_y) to (vp_x+vis, vp_y+vis).
+                // zoom 1.0: vp=(0,0), vis=full → UV 0..1 (everything visible).
+                // zoom 2.0: vis=half, vp offset from mouse pivot → UV sub-region.
+                // Game scrolling re-renders content → vp stays, content shifts.
+                float vp_x = Render_Bridge_Get_Viewport_X();
+                float vp_y = Render_Bridge_Get_Viewport_Y();
                 float vis_w = tex_w / zoom;
                 float vis_h = tex_h / zoom;
 
-                // Center viewport within texture
-                float cx = (tex_w - vis_w) * 0.5f;
-                float cy = (tex_h - vis_h) * 0.5f;
-                if (cx < 0.0f) cx = 0.0f;
-                if (cy < 0.0f) cy = 0.0f;
-
-                // UV (full texture at zoom 1.0, center crop when zoomed)
-                float u0 = cx / tex_w;
-                float v0 = cy / tex_h;
-                float u1 = (cx + vis_w) / tex_w;
-                float v1 = (cy + vis_h) / tex_h;
+                float u0 = vp_x / tex_w;
+                float v0 = vp_y / tex_h;
+                float u1 = (vp_x + vis_w) / tex_w;
+                float v1 = (vp_y + vis_h) / tex_h;
+                if (u0 < 0.0f) u0 = 0.0f;
+                if (v0 < 0.0f) v0 = 0.0f;
+                if (u1 > 1.0f) u1 = 1.0f;
+                if (v1 > 1.0f) v1 = 1.0f;
 
                 // Dest: fit native texture into available area, preserve aspect.
                 // The texture may be smaller than the available screen area
@@ -501,7 +503,9 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                                     GL_LUMINANCE, GL_UNSIGNED_BYTE, ui_pixels);
                 }
 
-                // Render UI overlay at the tactical screen area (covers tactical quad)
+                // Render UI overlay FULL SCREEN — covers tab + tactical + sidebar.
+                // The overlay texture is the full game buffer (712x400).
+                // Dialogs/options can appear anywhere on screen.
                 glUseProgram(g_ui_program);
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, g_ui_tex);
@@ -510,12 +514,12 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                 glBindTexture(GL_TEXTURE_2D, g_palette_tex);
                 glUniform1i(g_ui_u_palette, 1);
 
-                // Full UI texture → full available tactical area
+                // Full overlay texture → full game area on screen (with letterbox)
                 glUniform4f(g_ui_u_src_rect, 0.0f, 0.0f, 1.0f, 1.0f);
-                float nx0 = static_cast<float>(avail_x) / win_w * 2.0f - 1.0f;
-                float ny0 = 1.0f - static_cast<float>(avail_y) / win_h * 2.0f;
-                float nx1 = static_cast<float>(avail_x + avail_w) / win_w * 2.0f - 1.0f;
-                float ny1 = 1.0f - static_cast<float>(avail_y + avail_h) / win_h * 2.0f;
+                float nx0 = static_cast<float>(offset_x) / win_w * 2.0f - 1.0f;
+                float ny0 = 1.0f - static_cast<float>(offset_y) / win_h * 2.0f;
+                float nx1 = static_cast<float>(offset_x + static_cast<int>(w * ui_scale)) / win_w * 2.0f - 1.0f;
+                float ny1 = 1.0f - static_cast<float>(offset_y + static_cast<int>(h * ui_scale)) / win_h * 2.0f;
                 glUniform4f(g_ui_u_dst_rect, nx0, ny0, nx1, ny1);
 
                 static const float quad[] = { 0,0, 1,0, 0,1, 1,1 };

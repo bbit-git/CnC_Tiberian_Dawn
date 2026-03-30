@@ -39,9 +39,9 @@ static GLuint g_hud_tex = 0;
 static GLuint g_hud_prog = 0;
 static bool   g_hud_gl_ready = false;
 
-// HUD bitmap: 128x64 RGBA
-static constexpr int HUD_W = 140;
-static constexpr int HUD_H = 80;
+// HUD bitmap
+static constexpr int HUD_W = 160;
+static constexpr int HUD_H = 120;
 static uint32_t g_hud_pixels[HUD_W * HUD_H];
 
 // 4x6 bitmap font
@@ -74,6 +74,7 @@ static void hud_putc(int x, int y, char ch, uint32_t color)
     else if (ch >= 'a' && ch <= 'z') glyph = font_4x6[ch - 'a' + 10];
     else if (ch == '.') { if (x>=0&&x<HUD_W&&y+5>=0&&y+5<HUD_H) g_hud_pixels[(y+5)*HUD_W+x]=color; return; }
     else if (ch == ':') { if (x>=0&&x<HUD_W) { if(y+1>=0&&y+1<HUD_H) g_hud_pixels[(y+1)*HUD_W+x]=color; if(y+4>=0&&y+4<HUD_H) g_hud_pixels[(y+4)*HUD_W+x]=color; } return; }
+    else if (ch == '-') { for(int c=0;c<4;c++){int px=x+c,py=y+3;if(px>=0&&px<HUD_W&&py>=0&&py<HUD_H)g_hud_pixels[py*HUD_W+px]=color;} return; }
     else if (ch == '(' || ch == ')' || ch == '/' || ch == '>' || ch == ' ') return;
     if (!glyph) return;
     for (int r=0;r<6;r++) for (int c=0;c<4;c++)
@@ -137,53 +138,95 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     int atlas_f = GL_Sprites_Atlas_Frame_Count(), atlas_p = GL_Sprites_Atlas_Page_Count();
 
     // Viewport = visible portion of native buffer at current zoom
-    // At zoom 1.0: viewport = native buffer (all visible)
-    // At zoom 2.0: viewport = half the native buffer
+    float vp_x = Render_Bridge_Get_Viewport_X();
+    float vp_y = Render_Bridge_Get_Viewport_Y();
     int vp_w = (ntac_w > 0) ? static_cast<int>(ntac_w / zoom) : tac_w;
     int vp_h = (ntac_h > 0) ? static_cast<int>(ntac_h / zoom) : tac_h;
     if (vp_w > ntac_w && ntac_w > 0) vp_w = ntac_w;
     if (vp_h > ntac_h && ntac_h > 0) vp_h = ntac_h;
-    float vp_x = Render_Bridge_Get_Viewport_X();
-    float vp_y = Render_Bridge_Get_Viewport_Y();
+    float vp_max_x = (ntac_w > vp_w) ? ntac_w - vp_w : 0;
+    float vp_max_y = (ntac_h > vp_h) ? ntac_h - vp_h : 0;
+
+    // TacticalCoord in pixels relative to map origin
+    int tac_coord_px = Lepton_To_Pixel(Coord_X(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellX));
+    int tac_coord_py = Lepton_To_Pixel(Coord_Y(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellY));
+    int tac_range_x = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellWidth) - Map.TacLeptonWidth);
+    int tac_range_y = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellHeight) - Map.TacLeptonHeight);
 
     // Map size in cells
     int map_cw = Map.MapCellWidth, map_ch = Map.MapCellHeight;
 
+    // Boundary flags
+    bool at_L = tac_coord_px <= 0;
+    bool at_R = tac_range_x > 0 && tac_coord_px >= tac_range_x;
+    bool at_T = tac_coord_py <= 0;
+    bool at_B = tac_range_y > 0 && tac_coord_py >= tac_range_y;
+
+    // Mouse edge flags
+    extern int g_mouse_x, g_mouse_y;
+    int tpx = Map.TacPixelX, tpy = Map.TacPixelY;
+    int tpw = Lepton_To_Pixel(Map.TacLeptonWidth);
+    int tph = Lepton_To_Pixel(Map.TacLeptonHeight);
+    bool mL = g_mouse_x <= tpx + 1;
+    bool mR = g_mouse_x >= tpx + tpw - 2;
+    bool mT = g_mouse_y <= tpy + 1;
+    bool mB = g_mouse_y >= tpy + tph - 2;
+
     // Clear HUD bitmap
     memset(g_hud_pixels, 0, sizeof(g_hud_pixels));
-
-    // Background
-    for (int i = 0; i < HUD_W * HUD_H; i++) g_hud_pixels[i] = 0xCC000000; // semi-transparent black
+    for (int i = 0; i < HUD_W * HUD_H; i++) g_hud_pixels[i] = 0xCC000000;
 
     uint32_t white  = 0xFFFFFFFF;
     uint32_t yellow = 0xFF00FFFF;
     uint32_t green  = 0xFF00FF00;
+    uint32_t cyan   = 0xFFFFFF00;
+    uint32_t red    = 0xFF0000FF;
     char line[48];
     int y = 2;
 
     snprintf(line, sizeof(line), "%s %dFPS %.0fMS", GL_Present_Is_Active()?"GL":"SW", g_fps, g_frame_ms);
     hud_puts(2, y, line, white); y += 8;
 
-    snprintf(line, sizeof(line), "SCR %dX%d", win_w, win_h);
+    snprintf(line, sizeof(line), "MAP %dX%d SCR%dX%d", map_cw, map_ch, win_w, win_h);
     hud_puts(2, y, line, white); y += 8;
 
-    snprintf(line, sizeof(line), "MAP %dX%d", map_cw, map_ch);
-    hud_puts(2, y, line, white); y += 8;
-
-    snprintf(line, sizeof(line), "NAT %dX%d", ntac_w, ntac_h);
+    snprintf(line, sizeof(line), "NAT %dX%d TAC%dX%d", ntac_w, ntac_h, tac_w, tac_h);
     hud_puts(2, y, line, green); y += 8;
 
-    snprintf(line, sizeof(line), "VP %dX%d", vp_w, vp_h);
-    hud_puts(2, y, line, 0xFF00FFFF); y += 8; // cyan
+    snprintf(line, sizeof(line), "Z%.2f VIS %dX%d", zoom, vp_w, vp_h);
+    hud_puts(2, y, line, cyan); y += 8;
 
-    snprintf(line, sizeof(line), "Z%.2f AT(%d.%d)", zoom, (int)vp_x, (int)vp_y);
+    // VP top-left and range
+    snprintf(line, sizeof(line), "VP %d-%d MAX%d-%d",
+             (int)vp_x, (int)vp_y, (int)vp_max_x, (int)vp_max_y);
+    hud_puts(2, y, line, cyan); y += 8;
+
+    // TacticalCoord position and range
+    snprintf(line, sizeof(line), "TC %d-%d RNG%d-%d",
+             tac_coord_px, tac_coord_py, tac_range_x, tac_range_y);
     hud_puts(2, y, line, white); y += 8;
 
+    // World top-left = TacticalCoord + viewport offset (in pixels)
+    snprintf(line, sizeof(line), "WORLD %d-%d",
+             tac_coord_px + (int)vp_x, tac_coord_py + (int)vp_y);
+    hud_puts(2, y, line, green); y += 8;
+
+    // Boundary and mouse-edge flags
+    snprintf(line, sizeof(line), "BND %c%c%c%c MSE %c%c%c%c",
+             at_L?'L':'.', at_R?'R':'.', at_T?'T':'.', at_B?'B':'.',
+             mL?'L':'.', mR?'R':'.', mT?'T':'.', mB?'B':'.');
+    hud_puts(2, y, line, (at_L||at_R||at_T||at_B) ? red : white); y += 8;
+
+    // Draw list stats
     snprintf(line, sizeof(line), "DL%d S%d T%d P%d", cmd_count, shapes, stamps, prims);
     hud_puts(2, y, line, yellow); y += 8;
 
     snprintf(line, sizeof(line), "ATL%dF %dP PK%d", atlas_f, atlas_p, (int)g_dl_peak);
     hud_puts(2, y, line, yellow); y += 8;
+
+    // Mouse position
+    snprintf(line, sizeof(line), "MSE %d-%d", g_mouse_x, g_mouse_y);
+    hud_puts(2, y, line, white); y += 8;
 
     // Upload and render
     glBindTexture(GL_TEXTURE_2D, g_hud_tex);
@@ -196,9 +239,9 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     glBindTexture(GL_TEXTURE_2D, g_hud_tex);
     glUniform1i(glGetUniformLocation(g_hud_prog, "u_tex"), 0);
 
-    // Bottom-left corner, 280x160 screen pixels
-    float qw = 280.0f / win_w * 2.0f;
-    float qh = 160.0f / win_h * 2.0f;
+    // Bottom-left corner, 320x240 screen pixels
+    float qw = 320.0f / win_w * 2.0f;
+    float qh = 240.0f / win_h * 2.0f;
     float verts[] = {
         -1.0f,        -1.0f + qh,  0.0f, 0.0f,
         -1.0f + qw,   -1.0f + qh,  1.0f, 0.0f,
