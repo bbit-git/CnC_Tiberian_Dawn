@@ -699,10 +699,24 @@ void DisplayClass::Set_View_Dimensions(int x, int y, int width, int height)
 	IsToRedraw = true;
 	Flag_To_Redraw(false);
 
+	#ifdef USE_RENDER_BRIDGE
+	{
+		int rb_tac_x = 0;
+		int rb_tac_y = 0;
+		int rb_tac_w = 0;
+		int rb_tac_h = 0;
+		Render_Bridge_Get_Tactical_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
+		TacButton.X = rb_tac_x;
+		TacButton.Y = rb_tac_y;
+		TacButton.Width = rb_tac_w;
+		TacButton.Height = rb_tac_h;
+	}
+	#else
 	TacButton.X			= TacPixelX;
 	TacButton.Y			= TacPixelY;
 	TacButton.Width	= width;
 	TacButton.Height	= height;
+	#endif
 }
 
 
@@ -1050,13 +1064,23 @@ void DisplayClass::Cursor_Mark(CELL pos, bool on)
  *=============================================================================================*/
 void DisplayClass::AI(KeyNumType & input, int x, int y)
 {
-	if (
-		IsRubberBand &&
-		(Get_Mouse_X() < TacPixelX ||
-		Get_Mouse_Y() < TacPixelY ||
-		Get_Mouse_X() >= (TacPixelX + Lepton_To_Pixel(TacLeptonWidth)) ||
-		Get_Mouse_Y() >= (TacPixelY + Lepton_To_Pixel(TacLeptonHeight)))) {
+	if (IsRubberBand) {
+#ifdef USE_RENDER_BRIDGE
+		int rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h;
+		Render_Bridge_Get_Tactical_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
+		bool rb_outside = Get_Mouse_X() < rb_tac_x ||
+		                  Get_Mouse_Y() < rb_tac_y ||
+		                  Get_Mouse_X() >= rb_tac_x + rb_tac_w ||
+		                  Get_Mouse_Y() >= rb_tac_y + rb_tac_h;
+#else
+		bool rb_outside = Get_Mouse_X() < TacPixelX ||
+		                  Get_Mouse_Y() < TacPixelY ||
+		                  Get_Mouse_X() >= (TacPixelX + Lepton_To_Pixel(TacLeptonWidth)) ||
+		                  Get_Mouse_Y() >= (TacPixelY + Lepton_To_Pixel(TacLeptonHeight));
+#endif
+		if (rb_outside) {
 			Mouse_Left_Release(-1, Get_Mouse_X(), Get_Mouse_Y(), NULL, ACTION_NONE);
+		}
 	}
 
 	//DBG("DisplayClass::AI → MapClass::AI");

@@ -4,6 +4,7 @@ extern void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
 extern void Render_Bridge_Record_Tactical_Request(int x, int y);
 extern void Render_Bridge_Get_Requested_Tactical_Position(int& x, int& y);
 extern void Render_Bridge_Get_Clamp_Ranges(int& max_x, int& max_y);
+extern void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h);
 #endif
 /*
 **	Command & Conquer(tm)
@@ -102,6 +103,15 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 {
 	static DirType direction;
 	bool				player_scrolled=false;
+#ifdef USE_RENDER_BRIDGE
+	extern void TD_SDL_Get_Raw_Mouse_Position(int& x, int& y);
+	int drag_x = x;
+	int drag_y = y;
+	TD_SDL_Get_Raw_Mouse_Position(drag_x, drag_y);
+#else
+	int drag_x = x;
+	int drag_y = y;
+#endif
 
 	/*
 	**	Middle mouse button drag scrolling.
@@ -112,8 +122,10 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 			IsMidDragging = false;
 		} else {
 			IsMidDragging = true;
-			MidDragAnchorX = x;
-			MidDragAnchorY = y;
+			// In bridge mode the gameplay mouse is projected into visible-world space.
+			// Middle-drag scrolling must instead anchor to stable raw screen motion.
+			MidDragAnchorX = drag_x;
+			MidDragAnchorY = drag_y;
 		}
 		input = KN_NONE;
 	}
@@ -121,8 +133,8 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 		if (!Keyboard::Down(KN_MMOUSE)) {
 			IsMidDragging = false;
 		} else {
-			int dx = x - MidDragAnchorX;
-			int dy = y - MidDragAnchorY;
+			int dx = drag_x - MidDragAnchorX;
+			int dy = drag_y - MidDragAnchorY;
 			if (dx != 0 || dy != 0) {
                                 #ifdef USE_RENDER_BRIDGE
                                 float zoom = Render_Get_World_Zoom();
@@ -159,8 +171,8 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 				IsToRedraw = true;
 				Flag_To_Redraw(false);
 
-				MidDragAnchorX = x;
-				MidDragAnchorY = y;
+				MidDragAnchorX = drag_x;
+				MidDragAnchorY = drag_y;
 			}
 		}
 		HelpClass::AI(input, x, y);
@@ -175,8 +187,19 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 		/*
 		**	Special check to not scroll within the special no-scroll regions.
 		*/
+#ifdef USE_RENDER_BRIDGE
+		int scr_w = 0, scr_h = 0;
+		Render_Bridge_Get_Logical_Screen_Size(scr_w, scr_h);
+		if (scr_w <= 0 || scr_h <= 0) {
+			scr_w = SeenBuff.Get_Width();
+			scr_h = SeenBuff.Get_Height();
+		}
+#else
+		int scr_w = SeenBuff.Get_Width();
+		int scr_h = SeenBuff.Get_Height();
+#endif
 		bool noscroll = false;
-		if (Special.IsScrollMod && y == 0 && ((x > 3 && x < EVA_WIDTH) || (x > SeenBuff.Get_Width()-EVA_WIDTH && x < SeenBuff.Get_Width()-3))) {
+		if (Special.IsScrollMod && y == 0 && ((x > 3 && x < EVA_WIDTH) || (x > scr_w-EVA_WIDTH && x < scr_w-3))) {
 			noscroll = true;
 		}
 
@@ -185,9 +208,9 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 			/*
 			**	Verify that the mouse is over a scroll region.
 			*/
-			if (Inertia || y == 0 || x == 0 || x == (SeenBuff.Get_Width()-1) || y == (SeenBuff.Get_Height()-1)) {
+			if (Inertia || y == 0 || x == 0 || x == (scr_w-1) || y == (scr_h-1)) {
 
-				if (y == 0 || x == 0 || x == (SeenBuff.Get_Width()-1) || y == (SeenBuff.Get_Height()-1)) {
+				if (y == 0 || x == 0 || x == (scr_w-1) || y == (scr_h-1)) {
 
 					player_scrolled=true;
 					/*
@@ -197,19 +220,19 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 					int altx = x;
 					if (altx < 50) altx -= (50-altx)*2;
 					altx = MAX(altx, 0);
-					if (altx > (SeenBuff.Get_Width()-50)) altx += (altx-(SeenBuff.Get_Width()-50))*2;
-					altx = MIN(altx, SeenBuff.Get_Width());
-					if (altx > 50 && altx < (SeenBuff.Get_Width()-50)) {
-						altx += ((SeenBuff.Get_Width()/2)-altx)/2;
+					if (altx > (scr_w-50)) altx += (altx-(scr_w-50))*2;
+					altx = MIN(altx, scr_w);
+					if (altx > 50 && altx < (scr_w-50)) {
+						altx += ((scr_w/2)-altx)/2;
 					}
 
 					int alty = y;
 					if (alty < 50) alty -= (50-alty);
 					alty = MAX(alty, 0);
-					if (alty > (SeenBuff.Get_Height()-50)) alty += ((alty-(SeenBuff.Get_Height()-50)));
-					alty = MIN(alty, SeenBuff.Get_Height());
+					if (alty > (scr_h-50)) alty += ((alty-(scr_h-50)));
+					alty = MIN(alty, scr_h);
 
-					direction = (DirType)Desired_Facing256((SeenBuff.Get_Width())/2, (SeenBuff.Get_Height())/2, altx, alty);
+					direction = (DirType)Desired_Facing256(scr_w/2, scr_h/2, altx, alty);
 				}
 				int control = Dir_Facing(direction);
 
