@@ -38,6 +38,12 @@ static int   g_screen_h     = 0;
 static float g_vp_x         = 0.0f;  // viewport offset in native buffer pixels
 static float g_vp_y         = 0.0f;
 static bool  g_user_zoomed  = false;
+static int   g_requested_tac_x = 0;
+static int   g_requested_tac_y = 0;
+static bool  g_have_requested_tac = false;
+static bool  g_explicit_tac_request = false;
+static int   g_last_requested_tac_x = 0;
+static int   g_last_requested_tac_y = 0;
 static float g_last_vp_target_x = 0.0f;
 static float g_last_vp_target_y = 0.0f;
 static int   g_last_scroll_dx_px = 0;
@@ -95,6 +101,7 @@ void Render_Bridge_Set_Screen_Size(int screen_w, int screen_h)
     g_screen_w = screen_w;
     g_screen_h = screen_h;
     g_user_zoomed = false;
+    g_have_requested_tac = false;
     refresh_default_zoom(false);
 
     DBG("zoom: range [%.1f, %.1f, %.1f] screen %dx%d",
@@ -125,40 +132,6 @@ static void clamp_viewport()
         if (g_vp_y < 0.0f) g_vp_y = 0.0f;
         if (g_vp_y + vis_h > nth) g_vp_y = nth - vis_h;
     }
-}
-
-/// Force viewport edges to follow tactical map edges exactly.
-static void apply_edge_constraints()
-{
-    extern int Render_Bridge_Get_Native_Tac_W();
-    extern int Render_Bridge_Get_Native_Tac_H();
-    int ntw = Render_Bridge_Get_Native_Tac_W();
-    int nth = Render_Bridge_Get_Native_Tac_H();
-    if (ntw <= 0 || nth <= 0) {
-        return;
-    }
-
-    float vis_w = 0.0f;
-    float vis_h = 0.0f;
-    Render_Bridge_Get_Visible_Size(vis_w, vis_h);
-    float vp_max_x = (static_cast<float>(ntw) > vis_w) ? static_cast<float>(ntw) - vis_w : 0.0f;
-    float vp_max_y = (static_cast<float>(nth) > vis_h) ? static_cast<float>(nth) - vis_h : 0.0f;
-
-    int clamp_w = Map.TacLeptonWidth;
-    int clamp_h = Map.TacLeptonHeight;
-    Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
-
-    int tac_x = Coord_X(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellX);
-    int tac_y = Coord_Y(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellY);
-    int range_x = Cell_To_Lepton(Map.MapCellWidth)  - clamp_w;
-    int range_y = Cell_To_Lepton(Map.MapCellHeight) - clamp_h;
-
-    if (tac_x <= 0) g_vp_x = 0.0f;
-    if (tac_y <= 0) g_vp_y = 0.0f;
-    if (range_x > 0 && tac_x >= range_x) g_vp_x = vp_max_x;
-    if (range_y > 0 && tac_y >= range_y) g_vp_y = vp_max_y;
-
-    clamp_viewport();
 }
 
 void Render_Bridge_Get_Visible_Size(float& w, float& h)
@@ -198,6 +171,8 @@ void Render_Bridge_Get_Visible_Size(float& w, float& h)
 
 void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h)
 {
+    extern int Render_Bridge_Get_Native_Tac_W();
+    extern int Render_Bridge_Get_Native_Tac_H();
     int native_w = Render_Bridge_Get_Native_Tac_W();
     int native_h = Render_Bridge_Get_Native_Tac_H();
     if (native_w <= 0 || native_h <= 0) {
@@ -219,27 +194,73 @@ void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h)
     }
 }
 
+static void get_visible_window_leptons(int& w, int& h)
+{
+    float vis_w = 0.0f;
+    float vis_h = 0.0f;
+    Render_Bridge_Get_Visible_Size(vis_w, vis_h);
+    if (vis_w <= 0.0f || vis_h <= 0.0f) {
+        w = Map.TacLeptonWidth;
+        h = Map.TacLeptonHeight;
+    } else {
+        w = Pixel_To_Lepton(static_cast<int>(std::ceil(vis_w)));
+        h = Pixel_To_Lepton(static_cast<int>(std::ceil(vis_h)));
+    }
+
+    int map_w = Cell_To_Lepton(Map.MapCellWidth);
+    int map_h = Cell_To_Lepton(Map.MapCellHeight);
+    if (w > map_w) w = map_w;
+    if (h > map_h) h = map_h;
+}
+
+static void clamp_requested_tac()
+{
+    int vis_w = Map.TacLeptonWidth;
+    int vis_h = Map.TacLeptonHeight;
+    get_visible_window_leptons(vis_w, vis_h);
+
+    int max_x = Cell_To_Lepton(Map.MapCellWidth) - vis_w;
+    int max_y = Cell_To_Lepton(Map.MapCellHeight) - vis_h;
+    if (max_x < 0) max_x = 0;
+    if (max_y < 0) max_y = 0;
+
+    if (g_requested_tac_x < 0) g_requested_tac_x = 0;
+    if (g_requested_tac_y < 0) g_requested_tac_y = 0;
+    if (g_requested_tac_x > max_x) g_requested_tac_x = max_x;
+    if (g_requested_tac_y > max_y) g_requested_tac_y = max_y;
+}
+
+void Render_Bridge_Record_Tactical_Request(int x, int y)
+{
+    g_requested_tac_x = x;
+    g_requested_tac_y = y;
+    g_have_requested_tac = true;
+    g_explicit_tac_request = true;
+    clamp_requested_tac();
+}
+
+void Render_Bridge_Record_Tactical_Request_Fallback(int x, int y)
+{
+    if (g_explicit_tac_request) {
+        return;
+    }
+    g_requested_tac_x = x;
+    g_requested_tac_y = y;
+    g_have_requested_tac = true;
+    clamp_requested_tac();
+}
+
+void Render_Bridge_Get_Requested_Tactical_Position(int& x, int& y)
+{
+    x = g_requested_tac_x;
+    y = g_requested_tac_y;
+}
+
 // Track TacticalCoord and TacLeptonWidth for viewport adjustment
 static int g_last_tac_coord_x = -1;
 static int g_last_tac_coord_y = -1;
 static int g_last_tac_lepton_w = 0;
 static int g_last_tac_lepton_h = 0;
-
-/// Compute proportional viewport target from TacticalCoord position.
-///
-/// Maps TacticalCoord's fraction through its scroll range to a viewport
-/// offset that gives edge-to-edge map coverage:
-///   tac at min → vp = 0
-///   tac at max → vp = viewport_max
-static float proportional_vp(int tac_pos, int tac_range, float viewport_max)
-{
-    if (tac_range <= 0) return 0.0f;
-    float frac = static_cast<float>(tac_pos) / tac_range;
-    if (frac < 0.0f) frac = 0.0f;
-    if (frac > 1.0f) frac = 1.0f;
-    if (viewport_max <= 0.0f) return 0.0f;
-    return frac * viewport_max;
-}
 
 static bool apply_zoom_at_point(float new_zoom, int screen_x, int screen_y)
 {
@@ -285,6 +306,12 @@ static bool apply_zoom_at_point(float new_zoom, int screen_x, int screen_y)
     g_vp_x = mouse_native_x - frac_x * new_vis_w;
     g_vp_y = mouse_native_y - frac_y * new_vis_h;
 
+    if (!g_have_requested_tac) {
+        g_requested_tac_x = Coord_X(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellX);
+        g_requested_tac_y = Coord_Y(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellY);
+        g_have_requested_tac = true;
+    }
+    clamp_requested_tac();
     clamp_viewport();
     return true;
 }
@@ -330,6 +357,18 @@ void Render_Bridge_Apply_Scroll_Zoom()
     g_last_tac_lepton_w = cur_tac_lw;
     g_last_tac_lepton_h = cur_tac_lh;
 
+    if (!g_have_requested_tac) {
+        g_requested_tac_x = cur_tac_x - Cell_To_Lepton(Map.MapCellX);
+        g_requested_tac_y = cur_tac_y - Cell_To_Lepton(Map.MapCellY);
+        g_have_requested_tac = true;
+    }
+    clamp_requested_tac();
+    bool requested_changed =
+        (g_requested_tac_x != g_last_requested_tac_x) ||
+        (g_requested_tac_y != g_last_requested_tac_y);
+    g_last_requested_tac_x = g_requested_tac_x;
+    g_last_requested_tac_y = g_requested_tac_y;
+
     // Handle mouse-wheel zoom (pivot on cursor position)
     float delta = g_scroll_zoom_delta;
     g_scroll_zoom_delta = 0.0f;
@@ -353,39 +392,34 @@ void Render_Bridge_Apply_Scroll_Zoom()
         }
     }
 
-    // Proportional viewport tracking: when TacticalCoord changes (scroll,
-    // MMB drag, minimap) or sidebar toggles, set the viewport so the full
-    // map is reachable edge-to-edge. Skip on the zoom frame — the pivot
-    // position is correct for that instant.
-    if (!zoomed && (tac_changed || layout_changed || jumped)) {
+    // Track the requested visible world origin against the native tactical
+    // replay origin. TacticalCoord is clamped to the native replay size,
+    // while g_requested_tac_* tracks the actual visible window position.
+    if (!zoomed && (tac_changed || layout_changed || jumped || requested_changed)) {
         int ntw = Render_Bridge_Get_Native_Tac_W();
         int nth = Render_Bridge_Get_Native_Tac_H();
         if (ntw > 0 && nth > 0) {
             float vis_w = 0.0f;
             float vis_h = 0.0f;
             Render_Bridge_Get_Visible_Size(vis_w, vis_h);
-
-            int clamp_w = Map.TacLeptonWidth;
-            int clamp_h = Map.TacLeptonHeight;
-            Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
-
             int tac_x = cur_tac_x - Cell_To_Lepton(Map.MapCellX);
             int tac_y = cur_tac_y - Cell_To_Lepton(Map.MapCellY);
-            int range_x = Cell_To_Lepton(Map.MapCellWidth)  - clamp_w;
-            int range_y = Cell_To_Lepton(Map.MapCellHeight) - clamp_h;
-
             float vp_max_x = (static_cast<float>(ntw) > vis_w) ? static_cast<float>(ntw) - vis_w : 0.0f;
             float vp_max_y = (static_cast<float>(nth) > vis_h) ? static_cast<float>(nth) - vis_h : 0.0f;
-
-            g_last_vp_target_x = proportional_vp(tac_x, range_x, vp_max_x);
-            g_last_vp_target_y = proportional_vp(tac_y, range_y, vp_max_y);
+            g_last_vp_target_x = static_cast<float>(Lepton_To_Pixel(g_requested_tac_x - tac_x));
+            g_last_vp_target_y = static_cast<float>(Lepton_To_Pixel(g_requested_tac_y - tac_y));
+            if (g_last_vp_target_x < 0.0f) g_last_vp_target_x = 0.0f;
+            if (g_last_vp_target_y < 0.0f) g_last_vp_target_y = 0.0f;
+            if (g_last_vp_target_x > vp_max_x) g_last_vp_target_x = vp_max_x;
+            if (g_last_vp_target_y > vp_max_y) g_last_vp_target_y = vp_max_y;
             g_vp_x = g_last_vp_target_x;
             g_vp_y = g_last_vp_target_y;
 
             clamp_viewport();
-            apply_edge_constraints();
         }
     }
+
+    g_explicit_tac_request = false;
 }
 
 void Render_Bridge_Zoom_At(float new_zoom, int cx, int cy)

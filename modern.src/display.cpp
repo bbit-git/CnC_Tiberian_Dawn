@@ -20,6 +20,9 @@
 #ifdef USE_RENDER_BRIDGE
 extern void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
 extern bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& mapped_x, int& mapped_y);
+extern void Render_Bridge_Record_Tactical_Request(int x, int y);
+extern void Render_Bridge_Record_Tactical_Request_Fallback(int x, int y);
+extern void Render_Bridge_Get_Requested_Tactical_Position(int& x, int& y);
 #endif
 /***********************************************************************************************
  ***             C O N F I D E N T I A L  ---  W E S T W O O D   S T U D I O S               ***
@@ -1390,20 +1393,47 @@ bool DisplayClass::Scroll_Map(DirType facing, int & distance, bool really)
 	*/
 	if (distance == 0) return(false);
 	FacingType crude = Dir_Facing(facing);
+	#ifdef USE_RENDER_BRIDGE
+	int edge_w = TacLeptonWidth;
+	int edge_h = TacLeptonHeight;
+	Render_Bridge_Get_Visible_Size_Leptons(edge_w, edge_h);
+	int req_x = 0;
+	int req_y = 0;
+	Render_Bridge_Get_Requested_Tactical_Position(req_x, req_y);
+	#else
+	int edge_w = TacLeptonWidth;
+	int edge_h = TacLeptonHeight;
+	#endif
 
+	#ifdef USE_RENDER_BRIDGE
+	if (req_x <= 0 && crude != FACING_W) {
+	#else
 	if (Coord_X(TacticalCoord) == Cell_To_Lepton(MapCellX) && crude != FACING_W) {
+	#endif
 		if (crude == FACING_SW) facing = DIR_S;
 		if (crude == FACING_NW) facing = DIR_N;
 	}
+	#ifdef USE_RENDER_BRIDGE
+	if (req_y <= 0 && crude != FACING_N) {
+	#else
 	if (Coord_Y(TacticalCoord) == Cell_To_Lepton(MapCellY) && crude != FACING_N) {
+	#endif
 		if (crude == FACING_NW) facing = DIR_W;
 		if (crude == FACING_NE) facing = DIR_E;
 	}
-	if (Coord_X(TacticalCoord) + TacLeptonWidth == Cell_To_Lepton(MapCellX+MapCellWidth) && crude != FACING_E) {
+	#ifdef USE_RENDER_BRIDGE
+	if (req_x + edge_w >= Cell_To_Lepton(MapCellWidth) && crude != FACING_E) {
+	#else
+	if (Coord_X(TacticalCoord) + edge_w == Cell_To_Lepton(MapCellX+MapCellWidth) && crude != FACING_E) {
+	#endif
 		if (crude == FACING_NE) facing = DIR_N;
 		if (crude == FACING_SE) facing = DIR_S;
 	}
-	if (Coord_Y(TacticalCoord) + TacLeptonHeight == Cell_To_Lepton(MapCellY+MapCellHeight) && crude != FACING_S) {
+	#ifdef USE_RENDER_BRIDGE
+	if (req_y + edge_h >= Cell_To_Lepton(MapCellHeight) && crude != FACING_S) {
+	#else
+	if (Coord_Y(TacticalCoord) + edge_h == Cell_To_Lepton(MapCellY+MapCellHeight) && crude != FACING_S) {
+	#endif
 		if (crude == FACING_SE) facing = DIR_E;
 		if (crude == FACING_SW) facing = DIR_W;
 	}
@@ -1411,7 +1441,12 @@ bool DisplayClass::Scroll_Map(DirType facing, int & distance, bool really)
 	/*
 	**	Determine the coordinate that it wants to scroll to.
 	*/
+	#ifdef USE_RENDER_BRIDGE
+	COORDINATE coord = Coord_Move(XY_Coord(req_x + Cell_To_Lepton(MapCellX),
+	                                      req_y + Cell_To_Lepton(MapCellY)), facing, distance);
+	#else
 	COORDINATE coord = Coord_Move(TacticalCoord, facing, distance);
+	#endif
 
 	/*
 	**	Clip the new coordinate to the edges of the game world.
@@ -1419,6 +1454,7 @@ bool DisplayClass::Scroll_Map(DirType facing, int & distance, bool really)
 	int xx = Coord_X(coord) - Cell_To_Lepton(MapCellX);
 	int yy = Coord_Y(coord) - Cell_To_Lepton(MapCellY);
 	#ifdef USE_RENDER_BRIDGE
+	Render_Bridge_Record_Tactical_Request(xx, yy);
 	int clamp_w = TacLeptonWidth;
 	int clamp_h = TacLeptonHeight;
 	Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
@@ -2737,14 +2773,26 @@ CELL DisplayClass::Calculated_Cell(SourceType dir, HousesType house)
  *=============================================================================================*/
 void DisplayClass::Select_These(COORDINATE coord1, COORDINATE coord2)
 {
+	int x1, y1, x2, y2;
+#ifdef USE_RENDER_BRIDGE
+	x1 = Coord_X(coord1);
+	y1 = Coord_Y(coord1);
+	x2 = Coord_X(coord2);
+	y2 = Coord_Y(coord2);
+	coord1 = Pixel_To_Coord(TacPixelX + x1, TacPixelY + y1);
+	coord2 = Pixel_To_Coord(TacPixelX + x2, TacPixelY + y2);
+	if (!coord1 || !coord2) {
+		return;
+	}
+#else
 	COORDINATE tcoord = TacticalCoord;	//Cell_Coord(TacticalCell) & 0xFF00FF00L;
-
 	coord1 = Coord_Add(tcoord, coord1);
 	coord2 = Coord_Add(tcoord, coord2);
-	int x1 = Coord_X(coord1);
-	int x2 = Coord_X(coord2);
-	int y1 = Coord_Y(coord1);
-	int y2 = Coord_Y(coord2);
+#endif
+	x1 = Coord_X(coord1);
+	x2 = Coord_X(coord2);
+	y1 = Coord_Y(coord1);
+	y2 = Coord_Y(coord2);
 
 	/*
 	**	Ensure that coordinate number one represents the upper left corner
@@ -3629,6 +3677,9 @@ void DisplayClass::Set_Tactical_Position(COORDINATE coord)
 	*/
 	int xx = Coord_X(coord) - Cell_To_Lepton(MapCellX);
 	int yy = Coord_Y(coord) - Cell_To_Lepton(MapCellY);
+#ifdef USE_RENDER_BRIDGE
+	Render_Bridge_Record_Tactical_Request_Fallback(xx, yy);
+#endif
 
 	// DBG("Set_Tactical: xx=%d yy=%d TacW=%d TacH=%d MapW=%d MapH=%d MapX=%d MapY=%d",
 	// 	xx, yy, (int)TacLeptonWidth, (int)TacLeptonHeight,

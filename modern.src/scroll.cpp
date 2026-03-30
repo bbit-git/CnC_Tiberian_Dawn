@@ -1,6 +1,8 @@
 #ifdef USE_RENDER_BRIDGE
 extern float Render_Get_World_Zoom();
 extern void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
+extern void Render_Bridge_Record_Tactical_Request(int x, int y);
+extern void Render_Bridge_Get_Requested_Tactical_Position(int& x, int& y);
 #endif
 /*
 **	Command & Conquer(tm)
@@ -123,8 +125,11 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 			if (dx != 0 || dy != 0) {
                                 #ifdef USE_RENDER_BRIDGE
                                 float zoom = Render_Get_World_Zoom();
-                                int cur_x = (int)Coord_X(TacticalCoord) - Pixel_To_Lepton(static_cast<float>(dx) / zoom);
-                                int cur_y = (int)Coord_Y(TacticalCoord) - Pixel_To_Lepton(static_cast<float>(dy) / zoom);
+                                int req_x = 0;
+                                int req_y = 0;
+                                Render_Bridge_Get_Requested_Tactical_Position(req_x, req_y);
+                                int cur_x = req_x + Cell_To_Lepton(MapCellX) - Pixel_To_Lepton(static_cast<float>(dx) / zoom);
+                                int cur_y = req_y + Cell_To_Lepton(MapCellY) - Pixel_To_Lepton(static_cast<float>(dy) / zoom);
                                 #else
                                 int cur_x = (int)Coord_X(TacticalCoord) - Pixel_To_Lepton(dx);
                                 int cur_y = (int)Coord_Y(TacticalCoord) - Pixel_To_Lepton(dy);
@@ -135,6 +140,8 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 				int min_x = Cell_To_Lepton(MapCellX);
 				int min_y = Cell_To_Lepton(MapCellY);
 				#ifdef USE_RENDER_BRIDGE
+				Render_Bridge_Record_Tactical_Request(cur_x - Cell_To_Lepton(MapCellX),
+				                                     cur_y - Cell_To_Lepton(MapCellY));
 				int clamp_w = TacLeptonWidth;
 				int clamp_h = TacLeptonHeight;
 				Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
@@ -320,4 +327,3 @@ bool ScrollClass::Set_Autoscroll(int control)
 	}
 	return(old);
 }
-

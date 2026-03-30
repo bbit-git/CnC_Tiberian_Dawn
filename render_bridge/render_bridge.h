@@ -52,12 +52,21 @@ RenderCompositor* Render_Bridge_Get_Compositor();
 /// Apply accumulated mouse scroll zoom delta (centered on cursor). Call once per frame.
 void Render_Bridge_Apply_Scroll_Zoom();
 
-/// Transform g_mouse_x/y from screen space to source tactical space.
+/// Refresh g_mouse_x/y from raw tactical screen space for bridge input handling.
 /// Call after Apply_Scroll_Zoom, before the game reads mouse position.
 void Render_Bridge_Transform_Mouse();
 
 /// Map a tactical screen-space point into the bridge-visible source space.
 bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& mapped_x, int& mapped_y);
+
+/// Record the requested tactical world origin before legacy native-size clamping.
+void Render_Bridge_Record_Tactical_Request(int x, int y);
+
+/// Record tactical world origin only if no explicit bridge request is pending.
+void Render_Bridge_Record_Tactical_Request_Fallback(int x, int y);
+
+/// Get the requested visible world origin in map-relative pixels.
+void Render_Bridge_Get_Requested_Tactical_Position(int& x, int& y);
 
 /// Zoom to a specific level centered on a screen-space point (for pinch zoom).
 void Render_Bridge_Zoom_At(float new_zoom, int center_x, int center_y);
@@ -75,7 +84,7 @@ float Render_Bridge_Get_Viewport_Y();
 /// Visible region size in native tactical pixels after zoom/aspect fitting.
 void Render_Bridge_Get_Visible_Size(float& w, float& h);
 
-/// Get the native tactical world size in lepton space for bridge-aware clamps.
+/// Get the native tactical replay size in lepton space for bridge-aware clamps.
 void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
 
 /// Dump current render-bridge HUD stats to the debug log.
