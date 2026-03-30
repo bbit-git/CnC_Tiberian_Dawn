@@ -24,6 +24,16 @@ static constexpr uint8_t READY_R = 0, READY_G = 255, READY_B = 0;
 static constexpr uint8_t BUILDING_R = 200, BUILDING_G = 200, BUILDING_B = 0;
 static constexpr uint8_t SCROLL_R = 120, SCROLL_G = 120, SCROLL_B = 120;
 
+static int scale_x_from_legacy(int value, float sx)
+{
+    return static_cast<int>(value * sx);
+}
+
+static int scale_y_from_legacy(int value, float sy)
+{
+    return static_cast<int>(value * sy);
+}
+
 /// Emit one production slot outline and label.
 static void emit_slot(int x, int y, int w, int h, int slot_index,
                       const SidebarClass::StripClass& strip)
@@ -121,23 +131,35 @@ void UI_Sidebar_Emit()
     if (!InMainLoop) return;
     if (!Map.IsSidebarActive) return;
 
-    int side_x = Map.SideX;
-    int side_w = Map.SideBarWidth;
-    int buf_h  = SeenBuff.Get_Height();
+    int side_x = 0, side_y = 0, side_w = 0, side_h = 0;
+    Render_Bridge_Get_Sidebar_Rect(side_x, side_y, side_w, side_h);
     if (side_w <= 0) return;
 
-    int factor = (SeenBuff.Get_Width() > 400) ? 2 : 1;
+    int base_w = SeenBuff.Get_Width();
+    int base_h = SeenBuff.Get_Height();
+    int logical_w = 0;
+    int logical_h = 0;
+    Render_Bridge_Get_Logical_Screen_Size(logical_w, logical_h);
+    float sx = (base_w > 0) ? static_cast<float>(logical_w) / static_cast<float>(base_w) : 1.0f;
+    float sy = (base_h > 0) ? static_cast<float>(logical_h) / static_cast<float>(base_h) : 1.0f;
+    int factor = (logical_w > 800) ? 2 : 1;
 
     // Keep the legacy sidebar chrome visible and only tint it lightly until
     // cameo art, radar chrome, and button art are fully native.
-    g_ui_draw_list.Fill_Rect(side_x, 0, side_w, buf_h,
+    g_ui_draw_list.Fill_Rect(side_x, side_y, side_w, side_h,
                              24, 24, 24, 56);
-    g_ui_draw_list.Fill_Rect(side_x, 0, 1, buf_h,
+    g_ui_draw_list.Fill_Rect(side_x, side_y, 1, side_h,
                              84, 84, 84, 220);
 
     // Emit each production column
     for (int c = 0; c < 2; c++) {
-        const SidebarClass::StripClass& strip = Map.Column[c];
+        SidebarClass::StripClass strip = Map.Column[c];
+        strip.X = scale_x_from_legacy(strip.X, sx);
+        strip.Y = scale_y_from_legacy(strip.Y, sy);
+        strip.ObjectWidth = scale_x_from_legacy(strip.ObjectWidth, sx);
+        strip.ObjectHeight = scale_y_from_legacy(strip.ObjectHeight, sy);
+        strip.StripWidth = scale_x_from_legacy(strip.StripWidth, sx);
+        strip.LeftEdgeOffset = scale_x_from_legacy(strip.LeftEdgeOffset, sx);
         if (strip.BuildableCount > 0 || true) {
             emit_column(strip, factor);
         }
@@ -145,7 +167,7 @@ void UI_Sidebar_Emit()
 
     // Repair/Sell/Map buttons area (below radar, above columns)
     // These are drawn as simple labeled boxes for now
-    int btn_y = Map.RadY + Map.RadHeight + 2;
+    int btn_y = scale_y_from_legacy(Map.RadY + Map.RadHeight + 2, sy);
     int btn_w = side_w / 3;
     int btn_h = 10 * factor;
 

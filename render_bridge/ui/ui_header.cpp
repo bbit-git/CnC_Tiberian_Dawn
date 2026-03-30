@@ -18,20 +18,20 @@ void UI_Header_Emit()
     extern bool InMainLoop;
     if (!InMainLoop) return;
 
-    int tab_h = Map.Get_Tab_Height();
+    int hdr_x = 0, hdr_y = 0, hdr_w = 0, hdr_h = 0;
+    Render_Bridge_Get_Header_Rect(hdr_x, hdr_y, hdr_w, hdr_h);
+    int tab_h = hdr_h;
     if (tab_h <= 0) return;
-
-    int buf_w = SeenBuff.Get_Width();
 
     // Keep the legacy header chrome visible until the native tab art is
     // fully replaced. The bridge overlay only adds light accents and text.
-    g_ui_draw_list.Fill_Rect(0, tab_h - 1, buf_w, 1,
+    g_ui_draw_list.Fill_Rect(hdr_x, hdr_y + tab_h - 1, hdr_w, 1,
                              56, 56, 56, 180);
 
     // Credits display — right side
     int eva_w = 80;
-    if (buf_w > 400) eva_w = 160;
-    int credits_x = buf_w - eva_w;
+    if (hdr_w > 800) eva_w = 160;
+    int credits_x = hdr_x + hdr_w - eva_w;
 
     char credits_buf[32];
     long credits_val = PlayerPtr ? PlayerPtr->Available_Money() : 0;
@@ -41,7 +41,7 @@ void UI_Header_Emit()
                                         static_cast<int>(strlen(credits_buf)));
     int text_h = UI_Text_Line_Height(UI_FONT_6PT);
     int tx = credits_x + (eva_w - text_w) / 2;
-    int ty = (tab_h - text_h) / 2;
+    int ty = hdr_y + (tab_h - text_h) / 2;
 
     // Credits label with light shadow to match the legacy top bar better.
     g_ui_draw_list.Draw_Text(tx + 1, ty + 1, credits_buf, UI_FONT_6PT,

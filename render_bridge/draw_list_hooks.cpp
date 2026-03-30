@@ -19,7 +19,7 @@
 
 namespace {
 
-/// Return the tactical screen rect captured before native expansion.
+/// Return the legacy tactical record rect used while HidPage primitives are captured.
 void get_record_tactical_rect(int& x, int& y, int& w, int& h)
 {
     Render_Bridge_Get_Record_Tactical_Rect(x, y, w, h);

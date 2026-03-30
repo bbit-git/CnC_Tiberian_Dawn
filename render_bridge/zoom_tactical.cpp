@@ -82,8 +82,14 @@ void Render_Bridge_Begin_Draw_List()
     g_draw_list.Clear();
     g_draw_list.SetRecording(true);
 
-    Render_Bridge_Get_Tactical_Rect(g_record_tac_x, g_record_tac_y,
-                                    g_record_tac_w, g_record_tac_h);
+    // Draw-list capture still happens in the legacy HidPage / tactical viewport
+    // coordinate space. Presentation may promote the tactical rect later, but
+    // recording and native replay expansion must use the real buffer-space
+    // tactical window or the native texture will only be partially populated.
+    g_record_tac_x = Map.TacPixelX;
+    g_record_tac_y = Map.TacPixelY;
+    g_record_tac_w = WindowList[WINDOW_TACTICAL][WINDOWWIDTH] << 3;
+    g_record_tac_h = WindowList[WINDOW_TACTICAL][WINDOWHEIGHT];
 
     extern bool InMainLoop;
     if (!InMainLoop || !GL_Present_Is_Active()) return;

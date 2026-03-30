@@ -442,8 +442,10 @@ void GL_Primitives_Render_Source_Overlay(int win_w, int win_h,
     glDisable(GL_BLEND);
 }
 
-/// Render diagnostic rectangles for tactical layout, viewport, and clamp zones.
+/// Render diagnostic rectangles for fitted buffer layout, tactical layout, viewport, and clamp zones.
 void GL_Primitives_Render_Debug_Overlay(int win_w, int win_h,
+                                        int game_screen_x, int game_screen_y,
+                                        int game_screen_w, int game_screen_h,
                                         int header_screen_h,
                                         int tac_screen_x, int tac_screen_y,
                                         int tac_screen_w, int tac_screen_h,
@@ -470,6 +472,7 @@ void GL_Primitives_Render_Debug_Overlay(int win_w, int win_h,
     tris.reserve(96);
     lines.reserve(128);
 
+    const float seen_r = 0.65f, seen_g = 0.20f, seen_b = 1.00f;
     const float tac_r = 0.10f, tac_g = 1.00f, tac_b = 0.10f;
     const float vp_r = 0.10f, vp_g = 1.00f, vp_b = 1.00f;
     const float header_r = 1.00f, header_g = 1.00f, header_b = 0.10f;
@@ -479,6 +482,15 @@ void GL_Primitives_Render_Debug_Overlay(int win_w, int win_h,
     const float zone_r = 1.00f, zone_g = 0.60f, zone_b = 0.12f;
     const float raw_r = 1.00f, raw_g = 0.75f, raw_b = 0.10f;
     const float shroud_r = 1.00f, shroud_g = 0.15f, shroud_b = 0.95f;
+
+    if (game_screen_w > 0 && game_screen_h > 0) {
+        push_outline(lines,
+                     static_cast<float>(game_screen_x) + 0.5f,
+                     static_cast<float>(game_screen_y) + 0.5f,
+                     static_cast<float>(game_screen_x + game_screen_w) - 0.5f,
+                     static_cast<float>(game_screen_y + game_screen_h) - 0.5f,
+                     seen_r, seen_g, seen_b, 1.0f);
+    }
 
     if (header_screen_h > 0) {
         push_outline(lines, 0.5f, 0.5f,

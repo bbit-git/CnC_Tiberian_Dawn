@@ -10,6 +10,7 @@
 #include "ui_draw_list.h"
 #include "ui_text.h"
 #include "ui_controls.h"
+#include "render_bridge.h"
 #include "function.h"
 #include "msglist.h"
 #include "txtlabel.h"
@@ -53,14 +54,22 @@ void emit_shadowed_text(const TextLabelClass& label)
 {
     if (!label.Text || !label.Text[0]) return;
 
+    int logical_w = 0;
+    int logical_h = 0;
+    Render_Bridge_Get_Logical_Screen_Size(logical_w, logical_h);
+    int base_w = SeenBuff.Get_Width();
+    int base_h = SeenBuff.Get_Height();
+    float sx = (base_w > 0 && logical_w > 0) ? static_cast<float>(logical_w) / static_cast<float>(base_w) : 1.0f;
+    float sy = (base_h > 0 && logical_h > 0) ? static_cast<float>(logical_h) / static_cast<float>(base_h) : 1.0f;
+
     UIFontID font = map_font(label.Style);
     uint8_t r = 255, g = 255, b = 255;
     map_color(label.Color, r, g, b);
 
     int len = static_cast<int>(strlen(label.Text));
-    int x = label.X;
-    int y = label.Y;
-    int max_width = label.PixWidth;
+    int x = static_cast<int>(label.X * sx);
+    int y = static_cast<int>(label.Y * sy);
+    int max_width = static_cast<int>(label.PixWidth * sx);
     UIAlign align = UI_ALIGN_LEFT;
     if (label.Style & TPF_CENTER) align = UI_ALIGN_CENTER;
     else if (label.Style & TPF_RIGHT) align = UI_ALIGN_RIGHT;
