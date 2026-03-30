@@ -56,14 +56,47 @@ void Render_Bridge_Apply_Scroll_Zoom();
 /// Call after Apply_Scroll_Zoom, before the game reads mouse position.
 void Render_Bridge_Transform_Mouse();
 
+/// Map a tactical screen-space point into the bridge-visible source space.
+bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& mapped_x, int& mapped_y);
+
 /// Zoom to a specific level centered on a screen-space point (for pinch zoom).
 void Render_Bridge_Zoom_At(float new_zoom, int center_x, int center_y);
 
 /// Current zoom level (1.0 = normal, >1.0 = zoomed in).
 float Render_Bridge_Get_Zoom_Level();
 
+/// Get the startup/default zoom level derived from the current setup.
+float Render_Bridge_Get_Default_Zoom();
+
 /// Viewport offset in source tactical pixels (top-left of visible region).
 float Render_Bridge_Get_Viewport_X();
 float Render_Bridge_Get_Viewport_Y();
+
+/// Visible region size in native tactical pixels after zoom/aspect fitting.
+void Render_Bridge_Get_Visible_Size(float& w, float& h);
+
+/// Get the effective visible world size in lepton space for bridge-aware clamps.
+void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
+
+/// Dump current render-bridge HUD stats to the debug log.
+void Render_Bridge_Debug_Dump();
+
+/// Toggle the render-bridge debug HUD visibility.
+void Render_Bridge_Debug_HUD_Toggle();
+
+/// Return whether the render-bridge debug HUD is visible.
+bool Render_Bridge_Debug_HUD_Enabled();
+
+/// Toggle the render-bridge debug overlay bars and boxes visibility.
+void Render_Bridge_Debug_Bars_Toggle();
+
+/// Return whether the render-bridge debug overlay bars and boxes are visible.
+bool Render_Bridge_Debug_Bars_Enabled();
+
+/// Get the last proportional viewport target in native tactical pixels.
+void Render_Bridge_Get_Viewport_Target(float& x, float& y);
+
+/// Get the last TacticalCoord delta in pixels.
+void Render_Bridge_Get_Scroll_Delta(int& x, int& y);
 
 #endif // CNC_RENDER_BRIDGE_H

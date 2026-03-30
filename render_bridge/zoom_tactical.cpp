@@ -121,6 +121,13 @@ static void replay_world()
             LogicPage->Draw_Stamp(cmd.stamp.icondata, cmd.stamp.icon,
                                    cmd.stamp.x, cmd.stamp.y, cmd.stamp.remap, cmd.stamp.window);
         } else if (cmd.type == CMD_SHAPE) {
+#ifdef USE_RENDER_BRIDGE_GL_SPRITES
+            extern bool GL_Present_Is_Active();
+            extern bool GL_Sprites_Should_Skip_CPU(const ShapeCmd& cmd);
+            if (GL_Present_Is_Active() && GL_Sprites_Should_Skip_CPU(cmd.shape)) {
+                continue;
+            }
+#endif
             CC_Draw_Shape(cmd.shape.shapefile, cmd.shape.shapenum, cmd.shape.x, cmd.shape.y,
                           static_cast<WindowNumberType>(cmd.shape.window),
                           static_cast<ShapeFlags_Type>(cmd.shape.flags),
@@ -182,19 +189,19 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
 
     bool use_gl = GL_Present_Is_Active();
     float zoom = Render_Bridge_Get_Zoom_Level();
-    float default_zoom = 1.0f;
-    { extern float Render_Bridge_Get_Default_Zoom(); default_zoom = Render_Bridge_Get_Default_Zoom(); }
 
     if (use_gl) {
-        // Always use native buffer when GL is active — the tactical viewport
-        // is native-sized (more cells than 712x400 buffer provides).
-        int native_w = 0, native_h = 0;
-        get_native_tactical(native_w, native_h);
-
         int tac_w = Lepton_To_Pixel(Map.TacLeptonWidth);
         int tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
+        int native_w = 0;
+        int native_h = 0;
+        get_native_tactical(native_w, native_h);
+        if (native_w <= 0 || native_h <= 0) {
+            native_w = tac_w;
+            native_h = tac_h;
+        }
 
-        bool use_native = (native_w > tac_w || native_h > tac_h) && native_w > 0;
+        bool use_native = native_w > 0 && native_h > 0;
 
         if (use_native) {
             // NATIVE PATH: replay to native-sized buffer, upload to GL
@@ -227,9 +234,9 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
             WindowList[WINDOW_TACTICAL][WINDOWWIDTH] = native_w >> 3;
             WindowList[WINDOW_TACTICAL][WINDOWHEIGHT] = native_h;
 
-            // Replay to native buffer
+            // Replay to native buffer. In GL mode, overlays are rendered later
+            // as GL primitives so the native texture contains only the world.
             replay_world();
-            replay_overlays();
 
             // Restore
             Set_Logic_Page(*saved_logic);
