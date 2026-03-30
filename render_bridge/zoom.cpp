@@ -57,6 +57,17 @@ static float g_last_vp_target_y = 0.0f;
 static int   g_last_scroll_dx_px = 0;
 static int   g_last_scroll_dy_px = 0;
 
+// --- Bridge-owned screen layout cache ---
+// Refreshed each frame from game state. All callers go through bridge accessors.
+static struct {
+    int logical_w, logical_h;       // bridge-owned gameplay logical screen size
+    int header_x, header_y, header_w, header_h;
+    int sidebar_x, sidebar_y, sidebar_w, sidebar_h;
+    int tactical_x, tactical_y, tactical_w, tactical_h;
+    int native_world_w, native_world_h;
+    bool valid;
+} g_layout = {};
+
 void Render_Bridge_Get_Screen_Size(int& w, int& h) { w = g_screen_w; h = g_screen_h; }
 
 /// Compute the startup zoom from the classic 640x400 high-resolution baseline.
@@ -114,6 +125,8 @@ void Render_Bridge_Set_Screen_Size(int screen_w, int screen_h)
 
     DBG("zoom: range [%.1f, %.1f, %.1f] screen %dx%d",
         ZOOM_MIN, g_zoom_default, g_zoom_max, screen_w, screen_h);
+
+    Render_Bridge_Refresh_Layout();
 }
 
 static void clamp_viewport()
@@ -338,6 +351,7 @@ void Render_Bridge_Apply_Scroll_Zoom()
     extern bool InMainLoop;
     if (!InMainLoop) return;
 
+    Render_Bridge_Refresh_Layout();
     refresh_default_zoom(true);
 
     extern int Render_Bridge_Get_Native_Tac_W();
@@ -457,8 +471,15 @@ void Render_Bridge_Transform_Mouse()
     int raw_y = 0;
     TD_SDL_Get_Raw_Mouse_Position(raw_x, raw_y);
 
-    g_mouse_x = raw_x;
-    g_mouse_y = raw_y;
+    // Always remap the mouse through the bridge tactical geometry so gameplay
+    // input reads from the bridge-visible world window rather than the old
+    // small-buffer tactical model. Outside the tactical rect the raw position
+    // passes through unchanged.
+    int mapped_x = raw_x;
+    int mapped_y = raw_y;
+    Render_Bridge_Map_Tactical_Point(raw_x, raw_y, mapped_x, mapped_y);
+    g_mouse_x = mapped_x;
+    g_mouse_y = mapped_y;
 }
 
 bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& mapped_x, int& mapped_y)
@@ -499,24 +520,110 @@ bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& mapped_x,
     int transformed_x = tac_x + static_cast<int>(g_vp_x + frac_x * vis_w);
     int transformed_y = tac_y + static_cast<int>(g_vp_y + frac_y * vis_h);
 
+    int clamp_w = 0;
+    int clamp_h = 0;
+    Render_Bridge_Get_Logical_Screen_Size(clamp_w, clamp_h);
+    if (clamp_w <= 0 || clamp_h <= 0) {
+        clamp_w = ScreenWidth;
+        clamp_h = ScreenHeight;
+    }
     if (transformed_x < 0) transformed_x = 0;
     if (transformed_y < 0) transformed_y = 0;
-    if (transformed_x >= ScreenWidth) transformed_x = ScreenWidth - 1;
-    if (transformed_y >= ScreenHeight) transformed_y = ScreenHeight - 1;
+    if (transformed_x >= clamp_w) transformed_x = clamp_w - 1;
+    if (transformed_y >= clamp_h) transformed_y = clamp_h - 1;
 
     mapped_x = transformed_x;
     mapped_y = transformed_y;
     return true;
 }
 
-// --- Bridge-owned tactical geometry (Phase 1) ---
+// --- Bridge-owned screen layout (Phase 1: Geometry Authority) ---
+
+void Render_Bridge_Refresh_Layout()
+{
+    extern int Render_Bridge_Get_Native_Tac_W();
+    extern int Render_Bridge_Get_Native_Tac_H();
+
+    int base_w = SeenBuff.Get_Width();
+    int base_h = SeenBuff.Get_Height();
+    if (base_w <= 0) base_w = ScreenWidth;
+    if (base_h <= 0) base_h = ScreenHeight;
+
+    g_layout.logical_w = (g_screen_w > 0) ? g_screen_w : base_w;
+    g_layout.logical_h = (g_screen_h > 0) ? g_screen_h : base_h;
+
+    float sx = (base_w > 0) ? static_cast<float>(g_layout.logical_w) / static_cast<float>(base_w) : 1.0f;
+    float sy = (base_h > 0) ? static_cast<float>(g_layout.logical_h) / static_cast<float>(base_h) : 1.0f;
+
+    g_layout.tactical_x = static_cast<int>(std::round(Map.TacPixelX * sx));
+    g_layout.tactical_y = static_cast<int>(std::round(Map.TacPixelY * sy));
+    g_layout.tactical_w = static_cast<int>(std::round((WindowList[WINDOW_TACTICAL][WINDOWWIDTH] << 3) * sx));
+    g_layout.tactical_h = static_cast<int>(std::round(WindowList[WINDOW_TACTICAL][WINDOWHEIGHT] * sy));
+
+    // Header: full-width strip above the tactical area.
+    g_layout.header_x = 0;
+    g_layout.header_y = 0;
+    g_layout.header_w = g_layout.logical_w;
+    g_layout.header_h = g_layout.tactical_y;
+
+    // Sidebar: use the real legacy sidebar span, not the narrow bookkeeping
+    // width field alone. Tactical width and sidebar width must sum back to the
+    // full legacy SeenBuff width after promotion.
+    g_layout.sidebar_x = static_cast<int>(std::round(Map.SideX * sx));
+    g_layout.sidebar_y = 0;
+    g_layout.sidebar_w = static_cast<int>(std::round(Map.SideWidth * sx));
+    g_layout.sidebar_h = g_layout.logical_h;
+
+    // Native world replay texture.
+    g_layout.native_world_w = Render_Bridge_Get_Native_Tac_W();
+    g_layout.native_world_h = Render_Bridge_Get_Native_Tac_H();
+
+    g_layout.valid = true;
+}
+
+void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h)
+{
+    w = g_layout.logical_w;
+    h = g_layout.logical_h;
+}
+
+void Render_Bridge_Get_Header_Rect(int& x, int& y, int& w, int& h)
+{
+    x = g_layout.header_x;
+    y = g_layout.header_y;
+    w = g_layout.header_w;
+    h = g_layout.header_h;
+}
+
+void Render_Bridge_Get_Sidebar_Rect(int& x, int& y, int& w, int& h)
+{
+    x = g_layout.sidebar_x;
+    y = g_layout.sidebar_y;
+    w = g_layout.sidebar_w;
+    h = g_layout.sidebar_h;
+}
 
 void Render_Bridge_Get_Tactical_Rect(int& x, int& y, int& w, int& h)
 {
-    x = Map.TacPixelX;
-    y = Map.TacPixelY;
-    w = WindowList[WINDOW_TACTICAL][WINDOWWIDTH] << 3;
-    h = WindowList[WINDOW_TACTICAL][WINDOWHEIGHT];
+    x = g_layout.tactical_x;
+    y = g_layout.tactical_y;
+    w = g_layout.tactical_w;
+    h = g_layout.tactical_h;
+}
+
+void Render_Bridge_Get_Mouse_Input_Rect(int& x, int& y, int& w, int& h)
+{
+    // Mouse input area is the tactical rect — clicks inside become tactical actions.
+    x = g_layout.tactical_x;
+    y = g_layout.tactical_y;
+    w = g_layout.tactical_w;
+    h = g_layout.tactical_h;
+}
+
+void Render_Bridge_Get_Native_World_Rect(int& w, int& h)
+{
+    w = g_layout.native_world_w;
+    h = g_layout.native_world_h;
 }
 
 void Render_Bridge_Get_Visible_World_Rect(int& origin_x, int& origin_y,

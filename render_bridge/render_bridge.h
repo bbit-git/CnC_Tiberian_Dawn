@@ -87,9 +87,6 @@ void Render_Bridge_Get_Visible_Size(float& w, float& h);
 /// Get the native tactical replay size in lepton space for bridge-aware clamps.
 void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
 
-/// Get the real on-screen tactical rect used while recording the draw list.
-void Render_Bridge_Get_Record_Tactical_Rect(int& x, int& y, int& w, int& h);
-
 /// Dump current render-bridge HUD stats to the debug log.
 void Render_Bridge_Debug_Dump();
 
@@ -117,11 +114,35 @@ void Render_Bridge_Get_Viewport_Target(float& x, float& y);
 /// Get the last TacticalCoord delta in pixels.
 void Render_Bridge_Get_Scroll_Delta(int& x, int& y);
 
-// --- Bridge-owned tactical geometry (Phase 1: Geometry Authority) ---
+// --- Bridge-owned screen layout (Phase 1: Geometry Authority) ---
+// The bridge caches and owns the logical screen model. Callers must use these
+// accessors instead of reading Map.TacPixelX, Map.SideX, WindowList, etc.
 
-/// Tactical screen rect in game-buffer pixels (TacPixelX/Y + window size).
+/// Refresh the cached screen layout from current game state.
+/// Called automatically by Apply_Scroll_Zoom and Set_Screen_Size.
+void Render_Bridge_Refresh_Layout();
+
+/// Logical screen size in game-buffer pixels (SeenBuff dimensions).
+void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h);
+
+/// Header/tab rect in game-buffer pixels (strip above the tactical area).
+void Render_Bridge_Get_Header_Rect(int& x, int& y, int& w, int& h);
+
+/// Sidebar rect in game-buffer pixels.
+void Render_Bridge_Get_Sidebar_Rect(int& x, int& y, int& w, int& h);
+
+/// Tactical screen rect in game-buffer pixels.
 /// This is the authoritative tactical area — callers must not recompute from Map.*.
 void Render_Bridge_Get_Tactical_Rect(int& x, int& y, int& w, int& h);
+
+/// Tactical record rect in legacy buffer pixels used while capturing draw-list commands.
+void Render_Bridge_Get_Record_Tactical_Rect(int& x, int& y, int& w, int& h);
+
+/// Mouse input rect in game-buffer pixels (area where clicks become tactical actions).
+void Render_Bridge_Get_Mouse_Input_Rect(int& x, int& y, int& w, int& h);
+
+/// Native world replay texture size in pixels.
+void Render_Bridge_Get_Native_World_Rect(int& w, int& h);
 
 /// Visible world rect in leptons (origin + size of what the bridge shows).
 /// Origin is map-relative (0,0 = top-left of playable map).
@@ -162,5 +183,8 @@ bool Render_Bridge_UI_Has_Capture();
 
 /// Returns true when bridge-native status messages replace legacy Messages.Draw().
 bool Render_Bridge_UI_Use_Native_Messages();
+
+/// Returns true when bridge-native help text replaces HelpClass::Draw_It().
+bool Render_Bridge_UI_Use_Native_Help();
 
 #endif // CNC_RENDER_BRIDGE_H

@@ -107,23 +107,20 @@ void Render_Bridge_Shutdown()
 
 void Render_Bridge_Update_Layout()
 {
-    int screen_w = g_output_w;
-    int screen_h = g_output_h;
+    Render_Bridge_Refresh_Layout();
 
-    // Tactical area (world view)
-    int tac_x = Map.TacPixelX;
-    int tac_y = Map.TacPixelY;
-    int tac_w = Lepton_To_Pixel(Map.TacLeptonWidth);
-    int tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
+    int tac_x, tac_y, tac_w, tac_h;
+    Render_Bridge_Get_Tactical_Rect(tac_x, tac_y, tac_w, tac_h);
 
-    // Clamp to screen bounds
-    if (tac_w > screen_w - tac_x) tac_w = screen_w - tac_x;
-    if (tac_h > screen_h - tac_y) tac_h = screen_h - tac_y;
+    // Clamp to output bounds
+    if (tac_w > g_output_w - tac_x) tac_w = g_output_w - tac_x;
+    if (tac_h > g_output_h - tac_y) tac_h = g_output_h - tac_y;
 
-    // Sidebar area
-    int side_x = Map.SideX;
-    int side_w = Map.SideBarWidth;
-    int side_h = screen_h;
+    int side_x, side_y, side_w, side_h;
+    Render_Bridge_Get_Sidebar_Rect(side_x, side_y, side_w, side_h);
+
+    int hdr_x, hdr_y, hdr_w, hdr_h;
+    Render_Bridge_Get_Header_Rect(hdr_x, hdr_y, hdr_w, hdr_h);
 
     // World terrain layer — tactical area
     if (tac_w > 0 && tac_h > 0) {
@@ -146,20 +143,20 @@ void Render_Bridge_Update_Layout()
         sidebar.height   = side_h;
         sidebar.zoom     = 1.0f;
         sidebar.offset_x = side_x;
-        sidebar.offset_y = 0;
+        sidebar.offset_y = side_y;
         sidebar.dirty    = true;
         g_compositor.Configure_Layer(sidebar);
     }
 
     // Tab bar — top strip above tactical area
-    if (tac_y > 0) {
+    if (hdr_h > 0) {
         RenderLayerDesc tab = {};
         tab.id       = RenderLayerID::UI_TAB;
-        tab.width    = screen_w;
-        tab.height   = tac_y;
+        tab.width    = hdr_w;
+        tab.height   = hdr_h;
         tab.zoom     = 1.0f;
-        tab.offset_x = 0;
-        tab.offset_y = 0;
+        tab.offset_x = hdr_x;
+        tab.offset_y = hdr_y;
         tab.dirty    = true;
         g_compositor.Configure_Layer(tab);
     }
@@ -266,6 +263,11 @@ bool Render_Bridge_UI_Has_Capture()
 }
 
 bool Render_Bridge_UI_Use_Native_Messages()
+{
+    return true;
+}
+
+bool Render_Bridge_UI_Use_Native_Help()
 {
     return true;
 }
