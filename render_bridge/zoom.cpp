@@ -449,8 +449,8 @@ bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& mapped_x,
 {
     int tac_x = Map.TacPixelX;
     int tac_y = Map.TacPixelY;
-    int tac_w = Lepton_To_Pixel(Map.TacLeptonWidth);
-    int tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
+    int tac_w = WindowList[WINDOW_TACTICAL][WINDOWWIDTH] << 3;
+    int tac_h = WindowList[WINDOW_TACTICAL][WINDOWHEIGHT];
     if (tac_w <= 0 || tac_h <= 0) {
         mapped_x = screen_x;
         mapped_y = screen_y;

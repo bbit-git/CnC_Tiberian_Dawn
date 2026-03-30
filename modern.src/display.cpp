@@ -694,8 +694,8 @@ void DisplayClass::Set_View_Dimensions(int x, int y, int width, int height)
 
 	TacButton.X			= TacPixelX;
 	TacButton.Y			= TacPixelY;
-	TacButton.Width	= Lepton_To_Pixel(TacLeptonWidth);
-	TacButton.Height	= Lepton_To_Pixel(TacLeptonHeight);
+	TacButton.Width	= width;
+	TacButton.Height	= height;
 }
 
 
