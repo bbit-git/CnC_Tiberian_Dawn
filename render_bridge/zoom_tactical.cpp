@@ -82,10 +82,8 @@ void Render_Bridge_Begin_Draw_List()
     g_draw_list.Clear();
     g_draw_list.SetRecording(true);
 
-    g_record_tac_x = Map.TacPixelX;
-    g_record_tac_y = Map.TacPixelY;
-    g_record_tac_w = WindowList[WINDOW_TACTICAL][WINDOWWIDTH] << 3;
-    g_record_tac_h = WindowList[WINDOW_TACTICAL][WINDOWHEIGHT];
+    Render_Bridge_Get_Tactical_Rect(g_record_tac_x, g_record_tac_y,
+                                    g_record_tac_w, g_record_tac_h);
 
     extern bool InMainLoop;
     if (!InMainLoop || !GL_Present_Is_Active()) return;
@@ -94,11 +92,8 @@ void Render_Bridge_Begin_Draw_List()
     get_native_tactical(native_w, native_h);
     if (native_w <= 0 || native_h <= 0) return;
 
-    int tac_w = Lepton_To_Pixel(Map.TacLeptonWidth);
-    int tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
-
-    // Only expand if native is larger than current
-    if (native_w <= tac_w && native_h <= tac_h) return;
+    // Only expand if native is larger than current tactical area
+    if (native_w <= g_record_tac_w && native_h <= g_record_tac_h) return;
 
     // Save original dimensions
     g_saved_tac_lepton_w = Map.TacLeptonWidth;
@@ -116,7 +111,8 @@ void Render_Bridge_Begin_Draw_List()
     static bool logged = false;
     if (!logged) {
         DBG("native tactical: %dx%d (from %dx%d buffer, expanded from %dx%d)",
-            native_w, native_h, SeenBuff.Get_Width(), SeenBuff.Get_Height(), tac_w, tac_h);
+            native_w, native_h, SeenBuff.Get_Width(), SeenBuff.Get_Height(),
+            g_record_tac_w, g_record_tac_h);
         logged = true;
     }
 }
@@ -161,8 +157,8 @@ static void replay_world()
 /// Replay overlay commands (health bars, selection, etc.).
 static void replay_overlays()
 {
-    const int tac_x = Map.TacPixelX;
-    const int tac_y = Map.TacPixelY;
+    int tac_x, tac_y, tac_w_unused, tac_h_unused;
+    Render_Bridge_Get_Tactical_Rect(tac_x, tac_y, tac_w_unused, tac_h_unused);
 
     for (int i = 0; i < g_draw_list.Command_Count(); i++) {
         const DrawCommand& cmd = g_draw_list.Get(i);
@@ -223,14 +219,14 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
     float zoom = Render_Bridge_Get_Zoom_Level();
 
     if (use_gl) {
-        int tac_w = Lepton_To_Pixel(Map.TacLeptonWidth);
-        int tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
+        int br_tac_x, br_tac_y, br_tac_w, br_tac_h;
+        Render_Bridge_Get_Tactical_Rect(br_tac_x, br_tac_y, br_tac_w, br_tac_h);
         int native_w = 0;
         int native_h = 0;
         get_native_tactical(native_w, native_h);
         if (native_w <= 0 || native_h <= 0) {
-            native_w = tac_w;
-            native_h = tac_h;
+            native_w = br_tac_w;
+            native_h = br_tac_h;
         }
 
         bool use_native = native_w > 0 && native_h > 0;

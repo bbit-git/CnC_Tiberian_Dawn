@@ -153,8 +153,8 @@ void Render_Bridge_Debug_Dump()
 
     float zoom = Render_Bridge_Get_Zoom_Level();
     float zoom_default = Render_Bridge_Get_Default_Zoom();
-    int tac_w = Lepton_To_Pixel(Map.TacLeptonWidth);
-    int tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
+    int tac_x, tac_y, tac_w, tac_h;
+    Render_Bridge_Get_Tactical_Rect(tac_x, tac_y, tac_w, tac_h);
     int ntac_w = Render_Bridge_Get_Native_Tac_W();
     int ntac_h = Render_Bridge_Get_Native_Tac_H();
     int atlas_f = GL_Sprites_Atlas_Frame_Count();
@@ -187,26 +187,22 @@ void Render_Bridge_Debug_Dump()
     int req_x = 0;
     int req_y = 0;
     Render_Bridge_Get_Requested_Tactical_Position(req_x, req_y);
-    int clamp_w = Map.TacLeptonWidth;
-    int clamp_h = Map.TacLeptonHeight;
-    Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
-    int tac_range_x = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellWidth) - clamp_w);
-    int tac_range_y = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellHeight) - clamp_h);
+    int clamp_max_x = 0;
+    int clamp_max_y = 0;
+    Render_Bridge_Get_Clamp_Ranges(clamp_max_x, clamp_max_y);
+    int tac_range_x = Lepton_To_Pixel(clamp_max_x);
+    int tac_range_y = Lepton_To_Pixel(clamp_max_y);
 
     bool at_L = req_x <= 0;
-    bool at_R = tac_range_x > 0 && req_x >= tac_range_x;
+    bool at_R = tac_range_x > 0 && req_x >= clamp_max_x;
     bool at_T = req_y <= 0;
-    bool at_B = tac_range_y > 0 && req_y >= tac_range_y;
+    bool at_B = tac_range_y > 0 && req_y >= clamp_max_y;
 
     extern int g_mouse_x, g_mouse_y;
-    int tpx = Map.TacPixelX;
-    int tpy = Map.TacPixelY;
-    int tpw = Lepton_To_Pixel(Map.TacLeptonWidth);
-    int tph = Lepton_To_Pixel(Map.TacLeptonHeight);
-    bool mL = g_mouse_x <= tpx + 1;
-    bool mR = g_mouse_x >= tpx + tpw - 2;
-    bool mT = g_mouse_y <= tpy + 1;
-    bool mB = g_mouse_y >= tpy + tph - 2;
+    bool mL = g_mouse_x <= tac_x + 1;
+    bool mR = g_mouse_x >= tac_x + tac_w - 2;
+    bool mT = g_mouse_y <= tac_y + 1;
+    bool mB = g_mouse_y >= tac_y + tac_h - 2;
 
     int map_cw = Map.MapCellWidth;
     int map_ch = Map.MapCellHeight;
@@ -259,7 +255,8 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     float zoom = Render_Bridge_Get_Zoom_Level();
     float zoom_default = Render_Bridge_Get_Default_Zoom();
     int buf_w = SeenBuff.Get_Width(), buf_h = SeenBuff.Get_Height();
-    int tac_w = Lepton_To_Pixel(Map.TacLeptonWidth), tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
+    int tac_x, tac_y, tac_w, tac_h;
+    Render_Bridge_Get_Tactical_Rect(tac_x, tac_y, tac_w, tac_h);
     int ntac_w = Render_Bridge_Get_Native_Tac_W(), ntac_h = Render_Bridge_Get_Native_Tac_H();
     int atlas_f = GL_Sprites_Atlas_Frame_Count(), atlas_p = GL_Sprites_Atlas_Page_Count();
     int atlas_new = GL_Sprites_Last_Atlas_New_Count();
@@ -292,30 +289,27 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     int req_x = 0;
     int req_y = 0;
     Render_Bridge_Get_Requested_Tactical_Position(req_x, req_y);
-    int clamp_w = Map.TacLeptonWidth;
-    int clamp_h = Map.TacLeptonHeight;
-    Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
-    int tac_range_x = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellWidth) - clamp_w);
-    int tac_range_y = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellHeight) - clamp_h);
+    int clamp_max_x = 0;
+    int clamp_max_y = 0;
+    Render_Bridge_Get_Clamp_Ranges(clamp_max_x, clamp_max_y);
+    int tac_range_x = Lepton_To_Pixel(clamp_max_x);
+    int tac_range_y = Lepton_To_Pixel(clamp_max_y);
 
     // Map size in cells
     int map_cw = Map.MapCellWidth, map_ch = Map.MapCellHeight;
 
     // Boundary flags
     bool at_L = req_x <= 0;
-    bool at_R = tac_range_x > 0 && req_x >= tac_range_x;
+    bool at_R = tac_range_x > 0 && req_x >= clamp_max_x;
     bool at_T = req_y <= 0;
-    bool at_B = tac_range_y > 0 && req_y >= tac_range_y;
+    bool at_B = tac_range_y > 0 && req_y >= clamp_max_y;
 
     // Mouse edge flags
     extern int g_mouse_x, g_mouse_y;
-    int tpx = Map.TacPixelX, tpy = Map.TacPixelY;
-    int tpw = Lepton_To_Pixel(Map.TacLeptonWidth);
-    int tph = Lepton_To_Pixel(Map.TacLeptonHeight);
-    bool mL = g_mouse_x <= tpx + 1;
-    bool mR = g_mouse_x >= tpx + tpw - 2;
-    bool mT = g_mouse_y <= tpy + 1;
-    bool mB = g_mouse_y >= tpy + tph - 2;
+    bool mL = g_mouse_x <= tac_x + 1;
+    bool mR = g_mouse_x >= tac_x + tac_w - 2;
+    bool mT = g_mouse_y <= tac_y + 1;
+    bool mB = g_mouse_y >= tac_y + tac_h - 2;
 
     // Clear HUD bitmap
     memset(g_hud_pixels, 0, sizeof(g_hud_pixels));

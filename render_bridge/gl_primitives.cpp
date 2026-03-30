@@ -4,6 +4,10 @@
  * Renders tactical overlay primitives after the world texture so health bars,
  * selection boxes, and debug markers are no longer baked into the native
  * tactical buffer in GL mode.
+ *
+ * Primitive commands are stored in tactical-local coordinates by the hooks.
+ * At present time they are projected through the same visible source viewport
+ * as the tactical world texture, then clipped to the final tactical screen rect.
  */
 
 #include "render_bridge.h"
@@ -129,6 +133,10 @@ void palette_color(uint8_t color, const uint8_t* palette,
 
 float world_to_screen(float origin, float value, float vp, float scale)
 {
+    // Primitive coordinates are stored in tactical-local pixels. The tactical
+    // presenter samples a zoomed source window from the native replay texture,
+    // so primitives must subtract the current source viewport before scaling
+    // into final screen space.
     return origin + (value - vp) * scale;
 }
 
@@ -259,6 +267,8 @@ int GL_Primitives_Render(int win_w, int win_h,
         palette_color(cmd.prim.color, palette, r, g, b, a);
 
         if (cmd.type == CMD_FILL_RECT) {
+            // Rect fills are captured as tactical-local pixel bounds. Project
+            // them through the same viewport/scale transform as the world quad.
             float x0 = world_to_screen(static_cast<float>(tac_screen_x), static_cast<float>(cmd.prim.x1), vp_x, scale);
             float y0 = world_to_screen(static_cast<float>(tac_screen_y), static_cast<float>(cmd.prim.y1), vp_y, scale);
             float x1 = world_to_screen(static_cast<float>(tac_screen_x), static_cast<float>(cmd.prim.x2 + 1), vp_x, scale);
@@ -269,6 +279,8 @@ int GL_Primitives_Render(int win_w, int win_h,
         }
 
         if (cmd.type == CMD_PUT_PIXEL) {
+            // A logical tactical pixel expands to one scaled block in final
+            // screen space so debug markers stay aligned with nearest-neighbor art.
             float x0 = world_to_screen(static_cast<float>(tac_screen_x), static_cast<float>(cmd.prim.x1), vp_x, scale);
             float y0 = world_to_screen(static_cast<float>(tac_screen_y), static_cast<float>(cmd.prim.y1), vp_y, scale);
             float x1 = x0 + scale;
@@ -279,6 +291,8 @@ int GL_Primitives_Render(int win_w, int win_h,
         }
 
         if (cmd.type == CMD_DRAW_RECT) {
+            // Outline rectangles follow the same world-space projection as fills,
+            // but stay as GL lines to match selection and bracket overlays.
             float x0 = world_to_screen(static_cast<float>(tac_screen_x), static_cast<float>(cmd.prim.x1), vp_x, scale);
             float y0 = world_to_screen(static_cast<float>(tac_screen_y), static_cast<float>(cmd.prim.y1), vp_y, scale);
             float x1 = world_to_screen(static_cast<float>(tac_screen_x), static_cast<float>(cmd.prim.x2), vp_x, scale);
@@ -291,6 +305,8 @@ int GL_Primitives_Render(int win_w, int win_h,
             continue;
         }
 
+        // Generic line overlays use the same tactical-local -> visible-source ->
+        // final-screen transform as every other tactical primitive.
         float x0 = world_to_screen(static_cast<float>(tac_screen_x), static_cast<float>(cmd.prim.x1), vp_x, scale);
         float y0 = world_to_screen(static_cast<float>(tac_screen_y), static_cast<float>(cmd.prim.y1), vp_y, scale);
         float x1 = world_to_screen(static_cast<float>(tac_screen_x), static_cast<float>(cmd.prim.x2), vp_x, scale);
@@ -311,6 +327,8 @@ int GL_Primitives_Render(int win_w, int win_h,
     glEnableVertexAttribArray(g_state.a_pos);
     glEnableVertexAttribArray(g_state.a_color);
 
+    // Clamp all tactical primitives to the final tactical screen rect so no
+    // overlay geometry can bleed into the header or sidebar.
     glEnable(GL_SCISSOR_TEST);
     glScissor(tac_screen_x, win_h - (tac_screen_y + tac_screen_h), tac_screen_w, tac_screen_h);
 
@@ -353,6 +371,8 @@ void GL_Primitives_Render_Source_Overlay(int win_w, int win_h,
     const float seen_r = 0.18f, seen_g = 0.90f, seen_b = 0.28f;
     const float hid_r = 0.18f, hid_g = 0.55f, hid_b = 1.00f;
 
+    // Source overlay colors show which pass owns each screen region:
+    // SeenBuff chrome, native tactical, and full-frame UI overlay.
     if (header_screen_h > 0) {
         push_rect(tris,
                   static_cast<float>(game_screen_x),
@@ -430,6 +450,8 @@ void GL_Primitives_Render_Debug_Overlay(int win_w, int win_h,
                                         int side_screen_x, int side_screen_w,
                                         int mouse_clamp_x, int mouse_clamp_y,
                                         int mouse_clamp_w, int mouse_clamp_h,
+                                        int shroud_screen_x, int shroud_screen_y,
+                                        int shroud_screen_w, int shroud_screen_h,
                                         float scroll_zone_px,
                                         float vp_x, float vp_y,
                                         float vis_w, float vis_h,
@@ -456,6 +478,7 @@ void GL_Primitives_Render_Debug_Overlay(int win_w, int win_h,
     const float clamp_r = 1.00f, clamp_g = 0.20f, clamp_b = 0.20f;
     const float zone_r = 1.00f, zone_g = 0.60f, zone_b = 0.12f;
     const float raw_r = 1.00f, raw_g = 0.75f, raw_b = 0.10f;
+    const float shroud_r = 1.00f, shroud_g = 0.15f, shroud_b = 0.95f;
 
     if (header_screen_h > 0) {
         push_outline(lines, 0.5f, 0.5f,
@@ -488,6 +511,18 @@ void GL_Primitives_Render_Debug_Overlay(int win_w, int win_h,
                      static_cast<float>(mouse_clamp_x + mouse_clamp_w) - 2.5f,
                      static_cast<float>(mouse_clamp_y + mouse_clamp_h) - 2.5f,
                      mouse_r, mouse_g, mouse_b, 1.0f);
+    }
+
+    // Magenta rectangle: the current bridge-visible world window projected back
+    // into tactical screen space. It is used to compare shroud coverage against
+    // the tactical presentation rect.
+    if (shroud_screen_w > 0 && shroud_screen_h > 0) {
+        push_outline(lines,
+                     static_cast<float>(shroud_screen_x) + 4.5f,
+                     static_cast<float>(shroud_screen_y) + 4.5f,
+                     static_cast<float>(shroud_screen_x + shroud_screen_w) - 4.5f,
+                     static_cast<float>(shroud_screen_y + shroud_screen_h) - 4.5f,
+                     shroud_r, shroud_g, shroud_b, 1.0f);
     }
 
     if (scroll_zone_px > 1.0f && tac_screen_w > 0 && tac_screen_h > 0) {
@@ -551,6 +586,7 @@ void GL_Primitives_Render_Debug_Overlay(int win_w, int win_h,
     }
 
     if (tac_screen_w > 0 && tac_screen_h > 0 && native_w > 0 && native_h > 0 && vis_w > 0.0f && vis_h > 0.0f) {
+        // Minimap box: native replay texture with the current source viewport highlighted.
         float mini_w = static_cast<float>(tac_screen_w) * 0.22f;
         float mini_h = static_cast<float>(tac_screen_h) * 0.22f;
         if (mini_w > 180.0f) mini_w = 180.0f;

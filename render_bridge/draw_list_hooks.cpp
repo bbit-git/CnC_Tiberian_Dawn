@@ -5,6 +5,11 @@
  * Tactical primitives need coordinate filtering because they do not carry
  * a window id, so the hooks only keep geometry that falls inside the
  * tactical region and normalize it to tactical-local coordinates.
+ *
+ * The important distinction is:
+ * - shapes/stamps are already tactical-world draws
+ * - primitives are just raw buffer operations, so the bridge must recover
+ *   whether they belong to tactical rendering from buffer identity and bounds
  */
 
 #include "draw_list.h"
@@ -58,6 +63,9 @@ bool intersect_tactical(int& x1, int& y1, int& x2, int& y2)
         return false;
     }
 
+    // Primitives are stored in tactical-local screen space. The presenter later
+    // projects them through the world viewport, so capture must first strip the
+    // tactical screen offset from HidPage-space coordinates.
     x1 -= tac_x;
     x2 -= tac_x;
     y1 -= tac_y;
@@ -82,6 +90,8 @@ bool normalize_tactical_point(int& x, int& y)
         return false;
     }
 
+    // Record pixels in tactical-local coordinates so they stay independent from
+    // whichever sub-viewport or HidPage origin the legacy draw call used.
     x -= tac_x;
     y -= tac_y;
     return true;
@@ -134,6 +144,8 @@ bool Draw_List_Maybe_Record_Fill_Rect(const void* buffer, int origin_x, int orig
 {
     if (!g_draw_list.IsRecording()) return false;
     if (!is_hidpage_buffer(buffer)) return false;
+    // Primitive hooks receive coordinates local to the current GraphicViewPort.
+    // Convert them back to HidPage absolute space before testing tactical overlap.
     x1 += origin_x; y1 += origin_y;
     x2 += origin_x; y2 += origin_y;
     if (!intersect_tactical(x1, y1, x2, y2)) return false;
@@ -162,6 +174,8 @@ bool Draw_List_Maybe_Record_Line(const void* buffer, int origin_x, int origin_y,
 {
     if (!g_draw_list.IsRecording()) return false;
     if (!is_hidpage_buffer(buffer)) return false;
+    // Line commands do not carry a window id, so buffer identity + tactical
+    // overlap is the bridge-side filter that separates tactical overlays from UI.
     x1 += origin_x; y1 += origin_y;
     x2 += origin_x; y2 += origin_y;
     if (!intersect_tactical(x1, y1, x2, y2)) return false;
