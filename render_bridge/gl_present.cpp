@@ -16,12 +16,51 @@
 
 #include <SDL3/SDL.h>
 #include <GLES2/gl2.h>
+#include <cmath>
 #include "render_bridge.h"
 #include "function.h"
 #include "dbg.h"
 
 extern SDL_Window* g_window;
 extern int g_shake_remaining;
+extern int g_mouse_x;
+extern int g_mouse_y;
+extern bool TD_SDL_Get_Mouse_Cursor(const uint8_t*& pixels, int& w, int& h,
+                                    int& hotx, int& hoty, bool& visible);
+extern void TD_SDL_Get_Raw_Mouse_Position(int& x, int& y);
+
+#ifdef USE_RENDER_BRIDGE_GL_SPRITES
+extern int GL_Sprites_Build_Atlas(const uint8_t* vga_palette);
+extern int GL_Sprites_Render(int win_w, int win_h,
+                              int tac_screen_x, int tac_screen_y,
+                              int tac_screen_w, int tac_screen_h,
+                              int tac_game_x, int tac_game_y,
+                              int tac_game_w, int tac_game_h,
+                              float scale, float vp_x, float vp_y);
+#endif
+extern int GL_Primitives_Render(int win_w, int win_h,
+                                 int tac_screen_x, int tac_screen_y,
+                                 int tac_screen_w, int tac_screen_h,
+                                 float scale, float vp_x, float vp_y,
+                                 const uint8_t* palette);
+extern void GL_Primitives_Render_Debug_Overlay(int win_w, int win_h,
+                                               int header_screen_h,
+                                               int tac_screen_x, int tac_screen_y,
+                                               int tac_screen_w, int tac_screen_h,
+                                               int side_screen_x, int side_screen_w,
+                                               int mouse_clamp_x, int mouse_clamp_y,
+                                               int mouse_clamp_w, int mouse_clamp_h,
+                                               float scroll_zone_px,
+                                               float vp_x, float vp_y,
+                                               float vis_w, float vis_h,
+                                               int native_w, int native_h,
+                                               bool clamp_left, bool clamp_right,
+                                               bool clamp_top, bool clamp_bottom,
+                                               int raw_mouse_screen_x, int raw_mouse_screen_y,
+                                               int mouse_screen_x, int mouse_screen_y);
+extern bool Render_Bridge_Debug_Bars_Enabled();
+
+static constexpr bool k_enable_gl_sprite_overlay = true;
 
 static SDL_GLContext g_gl_ctx = nullptr;
 static GLuint g_gl_program    = 0;
@@ -32,6 +71,10 @@ static int    g_tac_tex_w = 0, g_tac_tex_h = 0;
 static bool   g_tac_tex_active = false;
 static GLuint g_ui_tex        = 0;     // UI overlay texture
 static int    g_ui_tex_w = 0, g_ui_tex_h = 0;
+static GLuint g_cursor_tex    = 0;     // mouse cursor texture
+static int    g_cursor_tex_w = 0, g_cursor_tex_h = 0;
+static uint8_t* g_cursor_overlay = nullptr;
+static int      g_cursor_overlay_alloc = 0;
 static int    g_tex_w = 0, g_tex_h = 0;
 static bool   g_gl_ready = false;
 static bool   g_gl_failed = false;
@@ -87,6 +130,13 @@ static GLint  g_ui_u_indexed = -1;
 static GLint  g_ui_u_palette = -1;
 static GLint  g_ui_u_src_rect = -1;
 static GLint  g_ui_u_dst_rect = -1;
+
+static void bind_client_quad_pointer(const float* quad)
+{
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, quad);
+}
 
 static GLuint compile_shader(GLenum type, const char* src)
 {
@@ -228,6 +278,8 @@ void GL_Present_Shutdown()
 {
     if (g_indexed_tex) { glDeleteTextures(1, &g_indexed_tex); g_indexed_tex = 0; }
     if (g_palette_tex) { glDeleteTextures(1, &g_palette_tex); g_palette_tex = 0; }
+    if (g_cursor_tex) { glDeleteTextures(1, &g_cursor_tex); g_cursor_tex = 0; }
+    if (g_cursor_overlay) { free(g_cursor_overlay); g_cursor_overlay = nullptr; g_cursor_overlay_alloc = 0; }
     if (g_gl_program) { glDeleteProgram(g_gl_program); g_gl_program = 0; }
     if (g_gl_ctx) { SDL_GL_DestroyContext(g_gl_ctx); g_gl_ctx = nullptr; }
     g_gl_ready = false;
@@ -257,7 +309,7 @@ static void draw_quad(int src_x, int src_y, int src_w, int src_h,
 
     // Unit quad: (0,0) → (1,0) → (0,1) → (1,1)
     static const float quad[] = { 0,0, 1,0, 0,1, 1,1 };
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, quad);
+    bind_client_quad_pointer(quad);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
@@ -294,6 +346,12 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 1,
                         GL_RGB, GL_UNSIGNED_BYTE, pal_rgb);
     }
+
+#ifdef USE_RENDER_BRIDGE_GL_SPRITES
+    if (k_enable_gl_sprite_overlay) {
+        GL_Sprites_Build_Atlas(vga_palette);
+    }
+#endif
 
     // GL drawable size = actual pixel dimensions of the GL surface.
     // For fullscreen: this is the display resolution (1920x1080).
@@ -363,6 +421,11 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         side_w = Map.SideBarWidth;
     }
 
+    int avail_x = offset_x + static_cast<int>(std::round(tac_x * ui_scale));
+    int avail_y = offset_y + static_cast<int>(std::round(tac_y * ui_scale));
+    int avail_w = static_cast<int>(std::round(tac_w * ui_scale));
+    int avail_h = static_cast<int>(std::round(tac_h * ui_scale));
+
     if (!InMainLoop) {
         // Menu: single fullscreen quad from SeenBuff
         draw_quad(0, 0, w, h,
@@ -396,11 +459,6 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         }
 
         // Screen area for tactical (used by tactical quad + UI overlay)
-        int avail_x = offset_x + static_cast<int>(tac_x * ui_scale);
-        int avail_y = offset_y + static_cast<int>(tac_y * ui_scale);
-        int avail_w = static_cast<int>(tac_w * ui_scale);
-        int avail_h = static_cast<int>(tac_h * ui_scale);
-
         // Tactical area — ALWAYS from native texture (draw list content).
         // SeenBuff does NOT contain tactical content (draw list is deferred).
         {
@@ -417,8 +475,13 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                 // Game scrolling re-renders content → vp stays, content shifts.
                 float vp_x = Render_Bridge_Get_Viewport_X();
                 float vp_y = Render_Bridge_Get_Viewport_Y();
-                float vis_w = tex_w / zoom;
-                float vis_h = tex_h / zoom;
+                float vis_w = 0.0f;
+                float vis_h = 0.0f;
+                Render_Bridge_Get_Visible_Size(vis_w, vis_h);
+                if (vis_w <= 0.0f || vis_h <= 0.0f) {
+                    vis_w = tex_w;
+                    vis_h = tex_h;
+                }
 
                 float u0 = vp_x / tex_w;
                 float v0 = vp_y / tex_h;
@@ -429,26 +492,14 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                 if (u1 > 1.0f) u1 = 1.0f;
                 if (v1 > 1.0f) v1 = 1.0f;
 
-                // Dest: fit native texture into available area, preserve aspect.
-                // The texture may be smaller than the available screen area
-                // (map smaller than screen). Scale uniformly and center.
-                float tex_aspect = tex_w / tex_h;
-                float avail_aspect = static_cast<float>(avail_w) / avail_h;
-
-                int dst_x, dst_y, dst_w, dst_h;
-                if (tex_aspect > avail_aspect) {
-                    // Texture wider: fit width, letterbox height
-                    dst_w = avail_w;
-                    dst_h = static_cast<int>(avail_w / tex_aspect);
-                    dst_x = avail_x;
-                    dst_y = avail_y + (avail_h - dst_h) / 2;
-                } else {
-                    // Texture taller: fit height, pillarbox width
-                    dst_h = avail_h;
-                    dst_w = static_cast<int>(avail_h * tex_aspect);
-                    dst_x = avail_x + (avail_w - dst_w) / 2;
-                    dst_y = avail_y;
-                }
+                // Tactical content should fill the tactical screen region.
+                // Do not preserve the native texture aspect here — the native
+                // buffer is a world-space source, not a presentation-space
+                // framebuffer. Aspect fitting creates black side bars.
+                int dst_x = avail_x;
+                int dst_y = avail_y;
+                int dst_w = avail_w;
+                int dst_h = avail_h;
 
                 // Clamp
                 if (u0 < 0.0f) u0 = 0.0f;
@@ -466,8 +517,22 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                 glUniform4f(g_u_dst_rect, nx0, ny0, nx1, ny1);
 
                 static const float quad[] = { 0,0, 1,0, 0,1, 1,1 };
-                glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, quad);
+                bind_client_quad_pointer(quad);
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+#ifdef USE_RENDER_BRIDGE_GL_SPRITES
+                if (k_enable_gl_sprite_overlay) {
+                    GL_Sprites_Render(win_w, win_h,
+                                      dst_x, dst_y, dst_w, dst_h,
+                                      0, 0, g_tac_tex_w, g_tac_tex_h,
+                                      static_cast<float>(dst_w) / vis_w,
+                                      vp_x, vp_y);
+                }
+#endif
+                GL_Primitives_Render(win_w, win_h,
+                                     dst_x, dst_y, dst_w, dst_h,
+                                     static_cast<float>(dst_w) / vis_w,
+                                     vp_x, vp_y, vga_palette);
 
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
@@ -523,7 +588,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                 glUniform4f(g_ui_u_dst_rect, nx0, ny0, nx1, ny1);
 
                 static const float quad[] = { 0,0, 1,0, 0,1, 1,1 };
-                glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, quad);
+                bind_client_quad_pointer(quad);
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
                 // Restore palette shader for sidebar
@@ -540,10 +605,159 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         // Sidebar already drawn above (before tactical).
     }
 
-    glDisableVertexAttribArray(0);
+    if (InMainLoop && Render_Bridge_Debug_Bars_Enabled()) {
+        float vis_w = 0.0f;
+        float vis_h = 0.0f;
+        Render_Bridge_Get_Visible_Size(vis_w, vis_h);
+        float vp_x = Render_Bridge_Get_Viewport_X();
+        float vp_y = Render_Bridge_Get_Viewport_Y();
+
+        int tac_coord_px = Lepton_To_Pixel(Coord_X(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellX));
+        int tac_coord_py = Lepton_To_Pixel(Coord_Y(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellY));
+        int tac_range_x = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellWidth) - Map.TacLeptonWidth);
+        int tac_range_y = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellHeight) - Map.TacLeptonHeight);
+        bool clamp_left = tac_coord_px <= 0;
+        bool clamp_right = tac_range_x > 0 && tac_coord_px >= tac_range_x;
+        bool clamp_top = tac_coord_py <= 0;
+        bool clamp_bottom = tac_range_y > 0 && tac_coord_py >= tac_range_y;
+
+        int raw_mouse_x = 0;
+        int raw_mouse_y = 0;
+        TD_SDL_Get_Raw_Mouse_Position(raw_mouse_x, raw_mouse_y);
+        int mapped_mouse_x = raw_mouse_x;
+        int mapped_mouse_y = raw_mouse_y;
+        Render_Bridge_Map_Tactical_Point(raw_mouse_x, raw_mouse_y, mapped_mouse_x, mapped_mouse_y);
+        int raw_mouse_screen_x = offset_x + static_cast<int>(std::round(raw_mouse_x * ui_scale));
+        int raw_mouse_screen_y = offset_y + static_cast<int>(std::round(raw_mouse_y * ui_scale));
+        int mouse_screen_x = offset_x + static_cast<int>(std::round(mapped_mouse_x * ui_scale));
+        int mouse_screen_y = offset_y + static_cast<int>(std::round(mapped_mouse_y * ui_scale));
+
+        GL_Primitives_Render_Debug_Overlay(
+            win_w, win_h,
+            offset_y + static_cast<int>(std::round(tac_y * ui_scale)),
+            avail_x, avail_y, avail_w, avail_h,
+            offset_x + static_cast<int>(std::round(side_x * ui_scale)),
+            static_cast<int>(std::round(side_w * ui_scale)),
+            avail_x, avail_y, avail_w, avail_h,
+            CELL_PIXEL_W * 2.0f * ui_scale,
+            vp_x, vp_y, vis_w, vis_h,
+            g_tac_tex_w, g_tac_tex_h,
+            clamp_left, clamp_right, clamp_top, clamp_bottom,
+            raw_mouse_screen_x, raw_mouse_screen_y,
+            mouse_screen_x, mouse_screen_y);
+
+        glUseProgram(g_gl_program);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
+        glUniform1i(g_u_indexed, 0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, g_palette_tex);
+        glUniform1i(g_u_palette, 1);
+    }
 
     // Debug HUD overlay (GL quad at screen resolution)
     { extern void Render_Bridge_Debug_HUD_GL(int, int); Render_Bridge_Debug_HUD_GL(win_w, win_h); }
+
+    // Mouse cursor overlay: decoded palette-index cursor shape with index 0 transparent.
+    // Draw this last so debug overlays can never cover it.
+    {
+        const uint8_t* cursor_pixels = nullptr;
+        int cursor_w = 0;
+        int cursor_h = 0;
+        int cursor_hotx = 0;
+        int cursor_hoty = 0;
+        bool cursor_visible = false;
+        if (TD_SDL_Get_Mouse_Cursor(cursor_pixels, cursor_w, cursor_h,
+                                    cursor_hotx, cursor_hoty, cursor_visible) &&
+            cursor_visible && cursor_pixels && cursor_w > 0 && cursor_h > 0 && g_ui_program) {
+            int overlay_w = w;
+            int overlay_h = h;
+            int overlay_size = overlay_w * overlay_h;
+            if (!g_cursor_overlay || g_cursor_overlay_alloc < overlay_size) {
+                free(g_cursor_overlay);
+                g_cursor_overlay = static_cast<uint8_t*>(malloc(overlay_size));
+                g_cursor_overlay_alloc = overlay_size;
+            }
+
+            if (!g_cursor_overlay) {
+                goto cursor_done;
+            }
+
+            memset(g_cursor_overlay, 0, overlay_size);
+
+            int raw_mouse_x = 0;
+            int raw_mouse_y = 0;
+            TD_SDL_Get_Raw_Mouse_Position(raw_mouse_x, raw_mouse_y);
+
+            int cursor_x = raw_mouse_x - cursor_hotx;
+            int cursor_y = raw_mouse_y - cursor_hoty;
+            for (int row = 0; row < cursor_h; row++) {
+                int dy = cursor_y + row;
+                if (dy < 0 || dy >= overlay_h) {
+                    continue;
+                }
+                for (int col = 0; col < cursor_w; col++) {
+                    int dx = cursor_x + col;
+                    if (dx < 0 || dx >= overlay_w) {
+                        continue;
+                    }
+                    uint8_t idx = cursor_pixels[row * cursor_w + col];
+                    if (idx != 0) {
+                        g_cursor_overlay[dy * overlay_w + dx] = idx;
+                    }
+                }
+            }
+
+            if (!g_cursor_tex || g_cursor_tex_w != overlay_w || g_cursor_tex_h != overlay_h) {
+                if (g_cursor_tex) glDeleteTextures(1, &g_cursor_tex);
+                glGenTextures(1, &g_cursor_tex);
+                glBindTexture(GL_TEXTURE_2D, g_cursor_tex);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, overlay_w, overlay_h, 0,
+                             GL_LUMINANCE, GL_UNSIGNED_BYTE, g_cursor_overlay);
+                g_cursor_tex_w = overlay_w;
+                g_cursor_tex_h = overlay_h;
+            } else {
+                glBindTexture(GL_TEXTURE_2D, g_cursor_tex);
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, overlay_w, overlay_h,
+                                GL_LUMINANCE, GL_UNSIGNED_BYTE, g_cursor_overlay);
+            }
+
+            glUseProgram(g_ui_program);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, g_cursor_tex);
+            glUniform1i(g_ui_u_indexed, 0);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, g_palette_tex);
+            glUniform1i(g_ui_u_palette, 1);
+
+            glUniform4f(g_ui_u_src_rect, 0.0f, 0.0f, 1.0f, 1.0f);
+            float nx0 = static_cast<float>(offset_x) / win_w * 2.0f - 1.0f;
+            float ny0 = 1.0f - static_cast<float>(offset_y) / win_h * 2.0f;
+            float nx1 = static_cast<float>(offset_x + static_cast<int>(w * ui_scale)) / win_w * 2.0f - 1.0f;
+            float ny1 = 1.0f - static_cast<float>(offset_y + static_cast<int>(h * ui_scale)) / win_h * 2.0f;
+            glUniform4f(g_ui_u_dst_rect, nx0, ny0, nx1, ny1);
+
+            static const float quad[] = { 0,0, 1,0, 0,1, 1,1 };
+            bind_client_quad_pointer(quad);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+            glUseProgram(g_gl_program);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, g_indexed_tex);
+            glUniform1i(g_u_indexed, 0);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, g_palette_tex);
+            glUniform1i(g_u_palette, 1);
+        }
+cursor_done:
+        ;
+    }
+
+    glDisableVertexAttribArray(0);
 
     SDL_GL_SwapWindow(g_window);
     return true;
