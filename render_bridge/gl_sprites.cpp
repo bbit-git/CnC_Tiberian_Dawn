@@ -20,6 +20,8 @@
 #include "draw_list.h"
 #include "legacy_sprite_provider.h"
 #include "texture_atlas.h"
+#include "gl/gl_house_color.h"
+#include "gl/gl_sprite_batch.h"
 #include "function.h"
 #include "dbg.h"
 
@@ -30,25 +32,178 @@
 #include <unordered_map>
 #include <cstring>
 
+enum class SpriteRenderKind : uint8_t {
+    Normal,
+    Shadow,
+    Ghost,
+    TranslucentGhost,
+    SpecialGhost,
+    WhiteGhost,
+    MouseGhost,
+};
+
+struct SpriteRenderStyle {
+    const uint8_t* remap_table = nullptr;
+    SpriteRenderKind kind = SpriteRenderKind::Normal;
+    uint8_t alpha = 255;
+    float house_hue = -1.0f;
+    bool supported = true;
+};
+
 static LegacySpriteProvider g_provider;
 static TextureAtlas         g_atlas;
+static GLSpriteBatch        g_batch;
 static bool                 g_atlas_ready = false;
+static int                  g_last_rendered_sprites = 0;
+static int                  g_last_draw_calls = 0;
+static int                  g_last_fallback_sprites = 0;
+static int                  g_last_atlas_new_shapes = 0;
 
 // Cache: (shapefile_ptr << 16 | frame) → atlas frame ID
 static std::unordered_map<uint64_t, AtlasFrameID> g_atlas_cache;
-
-// Palette state for atlas invalidation
-static const uint8_t* g_cached_pal = nullptr;
-static uint32_t       g_cached_pal_hash = 0;
 
 // GL textures for atlas pages
 static GLuint* g_page_textures = nullptr;
 static int     g_page_tex_count = 0;
 
-static uint64_t make_cache_key(const void* shapefile, int frame)
+extern unsigned char const RemapBlue[256];
+extern unsigned char const RemapOrange[256];
+extern unsigned char const RemapYellow[256];
+extern unsigned char const RemapRed[256];
+extern unsigned char const RemapBlueGreen[256];
+extern unsigned char const RemapGreen[256];
+extern unsigned char const RemapNone[256];
+
+static float classify_house_hue(const uint8_t* remap)
 {
-    return (static_cast<uint64_t>(reinterpret_cast<uintptr_t>(shapefile)) << 16) |
-           (frame & 0xFFFF);
+    if (!remap || remap == RemapNone) {
+        return -1.0f;
+    }
+    if (remap == RemapYellow) {
+        return HouseColors::GDI_GOLD.hue;
+    }
+    if (remap == RemapRed) {
+        return HouseColors::NOD_RED.hue;
+    }
+    if (remap == RemapOrange) {
+        return HouseColors::MP_ORANGE.hue;
+    }
+    if (remap == RemapBlueGreen) {
+        return HouseColors::MP_TEAL.hue;
+    }
+    if (remap == RemapBlue) {
+        return HouseColors::ALLIES_BLUE.hue;
+    }
+    if (remap == RemapGreen) {
+        return 0.33f;
+    }
+    return -1.0f;
+}
+
+static uint64_t hash_style(const SpriteRenderStyle& style)
+{
+    uint64_t key = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(style.remap_table));
+    uint32_t hue_bits = 0;
+    static_assert(sizeof(hue_bits) == sizeof(style.house_hue), "float size mismatch");
+    memcpy(&hue_bits, &style.house_hue, sizeof(hue_bits));
+    key ^= static_cast<uint64_t>(hue_bits) << 8;
+    return key;
+}
+
+static uint64_t make_cache_key(const void* shapefile, int frame, const SpriteRenderStyle& style)
+{
+    uint64_t key = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(shapefile));
+    key ^= static_cast<uint64_t>(frame & 0xFFFF) << 32;
+    key ^= hash_style(style);
+    return key;
+}
+
+static SpriteRenderStyle classify_style(const ShapeCmd& cmd)
+{
+    SpriteRenderStyle style = {};
+    int effective_flags = cmd.flags;
+    const uint8_t* remap = static_cast<const uint8_t*>(cmd.fadingdata);
+    const uint8_t* ghost = static_cast<const uint8_t*>(cmd.ghostdata);
+
+    // The experimental GL sprite path is an overlay drawn after the native
+    // tactical texture. Only centered object sprites preserve ordering there.
+    // Ground-attached cell art such as bib patches, scenery, and shroud-related
+    // shapes must stay in the native replay path for correct layering.
+    if ((effective_flags & SHAPE_CENTER) == 0) {
+        style.supported = false;
+        return style;
+    }
+
+    // Legacy mixed ghost+fading draws combine two remap tables in one blit.
+    // That path covers unit bodies, their shadows, and tree lighting. The GL
+    // approximation does not match it yet, so keep those draws on the CPU path.
+    if ((effective_flags & SHAPE_GHOST) && (effective_flags & SHAPE_FADING)) {
+        style.supported = false;
+        return style;
+    }
+
+    if ((effective_flags & (SHAPE_FADING | SHAPE_PREDATOR)) == (SHAPE_FADING | SHAPE_PREDATOR)) {
+        effective_flags &= ~(SHAPE_FADING | SHAPE_PREDATOR);
+        effective_flags |= SHAPE_GHOST;
+        ghost = Map.SpecialGhost;
+        remap = nullptr;
+    }
+
+    if (effective_flags & SHAPE_PREDATOR) {
+        style.supported = false;
+        return style;
+    }
+
+    if ((effective_flags & SHAPE_FADING) && remap) {
+        style.house_hue = classify_house_hue(remap);
+        if (style.house_hue < 0.0f) {
+            style.remap_table = remap;
+        }
+    }
+
+    if (!(effective_flags & SHAPE_GHOST) || !ghost) {
+        return style;
+    }
+
+    if (ghost == Map.UnitShadow) {
+        // UnitShadow is reused by several legacy draw sites (unit shadows,
+        // tiberium/overlay sprites, theater scenery, and other tactical
+        // silhouettes). Keep all of them on the CPU path until the bridge can
+        // distinguish those cases without breaking ordering against shroud.
+        style.supported = false;
+        return style;
+    }
+    if (ghost == Map.SpecialGhost) {
+        style.kind = SpriteRenderKind::SpecialGhost;
+        style.alpha = 100;
+        return style;
+    }
+    if (ghost == Map.TranslucentTable) {
+        style.kind = SpriteRenderKind::TranslucentGhost;
+        style.alpha = 110;
+        return style;
+    }
+    if (ghost == Map.WhiteTranslucentTable) {
+        style.kind = SpriteRenderKind::WhiteGhost;
+        style.alpha = 80;
+        return style;
+    }
+    if (ghost == Map.MouseTranslucentTable) {
+        style.kind = SpriteRenderKind::MouseGhost;
+        style.alpha = 110;
+        return style;
+    }
+
+    // Unknown ghost tables are kept on the CPU path until they are classified
+    // explicitly. Rendering an approximate but incorrect effect in GL is worse
+    // than deferring to the legacy draw path.
+    style.supported = false;
+    return style;
+}
+
+bool GL_Sprites_Should_Skip_CPU(const ShapeCmd& cmd)
+{
+    return classify_style(cmd).supported;
 }
 
 // Snapshot of the palette used to build the atlas (768 bytes)
@@ -77,6 +232,7 @@ static void invalidate_atlas()
     free(g_page_textures);
     g_page_textures = nullptr;
     g_page_tex_count = 0;
+    g_batch.Clear_Page_Textures();
 
     // Reset atlas (re-init for new frames)
     g_atlas.~TextureAtlas();
@@ -86,35 +242,54 @@ static void invalidate_atlas()
 }
 
 /// Ensure a shape frame is in the atlas. Returns atlas frame ID.
-static AtlasFrameID ensure_in_atlas(const void* shapefile, int shapenum,
-                                      const uint8_t* palette)
+static AtlasFrameID ensure_in_atlas(const ShapeCmd& cmd, const uint8_t* palette)
 {
-    uint64_t key = make_cache_key(shapefile, shapenum);
+    SpriteRenderStyle style = classify_style(cmd);
+    if (!style.supported) {
+        return static_cast<AtlasFrameID>(-1);
+    }
+
+    uint64_t key = make_cache_key(cmd.shapefile, cmd.shapenum, style);
     auto it = g_atlas_cache.find(key);
     if (it != g_atlas_cache.end()) return it->second;
 
     // Decode sprite
     SpriteFrame frame;
-    if (!g_provider.Get_Frame(shapefile, shapenum, frame))
+    if (!g_provider.Get_Frame(cmd.shapefile, cmd.shapenum, frame))
         return static_cast<AtlasFrameID>(-1);
     if (!frame.pixels || frame.width <= 0 || frame.height <= 0)
         return static_cast<AtlasFrameID>(-1);
 
-    // Convert 8-bit indexed → RGBA using palette
+    // Convert indexed pixels into RGBA atlas content. House color, ghost, and
+    // shadow are handled in the batch shader for supported cases.
     int pixel_count = frame.width * frame.height;
     uint32_t* rgba = static_cast<uint32_t*>(malloc(pixel_count * 4));
     if (!rgba) return static_cast<AtlasFrameID>(-1);
 
     const uint8_t* src = static_cast<const uint8_t*>(frame.pixels);
-    for (int i = 0; i < pixel_count; i++) {
-        uint8_t idx = src[i];
-        if (idx == 0) {
-            rgba[i] = 0; // transparent
-        } else {
+    for (int y = 0; y < frame.height; y++) {
+        const uint8_t* row = src + y * frame.pitch;
+        for (int x = 0; x < frame.width; x++) {
+            int i = y * frame.width + x;
+            uint8_t idx = row[x];
+            if (idx == 0) {
+                rgba[i] = 0;
+                continue;
+            }
+
+            if (style.remap_table) {
+                idx = style.remap_table[idx];
+            }
+
             uint8_t r = palette[idx * 3 + 0] << 2;
             uint8_t g = palette[idx * 3 + 1] << 2;
             uint8_t b = palette[idx * 3 + 2] << 2;
-            rgba[i] = (0xFFu << 24) | (b << 16) | (g << 8) | r;
+            uint8_t a = 255;
+
+            rgba[i] = (static_cast<uint32_t>(a) << 24) |
+                      (static_cast<uint32_t>(b) << 16) |
+                      (static_cast<uint32_t>(g) << 8) |
+                      r;
         }
     }
 
@@ -137,6 +312,7 @@ void GL_Sprites_Init()
 /// Only rebuilds when palette changes or new shapes appear.
 int GL_Sprites_Build_Atlas(const uint8_t* vga_palette)
 {
+    g_last_atlas_new_shapes = 0;
     bool pal_changed = palette_changed(vga_palette);
     if (pal_changed) {
         invalidate_atlas();
@@ -148,7 +324,9 @@ int GL_Sprites_Build_Atlas(const uint8_t* vga_palette)
         for (int i = 0; i < g_draw_list.Command_Count(); i++) {
             const DrawCommand& cmd = g_draw_list.Get(i);
             if (cmd.type != CMD_SHAPE) continue;
-            uint64_t key = make_cache_key(cmd.shape.shapefile, cmd.shape.shapenum);
+            SpriteRenderStyle style = classify_style(cmd.shape);
+            if (!style.supported) continue;
+            uint64_t key = make_cache_key(cmd.shape.shapefile, cmd.shape.shapenum, style);
             if (g_atlas_cache.find(key) == g_atlas_cache.end()) {
                 has_new = true;
                 break;
@@ -164,22 +342,25 @@ int GL_Sprites_Build_Atlas(const uint8_t* vga_palette)
         const DrawCommand& cmd = g_draw_list.Get(i);
         if (cmd.type != CMD_SHAPE) continue;
 
-        uint64_t key = make_cache_key(cmd.shape.shapefile, cmd.shape.shapenum);
+        SpriteRenderStyle style = classify_style(cmd.shape);
+        if (!style.supported) continue;
+        uint64_t key = make_cache_key(cmd.shape.shapefile, cmd.shape.shapenum, style);
         if (g_atlas_cache.find(key) != g_atlas_cache.end()) continue;
 
-        AtlasFrameID id = ensure_in_atlas(cmd.shape.shapefile,
-                                           cmd.shape.shapenum, vga_palette);
+        AtlasFrameID id = ensure_in_atlas(cmd.shape, vga_palette);
         if (id != static_cast<AtlasFrameID>(-1)) new_shapes++;
     }
 
     if (new_shapes > 0 || (g_atlas_cache.size() > 0 && !g_atlas_ready)) {
         g_atlas.Finalize();
         g_atlas_ready = true;
+        g_last_atlas_new_shapes = new_shapes;
 
         // Upload atlas pages to GL
         for (int i = 0; i < g_page_tex_count; i++)
             if (g_page_textures[i]) glDeleteTextures(1, &g_page_textures[i]);
         free(g_page_textures);
+        g_batch.Clear_Page_Textures();
 
         int pages = g_atlas.Page_Count();
         g_page_textures = static_cast<GLuint*>(calloc(pages, sizeof(GLuint)));
@@ -195,10 +376,8 @@ int GL_Sprites_Build_Atlas(const uint8_t* vga_palette)
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
                          g_atlas.Page_Size(), g_atlas.Page_Size(), 0,
                          GL_RGBA, GL_UNSIGNED_BYTE, g_atlas.Page_Pixels(p));
+            g_batch.Set_Page_Texture(static_cast<uint16_t>(p), g_page_textures[p]);
         }
-
-        DBG("gl_sprites: atlas built — %d frames (+%d new), %d pages",
-            static_cast<int>(g_atlas_cache.size()), new_shapes, pages);
     }
 
     return static_cast<int>(g_atlas_cache.size());
@@ -207,68 +386,10 @@ int GL_Sprites_Build_Atlas(const uint8_t* vga_palette)
 /// Get atlas stats for debug display.
 int GL_Sprites_Atlas_Frame_Count() { return static_cast<int>(g_atlas_cache.size()); }
 int GL_Sprites_Atlas_Page_Count()  { return g_atlas.Page_Count(); }
-
-// ---- RGBA sprite shader for atlas quad rendering ----
-
-static GLuint g_sprite_prog = 0;
-static GLint  g_sp_u_texture = -1;
-static bool   g_sprite_shader_ready = false;
-
-static const char* sprite_vert = R"(
-    attribute vec2 a_pos;
-    attribute vec2 a_uv;
-    varying vec2 v_uv;
-    void main() {
-        gl_Position = vec4(a_pos, 0.0, 1.0);
-        v_uv = a_uv;
-    }
-)";
-
-static const char* sprite_frag = R"(
-    precision mediump float;
-    varying vec2 v_uv;
-    uniform sampler2D u_texture;
-    void main() {
-        vec4 c = texture2D(u_texture, v_uv);
-        if (c.a < 0.01) discard;
-        gl_FragColor = c;
-    }
-)";
-
-static bool init_sprite_shader()
-{
-    if (g_sprite_shader_ready) return true;
-
-    GLuint vs = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vs, 1, &sprite_vert, nullptr);
-    glCompileShader(vs);
-    GLint ok = 0;
-    glGetShaderiv(vs, GL_COMPILE_STATUS, &ok);
-    if (!ok) { glDeleteShader(vs); return false; }
-
-    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fs, 1, &sprite_frag, nullptr);
-    glCompileShader(fs);
-    glGetShaderiv(fs, GL_COMPILE_STATUS, &ok);
-    if (!ok) { glDeleteShader(vs); glDeleteShader(fs); return false; }
-
-    g_sprite_prog = glCreateProgram();
-    glAttachShader(g_sprite_prog, vs);
-    glAttachShader(g_sprite_prog, fs);
-    glBindAttribLocation(g_sprite_prog, 0, "a_pos");
-    glBindAttribLocation(g_sprite_prog, 1, "a_uv");
-    glLinkProgram(g_sprite_prog);
-    glDeleteShader(vs);
-    glDeleteShader(fs);
-
-    glGetProgramiv(g_sprite_prog, GL_LINK_STATUS, &ok);
-    if (!ok) return false;
-
-    g_sp_u_texture = glGetUniformLocation(g_sprite_prog, "u_texture");
-    g_sprite_shader_ready = true;
-    DBG("gl_sprites: shader compiled");
-    return true;
-}
+int GL_Sprites_Last_Atlas_New_Count() { return g_last_atlas_new_shapes; }
+int GL_Sprites_Last_Sprite_Count() { return g_last_rendered_sprites; }
+int GL_Sprites_Last_Draw_Calls()   { return g_last_draw_calls; }
+int GL_Sprites_Last_Fallback_Count() { return g_last_fallback_sprites; }
 
 /// Render all CMD_SHAPE from draw list as GL textured quads.
 /// win_w/h: native window pixels. tac_*: tactical area in screen pixels.
@@ -280,39 +401,38 @@ int GL_Sprites_Render(int win_w, int win_h,
                        int tac_game_w, int tac_game_h,
                        float scale, float vp_x, float vp_y)
 {
-    if (!g_atlas_ready || g_page_tex_count == 0) return 0;
-    if (!init_sprite_shader()) return 0;
-
-    glUseProgram(g_sprite_prog);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glActiveTexture(GL_TEXTURE0);
-    glUniform1i(g_sp_u_texture, 0);
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-
-    int rendered = 0;
-    GLuint current_page_tex = 0;
+    (void)tac_game_x;
+    (void)tac_game_y;
+    (void)tac_game_w;
+    (void)tac_game_h;
+    if (!g_atlas_ready || g_page_tex_count == 0) {
+        g_last_rendered_sprites = 0;
+        g_last_draw_calls = 0;
+        g_last_fallback_sprites = 0;
+        return 0;
+    }
+    g_batch.Begin();
+    g_last_fallback_sprites = 0;
 
     for (int i = 0; i < g_draw_list.Command_Count(); i++) {
         const DrawCommand& cmd = g_draw_list.Get(i);
         if (cmd.type != CMD_SHAPE) continue;
 
-        uint64_t key = make_cache_key(cmd.shape.shapefile, cmd.shape.shapenum);
+        SpriteRenderStyle style = classify_style(cmd.shape);
+        if (!style.supported) {
+            g_last_fallback_sprites++;
+            continue;
+        }
+
+        uint64_t key = make_cache_key(cmd.shape.shapefile, cmd.shape.shapenum, style);
         auto it = g_atlas_cache.find(key);
-        if (it == g_atlas_cache.end()) continue;
+        if (it == g_atlas_cache.end()) {
+            g_last_fallback_sprites++;
+            continue;
+        }
 
         AtlasRegion region;
         if (!g_atlas.Get_Region(it->second, region)) continue;
-
-        // Bind atlas page texture (batch by page)
-        if (!g_page_textures || region.atlas_id >= g_page_tex_count) continue;
-        GLuint page_tex = g_page_textures[region.atlas_id];
-        if (page_tex != current_page_tex) {
-            glBindTexture(GL_TEXTURE_2D, page_tex);
-            current_page_tex = page_tex;
-        }
 
         // Sprite position: game-buffer relative to tactical window
         float game_x = static_cast<float>(cmd.shape.x);
@@ -333,30 +453,28 @@ int GL_Sprites_Render(int win_w, int win_h,
         // Clip: skip if entirely outside tactical screen area
         if (screen_x + screen_w < tac_screen_x || screen_x > tac_screen_x + tac_screen_w) continue;
         if (screen_y + screen_h < tac_screen_y || screen_y > tac_screen_y + tac_screen_h) continue;
-
-        // Convert screen pixels → NDC
-        float nx0 = screen_x / win_w * 2.0f - 1.0f;
-        float ny0 = 1.0f - screen_y / win_h * 2.0f;
-        float nx1 = (screen_x + screen_w) / win_w * 2.0f - 1.0f;
-        float ny1 = 1.0f - (screen_y + screen_h) / win_h * 2.0f;
-
-        // Quad vertices: position + UV
-        float verts[] = {
-            nx0, ny0, region.u0, region.v0,
-            nx1, ny0, region.u1, region.v0,
-            nx0, ny1, region.u0, region.v1,
-            nx1, ny1, region.u1, region.v1,
-        };
-
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, &verts[0]);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, &verts[2]);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        rendered++;
+        SpriteBatchEntry entry = {};
+        entry.region = region;
+        entry.dst_x = screen_x;
+        entry.dst_y = screen_y;
+        entry.scale_x = scale;
+        entry.scale_y = scale;
+        entry.house_hue = style.house_hue;
+        entry.flags = 0;
+        if (cmd.shape.flags & SHAPE_HORZ_REV) entry.flags |= 0x01;
+        if (cmd.shape.flags & SHAPE_VERT_REV) entry.flags |= 0x02;
+        if (style.kind == SpriteRenderKind::Ghost) entry.flags |= 0x04;
+        if (style.kind == SpriteRenderKind::Shadow) entry.flags |= 0x08;
+        if (style.kind == SpriteRenderKind::TranslucentGhost) entry.flags |= 0x80;
+        if (style.kind == SpriteRenderKind::SpecialGhost) entry.flags |= 0x20;
+        if (style.kind == SpriteRenderKind::WhiteGhost) entry.flags |= 0x10;
+        if (style.kind == SpriteRenderKind::MouseGhost) entry.flags |= 0x40;
+        entry.fade = (style.kind == SpriteRenderKind::Normal) ? 0 : style.alpha;
+        g_batch.Add(entry);
     }
 
-    glDisableVertexAttribArray(0);
-    glDisableVertexAttribArray(1);
-    glDisable(GL_BLEND);
-
-    return rendered;
+    g_batch.Flush();
+    g_last_rendered_sprites = g_batch.Sprite_Count();
+    g_last_draw_calls = g_batch.Draw_Call_Count();
+    return g_last_rendered_sprites;
 }
