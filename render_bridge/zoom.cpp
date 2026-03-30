@@ -198,19 +198,16 @@ void Render_Bridge_Get_Visible_Size(float& w, float& h)
 
 void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h)
 {
-    float vis_w = 0.0f;
-    float vis_h = 0.0f;
-    Render_Bridge_Get_Visible_Size(vis_w, vis_h);
-    if (vis_w <= 0.0f || vis_h <= 0.0f) {
+    int native_w = Render_Bridge_Get_Native_Tac_W();
+    int native_h = Render_Bridge_Get_Native_Tac_H();
+    if (native_w <= 0 || native_h <= 0) {
         w = Map.TacLeptonWidth;
         h = Map.TacLeptonHeight;
         return;
     }
 
-    int vis_px_w = static_cast<int>(std::ceil(vis_w));
-    int vis_px_h = static_cast<int>(std::ceil(vis_h));
-    w = Pixel_To_Lepton(vis_px_w);
-    h = Pixel_To_Lepton(vis_px_h);
+    w = Pixel_To_Lepton(native_w);
+    h = Pixel_To_Lepton(native_h);
 
     int map_w = Cell_To_Lepton(Map.MapCellWidth);
     int map_h = Cell_To_Lepton(Map.MapCellHeight);

@@ -632,6 +632,7 @@ void Keyboard_Process(KeyNumType &input)
 #ifdef USE_RENDER_BRIDGE
 			if (KN_To_VK(plain) == VK_F8) {
 				Render_Bridge_Debug_Dump();
+				break;
 			}
 			if (KN_To_VK(plain) == VK_F9 && (input & KN_CTRL_BIT)) {
 				Render_Bridge_Debug_HUD_Toggle();

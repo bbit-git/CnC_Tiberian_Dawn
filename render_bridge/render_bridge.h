@@ -75,7 +75,7 @@ float Render_Bridge_Get_Viewport_Y();
 /// Visible region size in native tactical pixels after zoom/aspect fitting.
 void Render_Bridge_Get_Visible_Size(float& w, float& h);
 
-/// Get the effective visible world size in lepton space for bridge-aware clamps.
+/// Get the native tactical world size in lepton space for bridge-aware clamps.
 void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
 
 /// Dump current render-bridge HUD stats to the debug log.
