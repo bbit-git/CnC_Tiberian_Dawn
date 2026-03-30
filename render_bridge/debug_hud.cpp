@@ -29,10 +29,6 @@ extern int  GL_Sprites_Last_Draw_Calls();
 extern int  GL_Sprites_Last_Fallback_Count();
 extern int  GL_Primitives_Last_Count();
 extern SDL_Window* g_window;
-extern int Render_Bridge_Get_Native_Tac_W();
-extern int Render_Bridge_Get_Native_Tac_H();
-extern void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
-extern void Render_Bridge_Get_Requested_Tactical_Position(int& x, int& y);
 
 static int      g_fps = 0;
 static int      g_fps_counter = 0;
@@ -48,10 +44,18 @@ static bool   g_hud_gl_ready = false;
 static bool   g_debug_hud_visible = true;
 static bool   g_debug_bars_visible = true;
 static bool   g_debug_sources_visible = false;
+static int    g_hud_screen_x = 0;
+static int    g_hud_screen_y = 0;
+static bool   g_hud_dragging = false;
+static bool   g_hud_mouse_was_down = false;
+static int    g_hud_drag_off_x = 0;
+static int    g_hud_drag_off_y = 0;
 
 // HUD bitmap
 static constexpr int HUD_W = 160;
-static constexpr int HUD_H = 136;
+static constexpr int HUD_H = 160;
+static constexpr int HUD_SCREEN_W = 320;
+static constexpr int HUD_SCREEN_H = 320;
 static uint32_t g_hud_pixels[HUD_W * HUD_H];
 
 // 4x6 bitmap font
@@ -137,6 +141,41 @@ static void dump_line(const char* fmt, ...)
     fclose(fp);
 }
 
+static void update_hud_drag(int win_w, int win_h)
+{
+    float mouse_x = 0.0f;
+    float mouse_y = 0.0f;
+    uint32_t buttons = SDL_GetMouseState(&mouse_x, &mouse_y);
+    bool left_down = (buttons & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) != 0;
+
+    bool inside = mouse_x >= g_hud_screen_x &&
+                  mouse_x < g_hud_screen_x + HUD_SCREEN_W &&
+                  mouse_y >= g_hud_screen_y &&
+                  mouse_y < g_hud_screen_y + HUD_SCREEN_H;
+
+    if (left_down && !g_hud_mouse_was_down && inside) {
+        g_hud_dragging = true;
+        g_hud_drag_off_x = static_cast<int>(mouse_x) - g_hud_screen_x;
+        g_hud_drag_off_y = static_cast<int>(mouse_y) - g_hud_screen_y;
+    } else if (!left_down) {
+        g_hud_dragging = false;
+    }
+
+    if (g_hud_dragging) {
+        g_hud_screen_x = static_cast<int>(mouse_x) - g_hud_drag_off_x;
+        g_hud_screen_y = static_cast<int>(mouse_y) - g_hud_drag_off_y;
+    }
+
+    if (g_hud_screen_x < 0) g_hud_screen_x = 0;
+    if (g_hud_screen_y < 0) g_hud_screen_y = 0;
+    if (g_hud_screen_x > win_w - HUD_SCREEN_W) g_hud_screen_x = win_w - HUD_SCREEN_W;
+    if (g_hud_screen_y > win_h - HUD_SCREEN_H) g_hud_screen_y = win_h - HUD_SCREEN_H;
+    if (g_hud_screen_x < 0) g_hud_screen_x = 0;
+    if (g_hud_screen_y < 0) g_hud_screen_y = 0;
+
+    g_hud_mouse_was_down = left_down;
+}
+
 void Render_Bridge_Debug_Dump()
 {
     int cmd_count = g_draw_list.Command_Count();
@@ -153,10 +192,16 @@ void Render_Bridge_Debug_Dump()
 
     float zoom = Render_Bridge_Get_Zoom_Level();
     float zoom_default = Render_Bridge_Get_Default_Zoom();
+    int log_w = 0, log_h = 0;
+    Render_Bridge_Get_Logical_Screen_Size(log_w, log_h);
     int tac_x, tac_y, tac_w, tac_h;
     Render_Bridge_Get_Tactical_Rect(tac_x, tac_y, tac_w, tac_h);
-    int ntac_w = Render_Bridge_Get_Native_Tac_W();
-    int ntac_h = Render_Bridge_Get_Native_Tac_H();
+    int hdr_x, hdr_y, hdr_w, hdr_h;
+    Render_Bridge_Get_Header_Rect(hdr_x, hdr_y, hdr_w, hdr_h);
+    int side_x, side_y, side_w, side_h;
+    Render_Bridge_Get_Sidebar_Rect(side_x, side_y, side_w, side_h);
+    int ntac_w = 0, ntac_h = 0;
+    Render_Bridge_Get_Native_World_Rect(ntac_w, ntac_h);
     int atlas_f = GL_Sprites_Atlas_Frame_Count();
     int atlas_p = GL_Sprites_Atlas_Page_Count();
     int atlas_new = GL_Sprites_Last_Atlas_New_Count();
@@ -212,7 +257,10 @@ void Render_Bridge_Debug_Dump()
         SDL_GetWindowSizeInPixels(g_window, &win_w, &win_h);
     }
 
-    dump_line("bridge: NAT %dx%d TAC %dx%d", ntac_w, ntac_h, tac_w, tac_h);
+    dump_line("bridge: LOG %dx%d NAT %dx%d", log_w, log_h, ntac_w, ntac_h);
+    dump_line("bridge: TAC %d,%d %dx%d", tac_x, tac_y, tac_w, tac_h);
+    dump_line("bridge: HDR %d,%d %dx%d", hdr_x, hdr_y, hdr_w, hdr_h);
+    dump_line("bridge: SID %d,%d %dx%d", side_x, side_y, side_w, side_h);
     dump_line("bridge: Z %.2f DEF %.2f VIS %dx%d VP %.0f-%.0f", zoom, zoom_default, vp_w, vp_h, vp_x, vp_y);
     dump_line("bridge: VP MAX %.0f-%.0f", vp_max_x, vp_max_y);
     dump_line("bridge: VP TG %.0f-%.0f SD %d-%d", vp_target_x, vp_target_y, scroll_dx, scroll_dy);
@@ -236,6 +284,7 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     if (!InMainLoop) return;
     if (!g_debug_hud_visible) return;
     if (!init_hud_gl()) return;
+    update_hud_drag(win_w, win_h);
 
     // Update timing
     uint64_t now = SDL_GetTicks();
@@ -254,10 +303,16 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
 
     float zoom = Render_Bridge_Get_Zoom_Level();
     float zoom_default = Render_Bridge_Get_Default_Zoom();
-    int buf_w = SeenBuff.Get_Width(), buf_h = SeenBuff.Get_Height();
+    int log_w = 0, log_h = 0;
+    Render_Bridge_Get_Logical_Screen_Size(log_w, log_h);
     int tac_x, tac_y, tac_w, tac_h;
     Render_Bridge_Get_Tactical_Rect(tac_x, tac_y, tac_w, tac_h);
-    int ntac_w = Render_Bridge_Get_Native_Tac_W(), ntac_h = Render_Bridge_Get_Native_Tac_H();
+    int hdr_x, hdr_y, hdr_w, hdr_h;
+    Render_Bridge_Get_Header_Rect(hdr_x, hdr_y, hdr_w, hdr_h);
+    int side_x, side_y, side_w, side_h;
+    Render_Bridge_Get_Sidebar_Rect(side_x, side_y, side_w, side_h);
+    int ntac_w = 0, ntac_h = 0;
+    Render_Bridge_Get_Native_World_Rect(ntac_w, ntac_h);
     int atlas_f = GL_Sprites_Atlas_Frame_Count(), atlas_p = GL_Sprites_Atlas_Page_Count();
     int atlas_new = GL_Sprites_Last_Atlas_New_Count();
     int gl_sprites = GL_Sprites_Last_Sprite_Count(), gl_draws = GL_Sprites_Last_Draw_Calls();
@@ -322,17 +377,25 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     uint32_t red    = 0xFF0000FF;
     uint32_t blue   = 0xFFFF0000;
     uint32_t orange = 0xFF0080FF;
+    uint32_t violet = 0xFFFF40A0;
+    uint32_t magenta = 0xFFF040FF;
     char line[48];
     int y = 2;
 
     snprintf(line, sizeof(line), "%s %dFPS %.0fMS", GL_Present_Is_Active()?"GL":"SW", g_fps, g_frame_ms);
     hud_puts(2, y, line, white); y += 8;
 
-    snprintf(line, sizeof(line), "MAP %dX%d SCR%dX%d", map_cw, map_ch, win_w, win_h);
+    snprintf(line, sizeof(line), "LOG%dX%d SCR%dX%d", log_w, log_h, win_w, win_h);
+    hud_puts(2, y, line, white); y += 8;
+
+    snprintf(line, sizeof(line), "MAP %dX%d", map_cw, map_ch);
     hud_puts(2, y, line, white); y += 8;
 
     snprintf(line, sizeof(line), "NAT %dX%d TAC%dX%d", ntac_w, ntac_h, tac_w, tac_h);
     hud_puts(2, y, line, green); y += 8;
+
+    snprintf(line, sizeof(line), "HDR%d.%d SID%d.%d", hdr_w, hdr_h, side_x, side_w);
+    hud_puts(2, y, line, yellow); y += 8;
 
     snprintf(line, sizeof(line), "Z%.2f D%.2f V%dX%d", zoom, zoom_default, vp_w, vp_h);
     hud_puts(2, y, line, cyan); y += 8;
@@ -380,21 +443,29 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     snprintf(line, sizeof(line), "GL P%d", gl_prims);
     hud_puts(2, y, line, green); y += 8;
 
-    // Mouse position
+    // Mouse position: mapped (bridge-transformed) and raw (window-scaled)
+    extern void TD_SDL_Get_Raw_Mouse_Position(int& x, int& y);
+    int raw_mx = 0, raw_my = 0;
+    TD_SDL_Get_Raw_Mouse_Position(raw_mx, raw_my);
     snprintf(line, sizeof(line), "MSE %d-%d", g_mouse_x, g_mouse_y);
     hud_puts(2, y, line, white); y += 8;
 
+    snprintf(line, sizeof(line), "RAW %d-%d", raw_mx, raw_my);
+    hud_puts(2, y, line, orange); y += 8;
+
     hud_puts(2, y, "BOX", white);
-    hud_puts(24, y, "TAC", green);
-    hud_puts(46, y, "VP", cyan);
-    hud_puts(63, y, "HDR", yellow);
-    hud_puts(86, y, "SID", blue);
+    hud_puts(24, y, "BUF", violet);
+    hud_puts(46, y, "TAC", green);
+    hud_puts(68, y, "VP", cyan);
+    hud_puts(85, y, "HDR", yellow);
+    hud_puts(108, y, "SID", blue);
     y += 8;
 
     hud_puts(2, y, "CLP", white);
     hud_puts(24, y, "MSE", white);
     hud_puts(46, y, "SCRL", red);
-    hud_puts(75, y, "RAW", orange);
+    hud_puts(75, y, "SHRD", magenta);
+    hud_puts(104, y, "RAW", orange);
     y += 8;
 
     // Upload and render
@@ -410,14 +481,16 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glUniform1i(glGetUniformLocation(g_hud_prog, "u_tex"), 0);
 
-    // Top-left corner, fixed-size readable debug panel
-    float qw = 320.0f / win_w * 2.0f;
-    float qh = 272.0f / win_h * 2.0f;
+    // Draggable fixed-size debug panel in window pixel space.
+    float x0 = static_cast<float>(g_hud_screen_x) / win_w * 2.0f - 1.0f;
+    float y0 = 1.0f - static_cast<float>(g_hud_screen_y) / win_h * 2.0f;
+    float x1 = static_cast<float>(g_hud_screen_x + HUD_SCREEN_W) / win_w * 2.0f - 1.0f;
+    float y1 = 1.0f - static_cast<float>(g_hud_screen_y + HUD_SCREEN_H) / win_h * 2.0f;
     float verts[] = {
-        -1.0f,        1.0f,        0.0f, 0.0f,
-        -1.0f + qw,   1.0f,        1.0f, 0.0f,
-        -1.0f,        1.0f - qh,   0.0f, 1.0f,
-        -1.0f + qw,   1.0f - qh,   1.0f, 1.0f,
+        x0, y0, 0.0f, 0.0f,
+        x1, y0, 1.0f, 0.0f,
+        x0, y1, 0.0f, 1.0f,
+        x1, y1, 1.0f, 1.0f,
     };
 
     glEnableVertexAttribArray(0);
