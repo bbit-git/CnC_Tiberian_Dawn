@@ -638,6 +638,10 @@ short const * DisplayClass::Text_Overlap_List(char const * text, int x, int y, i
  *   12/06/1994 JLB : Created.                                                                 *
  *   06/27/1995 JLB : Adjusts tactical map position if necessary.                              *
  *=============================================================================================*/
+#ifdef USE_RENDER_BRIDGE
+extern float Render_Get_World_Zoom();
+#endif
+
 void DisplayClass::Set_View_Dimensions(int x, int y, int width, int height)
 {
 	if (width == -1) {
@@ -646,8 +650,14 @@ void DisplayClass::Set_View_Dimensions(int x, int y, int width, int height)
 	if (height == -1) {
 		height = SeenBuff.Get_Height() - y;
 	}
-	TacLeptonWidth = Pixel_To_Lepton(width);
-	TacLeptonHeight = Pixel_To_Lepton(height);
+	#ifdef USE_RENDER_BRIDGE
+        float zoom = Render_Get_World_Zoom();
+        TacLeptonWidth = Pixel_To_Lepton(static_cast<float>(width) / zoom);
+	        TacLeptonHeight = Pixel_To_Lepton(static_cast<float>(height) / zoom);
+#else
+        TacLeptonWidth = Pixel_To_Lepton(width);
+        TacLeptonHeight = Pixel_To_Lepton(height);
+#endif
 
 	/*
 	**	Adjust the tactical cell if it is now in an invalid position

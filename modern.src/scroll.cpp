@@ -1,3 +1,6 @@
+#ifdef USE_RENDER_BRIDGE
+extern float Render_Get_World_Zoom();
+#endif
 /*
 **	Command & Conquer(tm)
 **	Copyright 2025 Electronic Arts Inc.
@@ -117,15 +120,16 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 			int dx = x - MidDragAnchorX;
 			int dy = y - MidDragAnchorY;
 			if (dx != 0 || dy != 0) {
-				/*
-				**	Grab-and-drag: move map opposite to mouse delta so
-				**	the point under the cursor follows the hand.
-				*/
-				int cur_x = (int)Coord_X(TacticalCoord) - Pixel_To_Lepton(dx);
-				int cur_y = (int)Coord_Y(TacticalCoord) - Pixel_To_Lepton(dy);
+                                #ifdef USE_RENDER_BRIDGE
+                                float zoom = Render_Get_World_Zoom();
+                                int cur_x = (int)Coord_X(TacticalCoord) - Pixel_To_Lepton(static_cast<float>(dx) / zoom);
+                                int cur_y = (int)Coord_Y(TacticalCoord) - Pixel_To_Lepton(static_cast<float>(dy) / zoom);
+                                #else
+                                int cur_x = (int)Coord_X(TacticalCoord) - Pixel_To_Lepton(dx);
+                                int cur_y = (int)Coord_Y(TacticalCoord) - Pixel_To_Lepton(dy);
+                                #endif
 
 				/*
-				**	Clamp to map bounds.
 				*/
 				int min_x = Cell_To_Lepton(MapCellX);
 				int min_y = Cell_To_Lepton(MapCellY);

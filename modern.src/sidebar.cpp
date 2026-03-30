@@ -1060,7 +1060,11 @@ bool SidebarClass::Activate(int control)
 		*/
 		if (IsSidebarActive /*&& X*/) {
 			DBG("Sidebar: activating, Set_View_Dimensions(0, %d, %d)", Map.Get_Tab_Height(), SeenBuff.Get_Width() - sidewidth);
-			Set_View_Dimensions(0, Map.Get_Tab_Height(), SeenBuff.Get_Width() - sidewidth);
+			#ifdef USE_RENDER_BRIDGE
+                        Set_View_Dimensions(0, Map.Get_Tab_Height(), (SeenBuff.Get_Width() - sidewidth) / ICON_PIXEL_W);
+#else
+                        Set_View_Dimensions(0, Map.Get_Tab_Height(), SeenBuff.Get_Width() - sidewidth);
+#endif
 			IsToRedraw = true;
 			Help_Text(TXT_NONE);
 			Repair.Zap();
