@@ -40,6 +40,10 @@ static int  g_saved_tac_lepton_h = 0;
 static int  g_saved_window_w = 0;
 static int  g_saved_window_h = 0;
 static bool g_expanded = false;
+static int  g_record_tac_x = 0;
+static int  g_record_tac_y = 0;
+static int  g_record_tac_w = 0;
+static int  g_record_tac_h = 0;
 
 // Native tactical buffer (8-bit indexed)
 static uint8_t* g_native_buf = nullptr;
@@ -78,6 +82,11 @@ void Render_Bridge_Begin_Draw_List()
     g_draw_list.Clear();
     g_draw_list.SetRecording(true);
 
+    g_record_tac_x = Map.TacPixelX;
+    g_record_tac_y = Map.TacPixelY;
+    g_record_tac_w = WindowList[WINDOW_TACTICAL][WINDOWWIDTH] << 3;
+    g_record_tac_h = WindowList[WINDOW_TACTICAL][WINDOWHEIGHT];
+
     extern bool InMainLoop;
     if (!InMainLoop || !GL_Present_Is_Active()) return;
 
@@ -112,19 +121,25 @@ void Render_Bridge_Begin_Draw_List()
     }
 }
 
-/// Replay world commands (terrain + sprites).
-static void replay_world()
+/// Replay recorded commands matching the requested layer mask.
+static void replay_shapes(bool include_shadow)
 {
     for (int i = 0; i < g_draw_list.Command_Count(); i++) {
         const DrawCommand& cmd = g_draw_list.Get(i);
         if (cmd.type == CMD_STAMP) {
+            if (include_shadow) {
+                continue;
+            }
             LogicPage->Draw_Stamp(cmd.stamp.icondata, cmd.stamp.icon,
                                    cmd.stamp.x, cmd.stamp.y, cmd.stamp.remap, cmd.stamp.window);
         } else if (cmd.type == CMD_SHAPE) {
+            if ((cmd.layer == LAYER_SHADOW) != include_shadow) {
+                continue;
+            }
 #ifdef USE_RENDER_BRIDGE_GL_SPRITES
             extern bool GL_Present_Is_Active();
             extern bool GL_Sprites_Should_Skip_CPU(const ShapeCmd& cmd);
-            if (GL_Present_Is_Active() && GL_Sprites_Should_Skip_CPU(cmd.shape)) {
+            if (!include_shadow && GL_Present_Is_Active() && GL_Sprites_Should_Skip_CPU(cmd.shape)) {
                 continue;
             }
 #endif
@@ -136,23 +151,40 @@ static void replay_world()
     }
 }
 
+/// Replay world commands (terrain + sprites + shroud ordering).
+static void replay_world()
+{
+    replay_shapes(false);
+    replay_shapes(true);
+}
+
 /// Replay overlay commands (health bars, selection, etc.).
 static void replay_overlays()
 {
+    const int tac_x = Map.TacPixelX;
+    const int tac_y = Map.TacPixelY;
+
     for (int i = 0; i < g_draw_list.Command_Count(); i++) {
         const DrawCommand& cmd = g_draw_list.Get(i);
         switch (cmd.type) {
         case CMD_FILL_RECT:
-            LogicPage->Fill_Rect(cmd.prim.x1, cmd.prim.y1, cmd.prim.x2, cmd.prim.y2, cmd.prim.color);
+            LogicPage->Fill_Rect(tac_x + cmd.prim.x1, tac_y + cmd.prim.y1,
+                                 tac_x + cmd.prim.x2, tac_y + cmd.prim.y2,
+                                 cmd.prim.color);
             break;
         case CMD_DRAW_RECT:
-            LogicPage->Draw_Rect(cmd.prim.x1, cmd.prim.y1, cmd.prim.x2, cmd.prim.y2, cmd.prim.color);
+            LogicPage->Draw_Rect(tac_x + cmd.prim.x1, tac_y + cmd.prim.y1,
+                                 tac_x + cmd.prim.x2, tac_y + cmd.prim.y2,
+                                 cmd.prim.color);
             break;
         case CMD_DRAW_LINE:
-            LogicPage->Draw_Line(cmd.prim.x1, cmd.prim.y1, cmd.prim.x2, cmd.prim.y2, cmd.prim.color);
+            LogicPage->Draw_Line(tac_x + cmd.prim.x1, tac_y + cmd.prim.y1,
+                                 tac_x + cmd.prim.x2, tac_y + cmd.prim.y2,
+                                 cmd.prim.color);
             break;
         case CMD_PUT_PIXEL:
-            LogicPage->Put_Pixel(cmd.prim.x1, cmd.prim.y1, cmd.prim.color);
+            LogicPage->Put_Pixel(tac_x + cmd.prim.x1, tac_y + cmd.prim.y1,
+                                 cmd.prim.color);
             break;
         default: break;
         }
@@ -269,4 +301,12 @@ uint8_t* Render_Bridge_Get_Native_Buffer(int& w, int& h)
     w = g_native_w;
     h = g_native_h;
     return g_native_buf;
+}
+
+void Render_Bridge_Get_Record_Tactical_Rect(int& x, int& y, int& w, int& h)
+{
+    x = g_record_tac_x;
+    y = g_record_tac_y;
+    w = g_record_tac_w;
+    h = g_record_tac_h;
 }

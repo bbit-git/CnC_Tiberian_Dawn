@@ -87,6 +87,9 @@ void Render_Bridge_Get_Visible_Size(float& w, float& h);
 /// Get the native tactical replay size in lepton space for bridge-aware clamps.
 void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
 
+/// Get the real on-screen tactical rect used while recording the draw list.
+void Render_Bridge_Get_Record_Tactical_Rect(int& x, int& y, int& w, int& h);
+
 /// Dump current render-bridge HUD stats to the debug log.
 void Render_Bridge_Debug_Dump();
 
@@ -101,6 +104,12 @@ void Render_Bridge_Debug_Bars_Toggle();
 
 /// Return whether the render-bridge debug overlay bars and boxes are visible.
 bool Render_Bridge_Debug_Bars_Enabled();
+
+/// Toggle the render-source visualization overlay.
+void Render_Bridge_Debug_Sources_Toggle();
+
+/// Return whether the render-source visualization overlay is visible.
+bool Render_Bridge_Debug_Sources_Enabled();
 
 /// Get the last proportional viewport target in native tactical pixels.
 void Render_Bridge_Get_Viewport_Target(float& x, float& y);

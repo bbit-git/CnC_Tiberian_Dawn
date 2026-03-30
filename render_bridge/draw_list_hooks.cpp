@@ -1,17 +1,100 @@
 /**
  * draw_list_hooks.cpp — Recording hooks called from engine draw functions.
  *
- * Only CC_Draw_Shape and Draw_Stamp are recorded (they have a window
- * parameter to filter by WINDOW_TACTICAL). Primitives (Fill_Rect etc.)
- * are NOT recorded — they render directly to HidPage. This prevents
- * sidebar/tab UI from polluting the native tactical buffer.
- *
- * Health bars and selection boxes (primitives) render to HidPage
- * at 712x400 and are visible via the SeenBuff palette shader path.
+ * Tactical shapes and stamps are recorded directly from their window id.
+ * Tactical primitives need coordinate filtering because they do not carry
+ * a window id, so the hooks only keep geometry that falls inside the
+ * tactical region and normalize it to tactical-local coordinates.
  */
 
 #include "draw_list.h"
+#include "render_bridge.h"
 #include "function.h"
+#include <cstdint>
+
+namespace {
+
+/// Return the tactical screen rect captured before native expansion.
+void get_record_tactical_rect(int& x, int& y, int& w, int& h)
+{
+    Render_Bridge_Get_Record_Tactical_Rect(x, y, w, h);
+}
+
+/// Return true if the target buffer points into HidPage memory.
+bool is_hidpage_buffer(const void* buffer)
+{
+    if (!buffer) {
+        return false;
+    }
+
+    const uint8_t* hid_begin = static_cast<const uint8_t*>(HidPage.Get_Buffer());
+    if (!hid_begin) {
+        return false;
+    }
+    const uint8_t* hid_end = hid_begin + HidPage.Get_Full_Pitch() * HidPage.Get_Height();
+    const uint8_t* ptr = static_cast<const uint8_t*>(buffer);
+    return ptr >= hid_begin && ptr < hid_end;
+}
+
+/// Return true if the absolute rectangle overlaps the tactical region.
+bool intersect_tactical(int& x1, int& y1, int& x2, int& y2)
+{
+    int tac_x = 0;
+    int tac_y = 0;
+    int tac_w = 0;
+    int tac_h = 0;
+    get_record_tactical_rect(tac_x, tac_y, tac_w, tac_h);
+    if (tac_w <= 0 || tac_h <= 0) {
+        return false;
+    }
+
+    int min_x = x1 < x2 ? x1 : x2;
+    int max_x = x1 > x2 ? x1 : x2;
+    int min_y = y1 < y2 ? y1 : y2;
+    int max_y = y1 > y2 ? y1 : y2;
+
+    if (max_x < tac_x || max_y < tac_y ||
+        min_x >= tac_x + tac_w || min_y >= tac_y + tac_h) {
+        return false;
+    }
+
+    x1 -= tac_x;
+    x2 -= tac_x;
+    y1 -= tac_y;
+    y2 -= tac_y;
+
+    return true;
+}
+
+/// Return true if the absolute point lies in the tactical region and normalize it.
+bool normalize_tactical_point(int& x, int& y)
+{
+    int tac_x = 0;
+    int tac_y = 0;
+    int tac_w = 0;
+    int tac_h = 0;
+    get_record_tactical_rect(tac_x, tac_y, tac_w, tac_h);
+    if (tac_w <= 0 || tac_h <= 0) {
+        return false;
+    }
+
+    if (x < tac_x || y < tac_y || x >= tac_x + tac_w || y >= tac_y + tac_h) {
+        return false;
+    }
+
+    x -= tac_x;
+    y -= tac_y;
+    return true;
+}
+
+} // namespace
+
+/// Return the legacy SHADOW.SHP pointer used by Redraw_Shadow.
+static const void* get_shadow_shapes()
+{
+    static const void* shadow_shapes = MixFileClass::Retrieve("SHADOW.SHP");
+    return shadow_shapes;
+}
 
 /// Called from CC_Draw_Shape in conquer.cpp.
 /// Only records tactical window shapes.
@@ -21,8 +104,14 @@ bool Draw_List_Maybe_Record_Shape(
 {
     if (!g_draw_list.IsRecording()) return false;
     if (window != WINDOW_TACTICAL) return false;
+
+    DrawLayer layer = LAYER_SPRITE;
+    if (shapefile == get_shadow_shapes()) {
+        layer = LAYER_SHADOW;
+    }
+
     g_draw_list.Record_Shape(shapefile, shapenum, x, y,
-                             window, flags, fadingdata, ghostdata);
+                             window, flags, fadingdata, ghostdata, layer);
     return true;
 }
 
@@ -38,16 +127,57 @@ bool Draw_List_Maybe_Record_Stamp(
     return true;
 }
 
-/// Primitives: NOT recorded. They render directly to HidPage.
-/// Sidebar/tab/health bars go straight to the buffer.
-bool Draw_List_Maybe_Record_Fill_Rect(int, int, int, int, unsigned char)
-{ return false; }
+/// Record tactical fill rectangles such as health bars and selection fills.
+bool Draw_List_Maybe_Record_Fill_Rect(const void* buffer, int origin_x, int origin_y,
+                                      int x1, int y1, int x2, int y2,
+                                      unsigned char color)
+{
+    if (!g_draw_list.IsRecording()) return false;
+    if (!is_hidpage_buffer(buffer)) return false;
+    x1 += origin_x; y1 += origin_y;
+    x2 += origin_x; y2 += origin_y;
+    if (!intersect_tactical(x1, y1, x2, y2)) return false;
+    g_draw_list.Record_Fill_Rect(x1, y1, x2, y2, color);
+    return true;
+}
 
-bool Draw_List_Maybe_Record_Rect(int, int, int, int, unsigned char)
-{ return false; }
+/// Record tactical rectangle outlines such as rubber band selection.
+bool Draw_List_Maybe_Record_Rect(const void* buffer, int origin_x, int origin_y,
+                                 int x1, int y1, int x2, int y2,
+                                 unsigned char color)
+{
+    if (!g_draw_list.IsRecording()) return false;
+    if (!is_hidpage_buffer(buffer)) return false;
+    x1 += origin_x; y1 += origin_y;
+    x2 += origin_x; y2 += origin_y;
+    if (!intersect_tactical(x1, y1, x2, y2)) return false;
+    g_draw_list.Record_Draw_Rect(x1, y1, x2, y2, color);
+    return true;
+}
 
-bool Draw_List_Maybe_Record_Line(int, int, int, int, unsigned char)
-{ return false; }
+/// Record tactical overlay lines such as unit corner brackets.
+bool Draw_List_Maybe_Record_Line(const void* buffer, int origin_x, int origin_y,
+                                 int x1, int y1, int x2, int y2,
+                                 unsigned char color)
+{
+    if (!g_draw_list.IsRecording()) return false;
+    if (!is_hidpage_buffer(buffer)) return false;
+    x1 += origin_x; y1 += origin_y;
+    x2 += origin_x; y2 += origin_y;
+    if (!intersect_tactical(x1, y1, x2, y2)) return false;
+    g_draw_list.Record_Draw_Line(x1, y1, x2, y2, color);
+    return true;
+}
 
-bool Draw_List_Maybe_Record_Pixel(int, int, unsigned char)
-{ return false; }
+/// Record tactical debug pixels and cursor markers.
+bool Draw_List_Maybe_Record_Pixel(const void* buffer, int origin_x, int origin_y,
+                                  int x, int y, unsigned char color)
+{
+    if (!g_draw_list.IsRecording()) return false;
+    if (!is_hidpage_buffer(buffer)) return false;
+    x += origin_x;
+    y += origin_y;
+    if (!normalize_tactical_point(x, y)) return false;
+    g_draw_list.Record_Put_Pixel(x, y, color);
+    return true;
+}
