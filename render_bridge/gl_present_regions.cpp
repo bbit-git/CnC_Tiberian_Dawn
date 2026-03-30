@@ -1,0 +1,236 @@
+#include "gl_present_internal.h"
+#include "render_bridge.h"
+#include "draw_list.h"
+#include "function.h"
+
+extern int GL_Primitives_Render(int win_w, int win_h,
+                                 int tac_screen_x, int tac_screen_y,
+                                 int tac_screen_w, int tac_screen_h,
+                                 float scale, float vp_x, float vp_y,
+                                 const uint8_t* palette);
+extern void GL_Primitives_Render_Source_Overlay(int win_w, int win_h,
+                                                int game_screen_x, int game_screen_y,
+                                                int game_screen_w, int game_screen_h,
+                                                int header_screen_h,
+                                                int tac_screen_x, int tac_screen_y,
+                                                int tac_screen_w, int tac_screen_h,
+                                                int side_screen_x, int side_screen_w,
+                                                bool has_ui_overlay);
+extern bool Render_Bridge_Debug_Sources_Enabled();
+#ifdef USE_RENDER_BRIDGE_GL_SPRITES
+extern int GL_Sprites_Render(int win_w, int win_h,
+                              int tac_screen_x, int tac_screen_y,
+                              int tac_screen_w, int tac_screen_h,
+                              int tac_game_x, int tac_game_y,
+                              int tac_game_w, int tac_game_h,
+                              float scale, float vp_x, float vp_y);
+#endif
+
+static constexpr bool k_enable_gl_sprite_overlay = true;
+
+static bool frame_has_shroud_overlay()
+{
+    for (int i = 0; i < g_draw_list.Command_Count(); i++) {
+        const DrawCommand& cmd = g_draw_list.Get(i);
+        if (cmd.type == CMD_SHAPE && cmd.layer == LAYER_SHADOW) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void GL_Present_Draw_Quad(int src_x, int src_y, int src_w, int src_h,
+                          int dst_x, int dst_y, int dst_w, int dst_h,
+                          int win_w, int win_h)
+{
+    // Source coordinates are in game-buffer pixels. Destination coordinates are
+    // already in final window pixels after layout scaling.
+    float u0 = static_cast<float>(src_x) / g_tex_w;
+    float v0 = static_cast<float>(src_y) / g_tex_h;
+    float u1 = static_cast<float>(src_x + src_w) / g_tex_w;
+    float v1 = static_cast<float>(src_y + src_h) / g_tex_h;
+
+    float x0 = static_cast<float>(dst_x) / win_w * 2.0f - 1.0f;
+    float y0 = 1.0f - static_cast<float>(dst_y) / win_h * 2.0f;
+    float x1 = static_cast<float>(dst_x + dst_w) / win_w * 2.0f - 1.0f;
+    float y1 = 1.0f - static_cast<float>(dst_y + dst_h) / win_h * 2.0f;
+
+    glUniform4f(g_u_src_rect, u0, v0, u1, v1);
+    glUniform4f(g_u_dst_rect, x0, y0, x1, y1);
+
+    static const float quad[] = { 0,0, 1,0, 0,1, 1,1 };
+    GL_Present_Bind_Client_Quad(quad);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+}
+
+bool GL_Present_Draw_Regions(const GLPresentFrameContext& ctx, const uint8_t* vga_palette)
+{
+    if (!ctx.in_main_loop) {
+        // Menus are still a single SeenBuff-backed full-frame present.
+        GL_Present_Draw_Quad(0, 0, ctx.buffer_w, ctx.buffer_h,
+                             ctx.offset_x, ctx.offset_y,
+                             static_cast<int>(ctx.buffer_w * ctx.ui_scale),
+                             static_cast<int>(ctx.buffer_h * ctx.ui_scale),
+                             ctx.win_w, ctx.win_h);
+        return false;
+    }
+
+    if (ctx.tactical_game_y > 0) {
+        // Header/tab bar remains SeenBuff-backed chrome.
+        GL_Present_Draw_Quad(0, 0, ctx.buffer_w, ctx.tactical_game_y,
+                             ctx.offset_x, ctx.offset_y,
+                             static_cast<int>(ctx.buffer_w * ctx.ui_scale),
+                             static_cast<int>(ctx.tactical_game_y * ctx.ui_scale),
+                             ctx.win_w, ctx.win_h);
+    }
+
+    if (ctx.side_game_w > 0) {
+        // Sidebar remains SeenBuff-backed chrome until the native UI path replaces it.
+        GL_Present_Draw_Quad(ctx.side_game_x, 0, ctx.side_game_w, ctx.buffer_h,
+                             ctx.offset_x + static_cast<int>(ctx.side_game_x * ctx.ui_scale),
+                             ctx.offset_y,
+                             static_cast<int>(ctx.side_game_w * ctx.ui_scale),
+                             static_cast<int>(ctx.buffer_h * ctx.ui_scale),
+                             ctx.win_w, ctx.win_h);
+    }
+
+    if (!g_tac_tex_active || !g_tac_tex) {
+        return false;
+    }
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_tac_tex);
+
+    // The tactical world uses its own source texture. The source viewport inside
+    // that texture is selected from zoom/viewport state and then stretched onto
+    // the tactical screen rect.
+    float tex_w = static_cast<float>(g_tac_tex_w);
+    float tex_h = static_cast<float>(g_tac_tex_h);
+    float vp_x = Render_Bridge_Get_Viewport_X();
+    float vp_y = Render_Bridge_Get_Viewport_Y();
+    float vis_w = 0.0f;
+    float vis_h = 0.0f;
+    Render_Bridge_Get_Visible_Size(vis_w, vis_h);
+    if (vis_w <= 0.0f || vis_h <= 0.0f) {
+        vis_w = tex_w;
+        vis_h = tex_h;
+    }
+
+    float u0 = vp_x / tex_w;
+    float v0 = vp_y / tex_h;
+    float u1 = (vp_x + vis_w) / tex_w;
+    float v1 = (vp_y + vis_h) / tex_h;
+    if (u0 < 0.0f) u0 = 0.0f;
+    if (v0 < 0.0f) v0 = 0.0f;
+    if (u1 > 1.0f) u1 = 1.0f;
+    if (v1 > 1.0f) v1 = 1.0f;
+
+    int dst_x = ctx.tactical_screen_x;
+    int dst_y = ctx.tactical_screen_y;
+    int dst_w = ctx.tactical_screen_w;
+    int dst_h = ctx.tactical_screen_h;
+
+    float nx0 = static_cast<float>(dst_x) / ctx.win_w * 2.0f - 1.0f;
+    float ny0 = 1.0f - static_cast<float>(dst_y) / ctx.win_h * 2.0f;
+    float nx1 = static_cast<float>(dst_x + dst_w) / ctx.win_w * 2.0f - 1.0f;
+    float ny1 = 1.0f - static_cast<float>(dst_y + dst_h) / ctx.win_h * 2.0f;
+
+    glUniform4f(g_u_src_rect, u0, v0, u1, v1);
+    glUniform4f(g_u_dst_rect, nx0, ny0, nx1, ny1);
+
+    static const float quad[] = { 0,0, 1,0, 0,1, 1,1 };
+    GL_Present_Bind_Client_Quad(quad);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+#ifdef USE_RENDER_BRIDGE_GL_SPRITES
+    if (k_enable_gl_sprite_overlay && !frame_has_shroud_overlay()) {
+        // Sprite overlay is suppressed on shroud frames until ordering is fully bridge-owned.
+        GL_Sprites_Render(ctx.win_w, ctx.win_h,
+                          dst_x, dst_y, dst_w, dst_h,
+                          0, 0, g_tac_tex_w, g_tac_tex_h,
+                          static_cast<float>(dst_w) / vis_w,
+                          vp_x, vp_y);
+    }
+#endif
+    GL_Primitives_Render(ctx.win_w, ctx.win_h,
+                         dst_x, dst_y, dst_w, dst_h,
+                         static_cast<float>(dst_w) / vis_w,
+                         vp_x, vp_y, vga_palette);
+
+    GL_Present_Bind_Palette_Program();
+    g_tac_tex_active = false;
+    return true;
+}
+
+bool GL_Present_Draw_UI_Overlay(const GLPresentFrameContext& ctx)
+{
+    extern const uint8_t* Render_Bridge_Get_UI_Overlay(int& w, int& h);
+    int ui_w = 0;
+    int ui_h = 0;
+    const uint8_t* ui_pixels = Render_Bridge_Get_UI_Overlay(ui_w, ui_h);
+    if (!ui_pixels || ui_w <= 0 || ui_h <= 0 || !g_ui_program) {
+        return false;
+    }
+
+    // The UI overlay is a full game-buffer-sized indexed texture. It presents
+    // after the world and chrome so dialogs/messages can appear anywhere.
+    if (!g_ui_tex || g_ui_tex_w != ui_w || g_ui_tex_h != ui_h) {
+        if (g_ui_tex) glDeleteTextures(1, &g_ui_tex);
+        glGenTextures(1, &g_ui_tex);
+        glBindTexture(GL_TEXTURE_2D, g_ui_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, ui_w, ui_h, 0,
+                     GL_LUMINANCE, GL_UNSIGNED_BYTE, ui_pixels);
+        g_ui_tex_w = ui_w;
+        g_ui_tex_h = ui_h;
+    } else {
+        glBindTexture(GL_TEXTURE_2D, g_ui_tex);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ui_w, ui_h,
+                        GL_LUMINANCE, GL_UNSIGNED_BYTE, ui_pixels);
+    }
+
+    glUseProgram(g_ui_program);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_ui_tex);
+    glUniform1i(g_ui_u_indexed, 0);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, g_palette_tex);
+    glUniform1i(g_ui_u_palette, 1);
+
+    glUniform4f(g_ui_u_src_rect, 0.0f, 0.0f, 1.0f, 1.0f);
+    float nx0 = static_cast<float>(ctx.offset_x) / ctx.win_w * 2.0f - 1.0f;
+    float ny0 = 1.0f - static_cast<float>(ctx.offset_y) / ctx.win_h * 2.0f;
+    float nx1 = static_cast<float>(ctx.offset_x + static_cast<int>(ctx.buffer_w * ctx.ui_scale)) / ctx.win_w * 2.0f - 1.0f;
+    float ny1 = 1.0f - static_cast<float>(ctx.offset_y + static_cast<int>(ctx.buffer_h * ctx.ui_scale)) / ctx.win_h * 2.0f;
+    glUniform4f(g_ui_u_dst_rect, nx0, ny0, nx1, ny1);
+
+    static const float quad[] = { 0,0, 1,0, 0,1, 1,1 };
+    GL_Present_Bind_Client_Quad(quad);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    GL_Present_Bind_Palette_Program();
+    return true;
+}
+
+void GL_Present_Draw_Source_Overlay(const GLPresentFrameContext& ctx, bool has_ui_overlay)
+{
+    if (!Render_Bridge_Debug_Sources_Enabled()) {
+        return;
+    }
+
+    // This overlay is for ownership debugging only: it shows which presenter
+    // pass supplies each screen region.
+    GL_Primitives_Render_Source_Overlay(ctx.win_w, ctx.win_h,
+                                        ctx.offset_x, ctx.offset_y,
+                                        static_cast<int>(ctx.buffer_w * ctx.ui_scale),
+                                        static_cast<int>(ctx.buffer_h * ctx.ui_scale),
+                                        static_cast<int>(ctx.tactical_game_y * ctx.ui_scale),
+                                        ctx.tactical_screen_x, ctx.tactical_screen_y,
+                                        ctx.tactical_screen_w, ctx.tactical_screen_h,
+                                        ctx.offset_x + static_cast<int>(ctx.side_game_x * ctx.ui_scale),
+                                        static_cast<int>(ctx.side_game_w * ctx.ui_scale),
+                                        has_ui_overlay);
+}
