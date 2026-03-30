@@ -23,6 +23,12 @@ extern bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& ma
 extern void Render_Bridge_Record_Tactical_Request(int x, int y);
 extern void Render_Bridge_Record_Tactical_Request_Fallback(int x, int y);
 extern void Render_Bridge_Get_Requested_Tactical_Position(int& x, int& y);
+extern void Render_Bridge_Get_Clamp_Ranges(int& max_x, int& max_y);
+extern void Render_Bridge_Get_Tactical_Rect(int& x, int& y, int& w, int& h);
+extern void Render_Bridge_Get_Visible_World_Rect(int& origin_x, int& origin_y, int& width, int& height);
+extern bool Render_Bridge_World_To_Tactical(int world_lepton_x, int world_lepton_y, int& pixel_x, int& pixel_y);
+extern bool Render_Bridge_Tactical_To_World(int pixel_x, int pixel_y, int& world_lepton_x, int& world_lepton_y);
+extern bool Render_Bridge_Is_Cell_In_View(int cell_x, int cell_y);
 #endif
 /***********************************************************************************************
  ***             C O N F I D E N T I A L  ---  W E S T W O O D   S T U D I O S               ***
@@ -86,6 +92,7 @@ extern void Render_Bridge_Get_Requested_Tactical_Position(int& x, int& y);
  *   DisplayClass::Prev_Object -- Searches for the previous object on the map.                 *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 #include "function.h"
+
 
 /*
 **	These layer control elements are used to group the displayable objects
@@ -1135,11 +1142,14 @@ void DisplayClass::Remove(ObjectClass const * object, LayerType layer)
 CELL DisplayClass::Click_Cell_Calc(int x, int y)
 {
 #ifdef USE_RENDER_BRIDGE
-	int mapped_x = x;
-	int mapped_y = y;
-	Render_Bridge_Map_Tactical_Point(x, y, mapped_x, mapped_y);
-	x = mapped_x;
-	y = mapped_y;
+	// In bridge mode, tactical input maps directly through the bridge-visible
+	// world window instead of the native replay origin in TacticalCoord.
+	int world_x = 0;
+	int world_y = 0;
+	if (Render_Bridge_Tactical_To_World(x, y, world_x, world_y)) {
+		return(Coord_Cell(XY_Coord(world_x, world_y)));
+	}
+	return(-1);
 #endif
 	int sx = x - TacPixelX;
 	int sy = y - TacPixelY;
@@ -1394,12 +1404,12 @@ bool DisplayClass::Scroll_Map(DirType facing, int & distance, bool really)
 	if (distance == 0) return(false);
 	FacingType crude = Dir_Facing(facing);
 	#ifdef USE_RENDER_BRIDGE
-	int edge_w = TacLeptonWidth;
-	int edge_h = TacLeptonHeight;
-	Render_Bridge_Get_Visible_Size_Leptons(edge_w, edge_h);
 	int req_x = 0;
 	int req_y = 0;
 	Render_Bridge_Get_Requested_Tactical_Position(req_x, req_y);
+	int clamp_max_x = 0;
+	int clamp_max_y = 0;
+	Render_Bridge_Get_Clamp_Ranges(clamp_max_x, clamp_max_y);
 	#else
 	int edge_w = TacLeptonWidth;
 	int edge_h = TacLeptonHeight;
@@ -1422,7 +1432,7 @@ bool DisplayClass::Scroll_Map(DirType facing, int & distance, bool really)
 		if (crude == FACING_NE) facing = DIR_E;
 	}
 	#ifdef USE_RENDER_BRIDGE
-	if (req_x + edge_w >= Cell_To_Lepton(MapCellWidth) && crude != FACING_E) {
+	if (req_x >= clamp_max_x && clamp_max_x > 0 && crude != FACING_E) {
 	#else
 	if (Coord_X(TacticalCoord) + edge_w == Cell_To_Lepton(MapCellX+MapCellWidth) && crude != FACING_E) {
 	#endif
@@ -1430,7 +1440,7 @@ bool DisplayClass::Scroll_Map(DirType facing, int & distance, bool really)
 		if (crude == FACING_SE) facing = DIR_S;
 	}
 	#ifdef USE_RENDER_BRIDGE
-	if (req_y + edge_h >= Cell_To_Lepton(MapCellHeight) && crude != FACING_S) {
+	if (req_y >= clamp_max_y && clamp_max_y > 0 && crude != FACING_S) {
 	#else
 	if (Coord_Y(TacticalCoord) + edge_h == Cell_To_Lepton(MapCellY+MapCellHeight) && crude != FACING_S) {
 	#endif
@@ -1455,10 +1465,10 @@ bool DisplayClass::Scroll_Map(DirType facing, int & distance, bool really)
 	int yy = Coord_Y(coord) - Cell_To_Lepton(MapCellY);
 	#ifdef USE_RENDER_BRIDGE
 	Render_Bridge_Record_Tactical_Request(xx, yy);
-	int clamp_w = TacLeptonWidth;
-	int clamp_h = TacLeptonHeight;
-	Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
-	bool shifted = Confine_Rect(&xx, &yy, clamp_w, clamp_h, Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight));
+	int vis_w = 0;
+	int vis_h = 0;
+	Render_Bridge_Get_Visible_Size_Leptons(vis_w, vis_h);
+	bool shifted = Confine_Rect(&xx, &yy, vis_w, vis_h, Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight));
 	#else
 	bool shifted = Confine_Rect(&xx, &yy, TacLeptonWidth, TacLeptonHeight, Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight));
 	#endif
@@ -1714,21 +1724,29 @@ bool DisplayClass::Map_Cell(CELL cell, HouseClass * house)
 bool DisplayClass::Coord_To_Pixel(COORDINATE coord, int &x, int &y)
 {
 	if (coord) {
+#ifdef USE_RENDER_BRIDGE
+		// Bridge mode projects world coordinates against the bridge-visible
+		// tactical window so overlays match what the player actually sees.
+		return(Render_Bridge_World_To_Tactical(Coord_X(coord), Coord_Y(coord), x, y));
+#else
 		int xtac = Pixel_To_Lepton(Lepton_To_Pixel(Coord_X(TacticalCoord)));
 		int xoff = Pixel_To_Lepton(Lepton_To_Pixel(Coord_X(coord)));
+		int vis_w = TacLeptonWidth;
+		int vis_h = TacLeptonHeight;
 
 		xoff = (xoff+EDGE_ZONE) - xtac;
-		if ((unsigned)xoff <= TacLeptonWidth + EDGE_ZONE*2) {
+		if ((unsigned)xoff <= (unsigned)(vis_w + EDGE_ZONE*2)) {
 			int ytac = Pixel_To_Lepton(Lepton_To_Pixel(Coord_Y(TacticalCoord)));
 			int yoff = Pixel_To_Lepton(Lepton_To_Pixel(Coord_Y(coord)));
 
 			yoff = (yoff+EDGE_ZONE) - ytac;
-			if ((unsigned)yoff <= TacLeptonHeight + EDGE_ZONE*2) {
+			if ((unsigned)yoff <= (unsigned)(vis_h + EDGE_ZONE*2)) {
 				x = Lepton_To_Pixel(xoff)-CELL_PIXEL_W*2;
 				y = Lepton_To_Pixel(yoff)-CELL_PIXEL_H*2;
 				return(true);
 			}
 		}
+#endif
 	}
 	return(false);
 }
@@ -2323,9 +2341,24 @@ void DisplayClass::Redraw_Shadow(void)
 			IsShadowPresent, mapped, unmapped, Debug_Unshroud);
 	}
 	if (IsShadowPresent) {
-		for (int y = -Coord_YLepton(TacticalCoord); y <= TacLeptonHeight; y += CELL_LEPTON_H) {
-			for (int x = -Coord_XLepton(TacticalCoord); x <= TacLeptonWidth; x += CELL_LEPTON_W) {
-				COORDINATE coord = Coord_Add(TacticalCoord, XY_Coord(x, y));
+#ifdef USE_RENDER_BRIDGE
+		int origin_x = 0;
+		int origin_y = 0;
+		int iter_w = 0;
+		int iter_h = 0;
+		Render_Bridge_Get_Visible_World_Rect(origin_x, origin_y, iter_w, iter_h);
+		// Shroud iteration follows the bridge-visible world origin, not the native
+		// replay origin, so fog covers the same area that commands and selection use.
+		COORDINATE visible_tactical = XY_Coord(origin_x + Cell_To_Lepton(Map.MapCellX),
+		                                       origin_y + Cell_To_Lepton(Map.MapCellY));
+#else
+		int iter_w = TacLeptonWidth;
+		int iter_h = TacLeptonHeight;
+		COORDINATE visible_tactical = TacticalCoord;
+#endif
+		for (int y = -Coord_YLepton(visible_tactical); y <= iter_h; y += CELL_LEPTON_H) {
+			for (int x = -Coord_XLepton(visible_tactical); x <= iter_w; x += CELL_LEPTON_W) {
+				COORDINATE coord = Coord_Add(visible_tactical, XY_Coord(x, y));
 				CELL cell = Coord_Cell(coord);
 				coord = Cell_Coord(cell) & 0xFF00FF00;
 
@@ -2373,9 +2406,28 @@ void DisplayClass::Redraw_Shadow(void)
 void DisplayClass::Redraw_Shadow_Rects(void)
 {
 	if (IsShadowPresent && !Debug_Unshroud) {
-		for (int y = -Coord_YLepton(TacticalCoord); y <= TacLeptonHeight; y += CELL_LEPTON_H) {
-			for (int x = -Coord_XLepton(TacticalCoord); x <= TacLeptonWidth; x += CELL_LEPTON_W) {
-				COORDINATE coord = Coord_Add(TacticalCoord, XY_Coord(x, y));
+#ifdef USE_RENDER_BRIDGE
+		int origin_x = 0;
+		int origin_y = 0;
+		int iter_w = 0;
+		int iter_h = 0;
+		Render_Bridge_Get_Visible_World_Rect(origin_x, origin_y, iter_w, iter_h);
+		int clip_w = Lepton_To_Pixel(iter_w);
+		int clip_h = Lepton_To_Pixel(iter_h);
+		// Rectangular black shroud fill uses the same visible-world window as the
+		// sprite shadow pass so both coverage paths stay aligned.
+		COORDINATE visible_tactical = XY_Coord(origin_x + Cell_To_Lepton(Map.MapCellX),
+		                                       origin_y + Cell_To_Lepton(Map.MapCellY));
+#else
+		int iter_w = TacLeptonWidth;
+		int iter_h = TacLeptonHeight;
+		int clip_w = Lepton_To_Pixel(TacLeptonWidth);
+		int clip_h = Lepton_To_Pixel(TacLeptonHeight);
+		COORDINATE visible_tactical = TacticalCoord;
+#endif
+		for (int y = -Coord_YLepton(visible_tactical); y <= iter_h; y += CELL_LEPTON_H) {
+			for (int x = -Coord_XLepton(visible_tactical); x <= iter_w; x += CELL_LEPTON_W) {
+				COORDINATE coord = Coord_Add(visible_tactical, XY_Coord(x, y));
 				CELL cell = Coord_Cell(coord);
 				coord = Cell_Coord(cell) & 0xFF00FF00;
 
@@ -2394,7 +2446,7 @@ void DisplayClass::Redraw_Shadow_Rects(void)
 								int ww = CELL_PIXEL_W;
 								int hh = CELL_PIXEL_H;
 
-								if (Clip_Rect(&xpixel, &ypixel, &ww, &hh, Lepton_To_Pixel(TacLeptonWidth), Lepton_To_Pixel(TacLeptonHeight)) >= 0) {
+								if (Clip_Rect(&xpixel, &ypixel, &ww, &hh, clip_w, clip_h) >= 0) {
 									LogicPage->Fill_Rect(TacPixelX+xpixel, TacPixelY+ypixel, TacPixelX+xpixel+ww-1, TacPixelY+ypixel+hh-1, BLACK);
 								}
 							}
@@ -2506,11 +2558,14 @@ ObjectClass * DisplayClass::Prev_Object(ObjectClass * object)
 COORDINATE DisplayClass::Pixel_To_Coord(int x, int y)
 {
 #ifdef USE_RENDER_BRIDGE
-	int mapped_x = x;
-	int mapped_y = y;
-	Render_Bridge_Map_Tactical_Point(x, y, mapped_x, mapped_y);
-	x = mapped_x;
-	y = mapped_y;
+	// Bridge mode converts directly from tactical screen pixels into world
+	// coordinates using the visible bridge window.
+	int world_x = 0;
+	int world_y = 0;
+	if (Render_Bridge_Tactical_To_World(x, y, world_x, world_y)) {
+		return(XY_Coord(world_x, world_y));
+	}
+	return(0);
 #endif
 	/*
 	**	Normalize the pixel coorindates to be relative to the upper left corner
@@ -3686,10 +3741,10 @@ void DisplayClass::Set_Tactical_Position(COORDINATE coord)
 	// 	Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight),
 	// 	MapCellX, MapCellY);
 	#ifdef USE_RENDER_BRIDGE
-	int clamp_w = TacLeptonWidth;
-	int clamp_h = TacLeptonHeight;
-	Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
-	Confine_Rect(&xx, &yy, clamp_w, clamp_h, Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight));
+	int vis_w = 0;
+	int vis_h = 0;
+	Render_Bridge_Get_Visible_Size_Leptons(vis_w, vis_h);
+	Confine_Rect(&xx, &yy, vis_w, vis_h, Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight));
 	#else
 	Confine_Rect(&xx, &yy, TacLeptonWidth, TacLeptonHeight, Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight));
 	#endif
@@ -3919,12 +3974,17 @@ void DisplayClass::Repair_Mode_Control(int control)
  *=============================================================================================*/
 bool DisplayClass::In_View(register CELL cell)
 {
+#ifdef USE_RENDER_BRIDGE
+	// Visibility queries must follow the bridge-visible tactical area so shroud,
+	// input, and object visibility all agree in bridge mode.
+	return(Render_Bridge_Is_Cell_In_View(Cell_X(cell), Cell_Y(cell)));
+#else
 	COORDINATE coord = Cell_Coord(cell) & 0xFF00FF00L;
 	COORDINATE tcoord = TacticalCoord & 0xFF00FF00L;
-
 	if ((unsigned)(Coord_X(coord) - Coord_X(tcoord)) > TacLeptonWidth+255) return(false);
 	if ((unsigned)(Coord_Y(coord) - Coord_Y(tcoord)) > TacLeptonHeight+255) return(false);
 	return(true);
+#endif
 
 #ifdef OBSOLETE
 	int fudgex = Coord_XLepton(TacticalCoord) ? -1 : 0;

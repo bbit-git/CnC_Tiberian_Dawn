@@ -70,6 +70,12 @@
 #include "function.h"
 #include <stdlib.h>
 
+#ifdef USE_RENDER_BRIDGE
+extern void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
+extern void Render_Bridge_Get_Requested_Tactical_Position(int& x, int& y);
+extern void Render_Bridge_Record_Tactical_Request(int x, int y);
+#endif
+
 //void const * RadarClass::CoverShape;
 RadarClass::TacticalClass RadarClass::RadarButton;
 
@@ -1143,7 +1149,15 @@ void RadarClass::Radar_Cursor(int forced)
 		int last_cell_y	= Cell_Y(_last_pos);
 
 		Cell_XY_To_Radar_Pixel(last_cell_x, last_cell_y, x1, y1);
+#ifdef USE_RENDER_BRIDGE
+		{
+			int vis_w = 0, vis_h = 0;
+			Render_Bridge_Get_Visible_Size_Leptons(vis_w, vis_h);
+			Cell_XY_To_Radar_Pixel(last_cell_x + Lepton_To_Cell(vis_w), last_cell_y + Lepton_To_Cell(vis_h), x2, y2);
+		}
+#else
 		Cell_XY_To_Radar_Pixel(last_cell_x + Lepton_To_Cell(TacLeptonWidth), last_cell_y + Lepton_To_Cell(TacLeptonHeight), x2, y2);
+#endif
 		x2--;
 		y2--;
 
@@ -1167,7 +1181,15 @@ void RadarClass::Radar_Cursor(int forced)
 	** of where they should.
 	*/
 	Cell_XY_To_Radar_Pixel(tac_cell_x, tac_cell_y, x1, y1);
+#ifdef USE_RENDER_BRIDGE
+	{
+		int vis_w = 0, vis_h = 0;
+		Render_Bridge_Get_Visible_Size_Leptons(vis_w, vis_h);
+		Cell_XY_To_Radar_Pixel(tac_cell_x + Lepton_To_Cell(vis_w), tac_cell_y + Lepton_To_Cell(vis_h), x2, y2);
+	}
+#else
 	Cell_XY_To_Radar_Pixel(tac_cell_x + Lepton_To_Cell(TacLeptonWidth), tac_cell_y + Lepton_To_Cell(TacLeptonHeight), x2, y2);
+#endif
 	x2--;
 	y2--;
 
@@ -1498,12 +1520,28 @@ int RadarClass::TacticalClass::Action(unsigned flags, KeyNumType & key)
 					if (cell != -1) {
 						int cellx = Cell_X(cell);
 						int celly = Cell_Y(cell);
+#ifdef USE_RENDER_BRIDGE
+						{
+							int vis_w = 0, vis_h = 0;
+							Render_Bridge_Get_Visible_Size_Leptons(vis_w, vis_h);
+							cellx -= Lepton_To_Cell(vis_w) / 2;
+							celly -= Lepton_To_Cell(vis_h) / 2;
+						}
+#else
 						cellx -= Lepton_To_Cell(Map.TacLeptonWidth) / 2;
-						cellx = MAX(cellx, Map.MapCellX);
 						celly -= Lepton_To_Cell(Map.TacLeptonHeight) / 2;
+#endif
+						cellx = MAX(cellx, Map.MapCellX);
 						celly = MAX(celly, Map.MapCellY);
 						cell = XY_Cell(cellx, celly);
 						shadow = (!Map[cell].IsVisible && !Debug_Unshroud);
+#ifdef USE_RENDER_BRIDGE
+						{
+							int rx = Cell_To_Lepton(cellx) - Cell_To_Lepton(Map.MapCellX);
+							int ry = Cell_To_Lepton(celly) - Cell_To_Lepton(Map.MapCellY);
+							Render_Bridge_Record_Tactical_Request(rx, ry);
+						}
+#endif
 						Map.Set_Tactical_Position(Cell_Coord(cell));
 						cell = Coord_Cell(Map.DesiredTacticalCoord);
 						Map.DisplayClass::IsToRedraw = true;

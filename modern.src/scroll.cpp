@@ -3,6 +3,7 @@ extern float Render_Get_World_Zoom();
 extern void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
 extern void Render_Bridge_Record_Tactical_Request(int x, int y);
 extern void Render_Bridge_Get_Requested_Tactical_Position(int& x, int& y);
+extern void Render_Bridge_Get_Clamp_Ranges(int& max_x, int& max_y);
 #endif
 /*
 **	Command & Conquer(tm)
@@ -142,11 +143,11 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 				#ifdef USE_RENDER_BRIDGE
 				Render_Bridge_Record_Tactical_Request(cur_x - Cell_To_Lepton(MapCellX),
 				                                     cur_y - Cell_To_Lepton(MapCellY));
-				int clamp_w = TacLeptonWidth;
-				int clamp_h = TacLeptonHeight;
-				Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
-				int max_x = Cell_To_Lepton(MapCellX + MapCellWidth) - clamp_w;
-				int max_y = Cell_To_Lepton(MapCellY + MapCellHeight) - clamp_h;
+				int clamp_max_x = 0;
+				int clamp_max_y = 0;
+				Render_Bridge_Get_Clamp_Ranges(clamp_max_x, clamp_max_y);
+				int max_x = Cell_To_Lepton(MapCellX) + clamp_max_x;
+				int max_y = Cell_To_Lepton(MapCellY) + clamp_max_y;
 				#else
 				int max_x = Cell_To_Lepton(MapCellX + MapCellWidth) - TacLeptonWidth;
 				int max_y = Cell_To_Lepton(MapCellY + MapCellHeight) - TacLeptonHeight;
