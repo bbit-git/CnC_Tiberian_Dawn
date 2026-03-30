@@ -58,6 +58,10 @@ class HelpClass: public TabClass
 		void Help_Text(int text, int x=-1, int y=-1, int color=LTGREY, bool quick=false, int cost = 0);
 		void Set_Cost(int cost);
 		short const * Overlap_List(void) const;
+#ifdef USE_RENDER_BRIDGE
+		/// Return the currently visible help text for bridge-native UI rendering.
+		bool Get_Render_Bridge_Text(char const*& text, int& color, int& cost) const;
+#endif
 
 		/*
 		**	File I/O.

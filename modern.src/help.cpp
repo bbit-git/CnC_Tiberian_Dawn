@@ -271,6 +271,12 @@ void HelpClass::Draw_It(bool forced)
 	TabClass::Draw_It(forced);
 
 	if (Text != TXT_NONE && (forced || !CountDownTimer.Time())) {
+#ifdef USE_RENDER_BRIDGE
+		{ extern bool Render_Bridge_UI_Use_Native_Help();
+		  if (Render_Bridge_UI_Use_Native_Help()) {
+			  return;
+		  } }
+#endif
 
 		if (LogicPage->Lock()){
 
@@ -294,6 +300,23 @@ void HelpClass::Draw_It(bool forced)
 	}
 	//	if (!In_Debugger) HidPage.Unlock();
 }
+
+#ifdef USE_RENDER_BRIDGE
+bool HelpClass::Get_Render_Bridge_Text(char const*& text, int& color, int& cost) const
+{
+	if (Text == TXT_NONE || CountDownTimer.Time()) {
+		text = nullptr;
+		color = LTGREY;
+		cost = 0;
+		return false;
+	}
+
+	text = Text_String(Text);
+	color = Color;
+	cost = Cost;
+	return text != nullptr && text[0] != '\0';
+}
+#endif
 
 
 /***********************************************************************************************

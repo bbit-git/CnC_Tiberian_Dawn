@@ -526,6 +526,19 @@ extern bool CanVblankSync;
  *=============================================================================================*/
 void GScreenClass::Blit_Display(void)
 {
+#ifdef USE_RENDER_BRIDGE
+	// In bridge gameplay mode, the presentation path reads from the native
+	// tactical texture and UI overlay, not from SeenBuff. Skip the expensive
+	// HidPage → SeenBuff copy. Menus still need it for the full-frame passthrough.
+	{
+		extern bool InMainLoop;
+		if (InMainLoop) {
+			extern void Render_Bridge_Blit_Display();
+			Render_Bridge_Blit_Display();
+			return;
+		}
+	}
+#endif
 	if (SeenBuff.Get_Width()!=320){
 #if (0)
 		if (HidPage.Get_IsDirectDraw() && (Options.GameSpeed >1 || Options.ScrollRate==6 && CanVblankSync) ){
