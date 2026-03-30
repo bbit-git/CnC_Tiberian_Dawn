@@ -11,6 +11,11 @@
  * with shifted content → view follows naturally since vp stays fixed.
  *
  * Edge scrolling is NOT affected (mouse coords stay in game buffer space).
+ *
+ * Bridge ownership model:
+ * - TacticalCoord = native replay origin used by legacy drawing
+ * - g_requested_tac_* = bridge-visible world origin
+ * - g_vp_* = source sub-viewport inside the native replay texture
  */
 
 #include "render_bridge.h"
@@ -30,6 +35,7 @@ static constexpr float DOS_H     = 200.0f;
 static constexpr float HIRES_W   = 640.0f;
 static constexpr float HIRES_H   = 400.0f;
 
+// Zoom state for the visible sub-viewport inside the native tactical replay.
 static float g_zoom         = 1.0f;
 static float g_zoom_default = 1.0f;
 static float g_zoom_max     = 4.0f;
@@ -38,6 +44,8 @@ static int   g_screen_h     = 0;
 static float g_vp_x         = 0.0f;  // viewport offset in native buffer pixels
 static float g_vp_y         = 0.0f;
 static bool  g_user_zoomed  = false;
+// Requested visible world origin in map-relative leptons. This is the bridge-owned
+// view position; TacticalCoord remains the native replay origin.
 static int   g_requested_tac_x = 0;
 static int   g_requested_tac_y = 0;
 static bool  g_have_requested_tac = false;
@@ -120,7 +128,8 @@ static void clamp_viewport()
     float vis_h = 0.0f;
     Render_Bridge_Get_Visible_Size(vis_w, vis_h);
 
-    // At outermost zoom: visible rect fills the fitted native viewport.
+    // The viewport only moves inside the native tactical replay texture.
+    // At the outermost zoom the visible rect already spans the whole fitted source.
     if (vis_w >= ntw) g_vp_x = 0.0f;
     else {
         if (g_vp_x < 0.0f) g_vp_x = 0.0f;
@@ -146,6 +155,7 @@ void Render_Bridge_Get_Visible_Size(float& w, float& h)
         return;
     }
 
+    // Preserve the tactical screen aspect when sampling from the native replay texture.
     float tac_w = static_cast<float>(Lepton_To_Pixel(Map.TacLeptonWidth));
     float tac_h = static_cast<float>(Lepton_To_Pixel(Map.TacLeptonHeight));
     if (tac_w <= 0.0f || tac_h <= 0.0f) {
@@ -181,6 +191,8 @@ void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h)
         return;
     }
 
+    // Bridge-aware legacy clamp size tracks the native replay window, not the
+    // zoomed visible sub-viewport. Old scroll code still uses this path.
     w = Pixel_To_Lepton(native_w);
     h = Pixel_To_Lepton(native_h);
 
@@ -196,6 +208,8 @@ void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h)
 
 static void get_visible_window_leptons(int& w, int& h)
 {
+    // True visible world size after zoom/aspect fitting. This is the window used
+    // for input mapping, visibility checks, and shroud coverage.
     float vis_w = 0.0f;
     float vis_h = 0.0f;
     Render_Bridge_Get_Visible_Size(vis_w, vis_h);
@@ -215,6 +229,8 @@ static void get_visible_window_leptons(int& w, int& h)
 
 static void clamp_requested_tac()
 {
+    // Clamp the bridge-visible world origin against the map using the zoomed
+    // visible window size, not the native replay size.
     int vis_w = Map.TacLeptonWidth;
     int vis_h = Map.TacLeptonHeight;
     get_visible_window_leptons(vis_w, vis_h);
@@ -270,11 +286,11 @@ static bool apply_zoom_at_point(float new_zoom, int screen_x, int screen_y)
         return false;
     }
 
-    int tac_x = Map.TacPixelX;
-    int tac_y = Map.TacPixelY;
-    int tac_w = Lepton_To_Pixel(Map.TacLeptonWidth);
-    int tac_h = Lepton_To_Pixel(Map.TacLeptonHeight);
+    int tac_x, tac_y, tac_w, tac_h;
+    Render_Bridge_Get_Tactical_Rect(tac_x, tac_y, tac_w, tac_h);
 
+    // Zoom pivot is expressed as a fraction of the tactical screen rect so the
+    // same anchor works regardless of current native replay size.
     float frac_x = 0.5f;
     float frac_y = 0.5f;
     if (tac_w > 0 && tac_h > 0) {
@@ -291,6 +307,7 @@ static bool apply_zoom_at_point(float new_zoom, int screen_x, int screen_y)
         }
     }
 
+    // Keep the native pixel under the pivot stable across the zoom change.
     float old_vis_w = 0.0f;
     float old_vis_h = 0.0f;
     Render_Bridge_Get_Visible_Size(old_vis_w, old_vis_h);
@@ -392,9 +409,8 @@ void Render_Bridge_Apply_Scroll_Zoom()
         }
     }
 
-    // Track the requested visible world origin against the native tactical
-    // replay origin. TacticalCoord is clamped to the native replay size,
-    // while g_requested_tac_* tracks the actual visible window position.
+    // TacticalCoord still drives native replay. The bridge-visible window is the
+    // requested world origin plus a sub-viewport offset inside that replay.
     if (!zoomed && (tac_changed || layout_changed || jumped || requested_changed)) {
         int ntw = Render_Bridge_Get_Native_Tac_W();
         int nth = Render_Bridge_Get_Native_Tac_H();
@@ -447,10 +463,8 @@ void Render_Bridge_Transform_Mouse()
 
 bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& mapped_x, int& mapped_y)
 {
-    int tac_x = Map.TacPixelX;
-    int tac_y = Map.TacPixelY;
-    int tac_w = WindowList[WINDOW_TACTICAL][WINDOWWIDTH] << 3;
-    int tac_h = WindowList[WINDOW_TACTICAL][WINDOWHEIGHT];
+    int tac_x, tac_y, tac_w, tac_h;
+    Render_Bridge_Get_Tactical_Rect(tac_x, tac_y, tac_w, tac_h);
     if (tac_w <= 0 || tac_h <= 0) {
         mapped_x = screen_x;
         mapped_y = screen_y;
@@ -463,6 +477,9 @@ bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& mapped_x,
         return false;
     }
 
+    // Map from tactical screen space into the visible source rect inside the
+    // native replay texture. The returned point stays in game-buffer pixel space
+    // for legacy callers that still expect that intermediate representation.
     float frac_x = static_cast<float>(screen_x - tac_x) / static_cast<float>(tac_w);
     float frac_y = static_cast<float>(screen_y - tac_y) / static_cast<float>(tac_h);
     if (frac_x < 0.0f) frac_x = 0.0f;
@@ -489,5 +506,114 @@ bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& mapped_x,
 
     mapped_x = transformed_x;
     mapped_y = transformed_y;
+    return true;
+}
+
+// --- Bridge-owned tactical geometry (Phase 1) ---
+
+void Render_Bridge_Get_Tactical_Rect(int& x, int& y, int& w, int& h)
+{
+    x = Map.TacPixelX;
+    y = Map.TacPixelY;
+    w = WindowList[WINDOW_TACTICAL][WINDOWWIDTH] << 3;
+    h = WindowList[WINDOW_TACTICAL][WINDOWHEIGHT];
+}
+
+void Render_Bridge_Get_Visible_World_Rect(int& origin_x, int& origin_y,
+                                           int& width, int& height)
+{
+    // The authoritative bridge-visible world window.
+    // Origin is map-relative; callers add MapCellX/Y when they need absolute world coords.
+    origin_x = g_requested_tac_x;
+    origin_y = g_requested_tac_y;
+
+    // Size: visible window in leptons
+    get_visible_window_leptons(width, height);
+}
+
+void Render_Bridge_Get_Clamp_Ranges(int& max_x, int& max_y)
+{
+    int vis_w = Map.TacLeptonWidth;
+    int vis_h = Map.TacLeptonHeight;
+    get_visible_window_leptons(vis_w, vis_h);
+
+    max_x = Cell_To_Lepton(Map.MapCellWidth) - vis_w;
+    max_y = Cell_To_Lepton(Map.MapCellHeight) - vis_h;
+    if (max_x < 0) max_x = 0;
+    if (max_y < 0) max_y = 0;
+}
+
+/// Edge zone in leptons — sprites near the viewport boundary still need rendering.
+static constexpr int EDGE_ZONE_L = CELL_LEPTON_W * 2;
+
+bool Render_Bridge_World_To_Tactical(int world_lx, int world_ly,
+                                      int& pixel_x, int& pixel_y)
+{
+    // Convert absolute world leptons to tactical-local pixels using the bridge-visible
+    // origin, not the native replay origin in TacticalCoord.
+    int origin_x = 0;
+    int origin_y = 0;
+    int vis_w = 0;
+    int vis_h = 0;
+    Render_Bridge_Get_Visible_World_Rect(origin_x, origin_y, vis_w, vis_h);
+    int world_origin_x = origin_x + Cell_To_Lepton(Map.MapCellX);
+    int world_origin_y = origin_y + Cell_To_Lepton(Map.MapCellY);
+
+    int xoff = (world_lx + EDGE_ZONE_L) - world_origin_x;
+
+    if ((unsigned)xoff > (unsigned)(vis_w + EDGE_ZONE_L * 2)) return false;
+
+    int yoff = (world_ly + EDGE_ZONE_L) - world_origin_y;
+    if ((unsigned)yoff > (unsigned)(vis_h + EDGE_ZONE_L * 2)) return false;
+
+    pixel_x = Lepton_To_Pixel(xoff) - CELL_PIXEL_W * 2;
+    pixel_y = Lepton_To_Pixel(yoff) - CELL_PIXEL_W * 2;
+    return true;
+}
+
+bool Render_Bridge_Tactical_To_World(int pixel_x, int pixel_y,
+                                      int& world_lx, int& world_ly)
+{
+    // Convert tactical screen pixels back into absolute world leptons against the
+    // bridge-visible window. This is the canonical bridge input mapping.
+    int tac_x, tac_y, tac_w, tac_h;
+    Render_Bridge_Get_Tactical_Rect(tac_x, tac_y, tac_w, tac_h);
+
+    int sx = pixel_x - tac_x;
+    int sy = pixel_y - tac_y;
+    int lx = Pixel_To_Lepton(sx);
+    int ly = Pixel_To_Lepton(sy);
+
+    int origin_x = 0;
+    int origin_y = 0;
+    int vis_w = 0;
+    int vis_h = 0;
+    Render_Bridge_Get_Visible_World_Rect(origin_x, origin_y, vis_w, vis_h);
+
+    if ((unsigned)lx >= (unsigned)vis_w || (unsigned)ly >= (unsigned)vis_h) {
+        return false;
+    }
+
+    world_lx = origin_x + Cell_To_Lepton(Map.MapCellX) + lx;
+    world_ly = origin_y + Cell_To_Lepton(Map.MapCellY) + ly;
+    return true;
+}
+
+bool Render_Bridge_Is_Cell_In_View(int cell_x, int cell_y)
+{
+    // Visibility is evaluated against the bridge-visible window so shroud, hit tests,
+    // and selection use the same tactical area.
+    int world_lx = Cell_To_Lepton(cell_x) & 0xFF00;
+    int world_ly = Cell_To_Lepton(cell_y) & 0xFF00;
+    int origin_x = 0;
+    int origin_y = 0;
+    int vis_w = 0;
+    int vis_h = 0;
+    Render_Bridge_Get_Visible_World_Rect(origin_x, origin_y, vis_w, vis_h);
+    int world_origin_x = (origin_x + Cell_To_Lepton(Map.MapCellX)) & 0xFF00;
+    int world_origin_y = (origin_y + Cell_To_Lepton(Map.MapCellY)) & 0xFF00;
+
+    if ((unsigned)(world_lx - world_origin_x) > (unsigned)(vis_w + 255)) return false;
+    if ((unsigned)(world_ly - world_origin_y) > (unsigned)(vis_h + 255)) return false;
     return true;
 }

@@ -117,4 +117,50 @@ void Render_Bridge_Get_Viewport_Target(float& x, float& y);
 /// Get the last TacticalCoord delta in pixels.
 void Render_Bridge_Get_Scroll_Delta(int& x, int& y);
 
+// --- Bridge-owned tactical geometry (Phase 1: Geometry Authority) ---
+
+/// Tactical screen rect in game-buffer pixels (TacPixelX/Y + window size).
+/// This is the authoritative tactical area — callers must not recompute from Map.*.
+void Render_Bridge_Get_Tactical_Rect(int& x, int& y, int& w, int& h);
+
+/// Visible world rect in leptons (origin + size of what the bridge shows).
+/// Origin is map-relative (0,0 = top-left of playable map).
+void Render_Bridge_Get_Visible_World_Rect(int& origin_x, int& origin_y,
+                                           int& width, int& height);
+
+/// Maximum scroll position in map-relative leptons. Scrolling beyond this
+/// would move the visible window past the map edge.
+void Render_Bridge_Get_Clamp_Ranges(int& max_x, int& max_y);
+
+/// Map a world coordinate to tactical-relative pixel offset.
+/// Returns true if the coordinate falls within the visible tactical area
+/// (with EDGE_ZONE margin for sprites that overlap the boundary).
+bool Render_Bridge_World_To_Tactical(int world_lepton_x, int world_lepton_y,
+                                      int& pixel_x, int& pixel_y);
+
+/// Map a tactical-relative pixel offset to a world coordinate (leptons).
+/// Returns true if the pixel is inside the tactical area.
+bool Render_Bridge_Tactical_To_World(int pixel_x, int pixel_y,
+                                      int& world_lepton_x, int& world_lepton_y);
+
+/// Check whether a cell is visible in the bridge viewport.
+bool Render_Bridge_Is_Cell_In_View(int cell_x, int cell_y);
+
+// --- Bridge-native UI (Phase 1: Infrastructure) ---
+
+/// Begin a UI frame — clears the UI draw list and resets input zones.
+void Render_Bridge_UI_Begin_Frame();
+
+/// End a UI frame — finalizes input capture state.
+void Render_Bridge_UI_End_Frame();
+
+/// Initialize UI font atlases from loaded game font data.
+void Render_Bridge_UI_Init_Fonts();
+
+/// Returns true if the UI has captured pointer input this frame.
+bool Render_Bridge_UI_Has_Capture();
+
+/// Returns true when bridge-native status messages replace legacy Messages.Draw().
+bool Render_Bridge_UI_Use_Native_Messages();
+
 #endif // CNC_RENDER_BRIDGE_H
