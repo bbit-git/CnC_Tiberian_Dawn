@@ -442,7 +442,14 @@ void GScreenClass::Render(void)
 		if (Messages.Num_Messages() > 0) {
 			Messages.Set_Width(Lepton_To_Cell(Map.TacLeptonWidth) * ICON_PIXEL_W);
 		}
+#ifdef USE_RENDER_BRIDGE
+		{ extern bool Render_Bridge_UI_Use_Native_Messages();
+		  if (!Render_Bridge_UI_Use_Native_Messages()) {
+			  Messages.Draw();
+		  } }
+#else
 		Messages.Draw();
+#endif
 		ActionMenu.Draw_It();
 
 #ifdef USE_RENDER_BRIDGE
@@ -549,7 +556,6 @@ void GScreenClass::Blit_Display(void)
 	}
 
 }
-
 
 
 

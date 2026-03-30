@@ -83,6 +83,11 @@ class MessageListClass {
 		void Draw(void);
 		int Num_Messages(void);
 		void Set_Width(int width);
+#ifdef USE_RENDER_BRIDGE
+		/// Visit visible message labels for bridge-native UI rendering.
+		void Visit_For_Render_Bridge(void (*visitor)(const TextLabelClass& label, void* context),
+		                            void* context) const;
+#endif
 
 	private:
 		TextLabelClass * MessageList;				// list of messages

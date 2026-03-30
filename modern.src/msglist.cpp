@@ -806,3 +806,16 @@ void MessageListClass::Set_Width(int width)
 	}
 }
 
+#ifdef USE_RENDER_BRIDGE
+void MessageListClass::Visit_For_Render_Bridge(void (*visitor)(const TextLabelClass& label, void* context),
+	                                          void* context) const
+{
+	if (!visitor || !MessageList) return;
+
+	TextLabelClass* txtlabel = MessageList;
+	while (txtlabel) {
+		visitor(*txtlabel, context);
+		txtlabel = (TextLabelClass*)txtlabel->Get_Next();
+	}
+}
+#endif

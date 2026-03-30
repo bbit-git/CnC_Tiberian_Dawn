@@ -16,6 +16,7 @@ static RenderCompositor g_compositor;
 static bool             g_bridge_active = false;
 static int              g_output_w = 0;
 static int              g_output_h = 0;
+static bool             g_ui_fonts_initialized = false;
 
 // Palette LUT for 8-bit → RGBA conversion
 static uint32_t         g_pal_lut[256];
@@ -222,4 +223,49 @@ float Render_Bridge_Get_Zoom()
 RenderCompositor* Render_Bridge_Get_Compositor()
 {
     return &g_compositor;
+}
+
+// --- Bridge-native UI ---
+
+#include "ui/ui_draw_list.h"
+#include "ui/ui_text.h"
+#include "ui/ui_input.h"
+
+void Render_Bridge_UI_Begin_Frame()
+{
+    // UI font atlases are built lazily once the legacy font pointers are live.
+    if (!g_ui_fonts_initialized) {
+        Render_Bridge_UI_Init_Fonts();
+        g_ui_fonts_initialized = true;
+    }
+
+    g_ui_draw_list.Clear();
+    UI_Input_Begin_Frame();
+}
+
+void Render_Bridge_UI_End_Frame()
+{
+    // UI hit zones are registered during emission, so pointer state must be
+    // refreshed after the draw list is built for the current frame.
+    extern int g_mouse_x, g_mouse_y;
+    UI_Input_Update(g_mouse_x, g_mouse_y, Key_Down(KN_LMOUSE) != 0);
+    UI_Input_End_Frame();
+}
+
+void Render_Bridge_UI_Init_Fonts()
+{
+    if (Font6Ptr)   UI_Text_Build_Atlas(UI_FONT_6PT, Font6Ptr);
+    if (FontPtr)    UI_Text_Build_Atlas(UI_FONT_8PT, FontPtr);
+    if (FontLEDPtr) UI_Text_Build_Atlas(UI_FONT_LED, FontLEDPtr);
+    if (VCRFontPtr) UI_Text_Build_Atlas(UI_FONT_VCR, VCRFontPtr);
+}
+
+bool Render_Bridge_UI_Has_Capture()
+{
+    return UI_Input_Has_Capture();
+}
+
+bool Render_Bridge_UI_Use_Native_Messages()
+{
+    return true;
 }
