@@ -12,6 +12,10 @@ struct GLPresentFrameContext {
     // Legacy game buffer size (SeenBuff / full UI overlay texture).
     int buffer_w = 0;
     int buffer_h = 0;
+    // Legacy UI/cursor transform derived from the original game buffer size.
+    float legacy_ui_scale = 1.0f;
+    int legacy_offset_x = 0;
+    int legacy_offset_y = 0;
     // Uniform game-buffer-to-window scale used for non-world UI regions.
     float ui_scale = 1.0f;
     // Letterbox / pillarbox offset for the scaled game buffer.
@@ -64,6 +68,13 @@ extern GLint g_ui_u_indexed;
 extern GLint g_ui_u_palette;
 extern GLint g_ui_u_src_rect;
 extern GLint g_ui_u_dst_rect;
+extern GLuint g_rgba_program;
+extern GLuint g_rgba_tex;
+extern int g_rgba_tex_w;
+extern int g_rgba_tex_h;
+extern GLint g_rgba_u_tex;
+extern GLint g_rgba_u_src_rect;
+extern GLint g_rgba_u_dst_rect;
 
 /// Bind a client-side unit quad for a full-screen or region draw.
 void GL_Present_Bind_Client_Quad(const float* quad);
@@ -77,10 +88,12 @@ void GL_Present_Draw_Quad(int src_x, int src_y, int src_w, int src_h,
                           int win_w, int win_h);
 
 /// Draw the main gameplay regions: header, sidebar, tactical world, and tactical overlays.
-bool GL_Present_Draw_Regions(const GLPresentFrameContext& ctx, const uint8_t* vga_palette);
+bool GL_Present_Draw_Regions(const GLPresentFrameContext& ctx,
+                             const uint8_t* indexed_pixels,
+                             const uint8_t* vga_palette);
 
 /// Draw the bridge UI overlay texture on top of the composed frame.
-bool GL_Present_Draw_UI_Overlay(const GLPresentFrameContext& ctx);
+bool GL_Present_Draw_UI_Overlay(const GLPresentFrameContext& ctx, const uint8_t* vga_palette);
 
 /// Draw the source-ownership overlay that highlights SeenBuff, tactical, and UI regions.
 void GL_Present_Draw_Source_Overlay(const GLPresentFrameContext& ctx, bool has_ui_overlay);
@@ -90,5 +103,11 @@ void GL_Present_Draw_Debug_Overlays(const GLPresentFrameContext& ctx);
 
 /// Draw the final mouse cursor overlay after every other pass.
 void GL_Present_Draw_Cursor(const GLPresentFrameContext& ctx);
+
+/// Draw an indexed buffer through an RGBA texture so linear filtering stays color-correct.
+bool GL_Present_Draw_Indexed_RGBA(const uint8_t* indexed_pixels, int src_w, int src_h,
+                                  const uint8_t* vga_palette, bool transparent_zero,
+                                  int dst_x, int dst_y, int dst_w, int dst_h,
+                                  int win_w, int win_h);
 
 #endif

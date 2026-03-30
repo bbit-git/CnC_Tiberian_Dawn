@@ -49,6 +49,15 @@ GLint g_ui_u_indexed = -1;
 GLint g_ui_u_palette = -1;
 GLint g_ui_u_src_rect = -1;
 GLint g_ui_u_dst_rect = -1;
+GLuint g_rgba_program = 0;
+GLuint g_rgba_tex = 0;
+int g_rgba_tex_w = 0;
+int g_rgba_tex_h = 0;
+GLint g_rgba_u_tex = -1;
+GLint g_rgba_u_src_rect = -1;
+GLint g_rgba_u_dst_rect = -1;
+static uint8_t* g_rgba_upload = nullptr;
+static int g_rgba_upload_alloc = 0;
 
 static const char* vert_src = R"(
     attribute vec2 a_pos;
@@ -85,6 +94,15 @@ static const char* frag_ui_src = R"(
         if (idx < 0.002) discard;
         float pal_u = (idx * 255.0 + 0.5) / 256.0;
         gl_FragColor = texture2D(u_palette, vec2(pal_u, 0.5));
+    }
+)";
+
+static const char* frag_rgba_src = R"(
+    precision mediump float;
+    varying vec2 v_uv;
+    uniform sampler2D u_tex;
+    void main() {
+        gl_FragColor = texture2D(u_tex, v_uv);
     }
 )";
 
@@ -210,6 +228,21 @@ bool GL_Present_Init(int w, int h)
         g_ui_u_dst_rect = glGetUniformLocation(g_ui_program, "u_dst_rect");
     }
 
+    GLuint rgba_vs = compile_shader(GL_VERTEX_SHADER, vert_src);
+    GLuint rgba_fs = compile_shader(GL_FRAGMENT_SHADER, frag_rgba_src);
+    if (rgba_vs && rgba_fs) {
+        g_rgba_program = glCreateProgram();
+        glAttachShader(g_rgba_program, rgba_vs);
+        glAttachShader(g_rgba_program, rgba_fs);
+        glBindAttribLocation(g_rgba_program, 0, "a_pos");
+        glLinkProgram(g_rgba_program);
+        glDeleteShader(rgba_vs);
+        glDeleteShader(rgba_fs);
+        g_rgba_u_tex = glGetUniformLocation(g_rgba_program, "u_tex");
+        g_rgba_u_src_rect = glGetUniformLocation(g_rgba_program, "u_src_rect");
+        g_rgba_u_dst_rect = glGetUniformLocation(g_rgba_program, "u_dst_rect");
+    }
+
     g_u_indexed = glGetUniformLocation(g_gl_program, "u_indexed");
     g_u_palette = glGetUniformLocation(g_gl_program, "u_palette");
     g_u_src_rect = glGetUniformLocation(g_gl_program, "u_src_rect");
@@ -250,7 +283,10 @@ void GL_Present_Shutdown()
     if (g_tac_tex) { glDeleteTextures(1, &g_tac_tex); g_tac_tex = 0; }
     if (g_ui_tex) { glDeleteTextures(1, &g_ui_tex); g_ui_tex = 0; }
     if (g_cursor_tex) { glDeleteTextures(1, &g_cursor_tex); g_cursor_tex = 0; }
+    if (g_rgba_tex) { glDeleteTextures(1, &g_rgba_tex); g_rgba_tex = 0; }
     if (g_cursor_overlay) { free(g_cursor_overlay); g_cursor_overlay = nullptr; g_cursor_overlay_alloc = 0; }
+    if (g_rgba_upload) { free(g_rgba_upload); g_rgba_upload = nullptr; g_rgba_upload_alloc = 0; }
+    if (g_rgba_program) { glDeleteProgram(g_rgba_program); g_rgba_program = 0; }
     if (g_ui_program) { glDeleteProgram(g_ui_program); g_ui_program = 0; }
     if (g_gl_program) { glDeleteProgram(g_gl_program); g_gl_program = 0; }
     if (g_gl_ctx) { SDL_GL_DestroyContext(g_gl_ctx); g_gl_ctx = nullptr; }
@@ -271,6 +307,77 @@ static void upload_indexed_frame(const uint8_t* indexed_pixels, int pitch, int w
                             indexed_pixels + row * pitch);
         }
     }
+}
+
+bool GL_Present_Draw_Indexed_RGBA(const uint8_t* indexed_pixels, int src_w, int src_h,
+                                  const uint8_t* vga_palette, bool transparent_zero,
+                                  int dst_x, int dst_y, int dst_w, int dst_h,
+                                  int win_w, int win_h)
+{
+    if (!indexed_pixels || src_w <= 0 || src_h <= 0 || !vga_palette || !g_rgba_program) {
+        return false;
+    }
+
+    int needed = src_w * src_h * 4;
+    if (!g_rgba_upload || g_rgba_upload_alloc < needed) {
+        free(g_rgba_upload);
+        g_rgba_upload = static_cast<uint8_t*>(malloc(needed));
+        g_rgba_upload_alloc = needed;
+    }
+    if (!g_rgba_upload) {
+        return false;
+    }
+
+    for (int i = 0; i < src_w * src_h; i++) {
+        uint8_t idx = indexed_pixels[i];
+        g_rgba_upload[i * 4 + 0] = vga_palette[idx * 3 + 0] << 2;
+        g_rgba_upload[i * 4 + 1] = vga_palette[idx * 3 + 1] << 2;
+        g_rgba_upload[i * 4 + 2] = vga_palette[idx * 3 + 2] << 2;
+        g_rgba_upload[i * 4 + 3] = (transparent_zero && idx == 0) ? 0 : 255;
+    }
+
+    if (!g_rgba_tex || g_rgba_tex_w != src_w || g_rgba_tex_h != src_h) {
+        if (g_rgba_tex) glDeleteTextures(1, &g_rgba_tex);
+        glGenTextures(1, &g_rgba_tex);
+        glBindTexture(GL_TEXTURE_2D, g_rgba_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, src_w, src_h, 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, g_rgba_upload);
+        g_rgba_tex_w = src_w;
+        g_rgba_tex_h = src_h;
+    } else {
+        glBindTexture(GL_TEXTURE_2D, g_rgba_tex);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, src_w, src_h,
+                        GL_RGBA, GL_UNSIGNED_BYTE, g_rgba_upload);
+    }
+
+    glUseProgram(g_rgba_program);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_rgba_tex);
+    glUniform1i(g_rgba_u_tex, 0);
+
+    float x0 = static_cast<float>(dst_x) / win_w * 2.0f - 1.0f;
+    float y0 = 1.0f - static_cast<float>(dst_y) / win_h * 2.0f;
+    float x1 = static_cast<float>(dst_x + dst_w) / win_w * 2.0f - 1.0f;
+    float y1 = 1.0f - static_cast<float>(dst_y + dst_h) / win_h * 2.0f;
+    glUniform4f(g_rgba_u_src_rect, 0.0f, 0.0f, 1.0f, 1.0f);
+    glUniform4f(g_rgba_u_dst_rect, x0, y0, x1, y1);
+
+    static const float quad[] = { 0,0, 1,0, 0,1, 1,1 };
+    GL_Present_Bind_Client_Quad(quad);
+    if (transparent_zero) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    if (transparent_zero) {
+        glDisable(GL_BLEND);
+    }
+    GL_Present_Bind_Palette_Program();
+    return true;
 }
 
 static void upload_palette(const uint8_t* vga_palette)
@@ -309,8 +416,20 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
 {
     if (!g_gl_ready) return false;
 
+    if (InMainLoop) {
+        // Sidebar/tab toggles and other layout changes can happen without a
+        // zoom or screen-size event. Refresh the cached bridge layout every
+        // gameplay frame so presentation, input, and UI use the same rects.
+        Render_Bridge_Refresh_Layout();
+    }
+
     SDL_GL_MakeCurrent(g_window, g_gl_ctx);
-    upload_indexed_frame(indexed_pixels, pitch, w, h);
+    // SeenBuff indexed texture is only needed for menu passthrough and legacy
+    // chrome (disabled). Skip the upload during gameplay to remove the last
+    // gameplay SeenBuff read in the presentation path.
+    if (!InMainLoop) {
+        upload_indexed_frame(indexed_pixels, pitch, w, h);
+    }
     upload_palette(vga_palette);
 
 #ifdef USE_RENDER_BRIDGE_GL_SPRITES
@@ -323,13 +442,30 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         return false;
     }
 
-    float sx = static_cast<float>(win_w) / static_cast<float>(w);
-    float sy = static_cast<float>(win_h) / static_cast<float>(h);
-    // UI/chrome uses one uniform scale from game-buffer pixels to final window pixels.
+    int layout_w = w;
+    int layout_h = h;
+    if (InMainLoop) {
+        Render_Bridge_Get_Logical_Screen_Size(layout_w, layout_h);
+        if (layout_w <= 0 || layout_h <= 0) {
+            layout_w = w;
+            layout_h = h;
+        }
+    }
+
+    float legacy_sx = static_cast<float>(win_w) / static_cast<float>(w);
+    float legacy_sy = static_cast<float>(win_h) / static_cast<float>(h);
+    // Legacy menus/UI/cursor keep the original game-buffer transform.
+    float legacy_ui_scale = (legacy_sx < legacy_sy) ? legacy_sx : legacy_sy;
+    int legacy_offset_x = static_cast<int>((win_w - w * legacy_ui_scale) * 0.5f);
+    int legacy_offset_y = static_cast<int>((win_h - h * legacy_ui_scale) * 0.5f);
+
+    float sx = static_cast<float>(win_w) / static_cast<float>(layout_w);
+    float sy = static_cast<float>(win_h) / static_cast<float>(layout_h);
+    // Bridge-owned gameplay regions use the promoted logical screen layout.
     float ui_scale = (sx < sy) ? sx : sy;
 
-    int offset_x = static_cast<int>((win_w - w * ui_scale) * 0.5f);
-    int offset_y = static_cast<int>((win_h - h * ui_scale) * 0.5f);
+    int offset_x = static_cast<int>((win_w - layout_w * ui_scale) * 0.5f);
+    int offset_y = static_cast<int>((win_h - layout_h * ui_scale) * 0.5f);
     if (g_shake_remaining > 0) {
         offset_x += (rand() % 5) - 2;
         offset_y += (rand() % 5) - 2;
@@ -341,6 +477,9 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
     ctx.win_h = win_h;
     ctx.buffer_w = w;
     ctx.buffer_h = h;
+    ctx.legacy_ui_scale = legacy_ui_scale;
+    ctx.legacy_offset_x = legacy_offset_x;
+    ctx.legacy_offset_y = legacy_offset_y;
     ctx.ui_scale = ui_scale;
     ctx.offset_x = offset_x;
     ctx.offset_y = offset_y;
@@ -348,8 +487,9 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
     if (ctx.in_main_loop) {
         Render_Bridge_Get_Tactical_Rect(ctx.tactical_game_x, ctx.tactical_game_y,
                                         ctx.tactical_game_w, ctx.tactical_game_h);
-        ctx.side_game_x = Map.SideX;
-        ctx.side_game_w = Map.SideBarWidth;
+        int side_y = 0, side_h = 0;
+        Render_Bridge_Get_Sidebar_Rect(ctx.side_game_x, side_y,
+                                       ctx.side_game_w, side_h);
     } else {
         ctx.tactical_game_x = 0;
         ctx.tactical_game_y = 0;
@@ -375,10 +515,10 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
     glEnableVertexAttribArray(0);
 
     GL_Present_Bind_Palette_Program();
-    GL_Present_Draw_Regions(ctx, vga_palette);
+    GL_Present_Draw_Regions(ctx, indexed_pixels, vga_palette);
 
     if (ctx.in_main_loop) {
-        bool has_ui_overlay = GL_Present_Draw_UI_Overlay(ctx);
+        bool has_ui_overlay = GL_Present_Draw_UI_Overlay(ctx, vga_palette);
         GL_Present_Draw_Source_Overlay(ctx, has_ui_overlay);
     }
 
@@ -387,6 +527,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         extern void Render_Bridge_UI_Begin_Frame();
         extern void Render_Bridge_UI_End_Frame();
         extern void UI_Header_Emit();
+        extern void UI_Help_Emit();
         extern void UI_Messages_Emit();
         extern void UI_Sidebar_Emit();
         extern void UI_Tooltip_Emit(int, int, int, int);
@@ -395,10 +536,11 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
 
         Render_Bridge_UI_Begin_Frame();
         UI_Header_Emit();
+        UI_Help_Emit();
         UI_Messages_Emit();
         UI_Sidebar_Emit();
         UI_Tooltip_Emit(g_mouse_x, g_mouse_y,
-                        ctx.buffer_w, ctx.buffer_h);
+                        layout_w, layout_h);
         Render_Bridge_UI_End_Frame();
         GL_UI_Render(ctx.win_w, ctx.win_h,
                      ctx.offset_x, ctx.offset_y, ctx.ui_scale);

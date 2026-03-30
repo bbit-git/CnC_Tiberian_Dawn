@@ -5,6 +5,8 @@
 
 extern void TD_SDL_Get_Raw_Mouse_Position(int& x, int& y);
 extern void GL_Primitives_Render_Debug_Overlay(int win_w, int win_h,
+                                               int game_screen_x, int game_screen_y,
+                                               int game_screen_w, int game_screen_h,
                                                int header_screen_h,
                                                int tac_screen_x, int tac_screen_y,
                                                int tac_screen_w, int tac_screen_h,
@@ -75,6 +77,9 @@ void GL_Present_Draw_Debug_Overlays(const GLPresentFrameContext& ctx)
 
     GL_Primitives_Render_Debug_Overlay(
         ctx.win_w, ctx.win_h,
+        ctx.offset_x, ctx.offset_y,
+        static_cast<int>(std::round(ctx.buffer_w * ctx.ui_scale)),
+        static_cast<int>(std::round(ctx.buffer_h * ctx.ui_scale)),
         ctx.offset_y + static_cast<int>(std::round(ctx.tactical_game_y * ctx.ui_scale)),
         ctx.tactical_screen_x, ctx.tactical_screen_y, ctx.tactical_screen_w, ctx.tactical_screen_h,
         ctx.offset_x + static_cast<int>(std::round(ctx.side_game_x * ctx.ui_scale)),
