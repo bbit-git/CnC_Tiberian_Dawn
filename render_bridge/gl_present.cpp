@@ -28,6 +28,8 @@ extern int g_mouse_y;
 extern bool TD_SDL_Get_Mouse_Cursor(const uint8_t*& pixels, int& w, int& h,
                                     int& hotx, int& hoty, bool& visible);
 extern void TD_SDL_Get_Raw_Mouse_Position(int& x, int& y);
+extern void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
+extern void Render_Bridge_Get_Requested_Tactical_Position(int& x, int& y);
 
 #ifdef USE_RENDER_BRIDGE_GL_SPRITES
 extern int GL_Sprites_Build_Atlas(const uint8_t* vga_palette);
@@ -614,12 +616,18 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
 
         int tac_coord_px = Lepton_To_Pixel(Coord_X(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellX));
         int tac_coord_py = Lepton_To_Pixel(Coord_Y(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellY));
-        int tac_range_x = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellWidth) - Map.TacLeptonWidth);
-        int tac_range_y = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellHeight) - Map.TacLeptonHeight);
-        bool clamp_left = tac_coord_px <= 0;
-        bool clamp_right = tac_range_x > 0 && tac_coord_px >= tac_range_x;
-        bool clamp_top = tac_coord_py <= 0;
-        bool clamp_bottom = tac_range_y > 0 && tac_coord_py >= tac_range_y;
+        int req_x = 0;
+        int req_y = 0;
+        Render_Bridge_Get_Requested_Tactical_Position(req_x, req_y);
+        int clamp_w = Map.TacLeptonWidth;
+        int clamp_h = Map.TacLeptonHeight;
+        Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
+        int tac_range_x = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellWidth) - clamp_w);
+        int tac_range_y = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellHeight) - clamp_h);
+        bool clamp_left = req_x <= 0;
+        bool clamp_right = tac_range_x > 0 && req_x >= tac_range_x;
+        bool clamp_top = req_y <= 0;
+        bool clamp_bottom = tac_range_y > 0 && req_y >= tac_range_y;
 
         int raw_mouse_x = 0;
         int raw_mouse_y = 0;

@@ -31,6 +31,8 @@ extern int  GL_Primitives_Last_Count();
 extern SDL_Window* g_window;
 extern int Render_Bridge_Get_Native_Tac_W();
 extern int Render_Bridge_Get_Native_Tac_H();
+extern void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
+extern void Render_Bridge_Get_Requested_Tactical_Position(int& x, int& y);
 
 static int      g_fps = 0;
 static int      g_fps_counter = 0;
@@ -181,13 +183,19 @@ void Render_Bridge_Debug_Dump()
 
     int tac_coord_px = Lepton_To_Pixel(Coord_X(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellX));
     int tac_coord_py = Lepton_To_Pixel(Coord_Y(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellY));
-    int tac_range_x = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellWidth) - Map.TacLeptonWidth);
-    int tac_range_y = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellHeight) - Map.TacLeptonHeight);
+    int req_x = 0;
+    int req_y = 0;
+    Render_Bridge_Get_Requested_Tactical_Position(req_x, req_y);
+    int clamp_w = Map.TacLeptonWidth;
+    int clamp_h = Map.TacLeptonHeight;
+    Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
+    int tac_range_x = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellWidth) - clamp_w);
+    int tac_range_y = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellHeight) - clamp_h);
 
-    bool at_L = tac_coord_px <= 0;
-    bool at_R = tac_range_x > 0 && tac_coord_px >= tac_range_x;
-    bool at_T = tac_coord_py <= 0;
-    bool at_B = tac_range_y > 0 && tac_coord_py >= tac_range_y;
+    bool at_L = req_x <= 0;
+    bool at_R = tac_range_x > 0 && req_x >= tac_range_x;
+    bool at_T = req_y <= 0;
+    bool at_B = tac_range_y > 0 && req_y >= tac_range_y;
 
     extern int g_mouse_x, g_mouse_y;
     int tpx = Map.TacPixelX;
@@ -211,9 +219,8 @@ void Render_Bridge_Debug_Dump()
     dump_line("bridge: Z %.2f DEF %.2f VIS %dx%d VP %.0f-%.0f", zoom, zoom_default, vp_w, vp_h, vp_x, vp_y);
     dump_line("bridge: VP MAX %.0f-%.0f", vp_max_x, vp_max_y);
     dump_line("bridge: VP TG %.0f-%.0f SD %d-%d", vp_target_x, vp_target_y, scroll_dx, scroll_dy);
-    dump_line("bridge: TC %d-%d RNG %d-%d", tac_coord_px, tac_coord_py, tac_range_x, tac_range_y);
-    dump_line("bridge: WORLD %d-%d", tac_coord_px + static_cast<int>(vp_x),
-              tac_coord_py + static_cast<int>(vp_y));
+    dump_line("bridge: TC %d-%d REQ %d-%d RNG %d-%d", tac_coord_px, tac_coord_py, req_x, req_y, tac_range_x, tac_range_y);
+    dump_line("bridge: WORLD %d-%d", req_x, req_y);
     dump_line("bridge: BND %c%c%c%c MSE %c%c%c%c",
               at_L ? 'L' : '.', at_R ? 'R' : '.', at_T ? 'T' : '.', at_B ? 'B' : '.',
               mL ? 'L' : '.', mR ? 'R' : '.', mT ? 'T' : '.', mB ? 'B' : '.');
@@ -281,17 +288,23 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     // TacticalCoord in pixels relative to map origin
     int tac_coord_px = Lepton_To_Pixel(Coord_X(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellX));
     int tac_coord_py = Lepton_To_Pixel(Coord_Y(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellY));
-    int tac_range_x = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellWidth) - Map.TacLeptonWidth);
-    int tac_range_y = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellHeight) - Map.TacLeptonHeight);
+    int req_x = 0;
+    int req_y = 0;
+    Render_Bridge_Get_Requested_Tactical_Position(req_x, req_y);
+    int clamp_w = Map.TacLeptonWidth;
+    int clamp_h = Map.TacLeptonHeight;
+    Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
+    int tac_range_x = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellWidth) - clamp_w);
+    int tac_range_y = Lepton_To_Pixel(Cell_To_Lepton(Map.MapCellHeight) - clamp_h);
 
     // Map size in cells
     int map_cw = Map.MapCellWidth, map_ch = Map.MapCellHeight;
 
     // Boundary flags
-    bool at_L = tac_coord_px <= 0;
-    bool at_R = tac_range_x > 0 && tac_coord_px >= tac_range_x;
-    bool at_T = tac_coord_py <= 0;
-    bool at_B = tac_range_y > 0 && tac_coord_py >= tac_range_y;
+    bool at_L = req_x <= 0;
+    bool at_R = tac_range_x > 0 && req_x >= tac_range_x;
+    bool at_T = req_y <= 0;
+    bool at_B = tac_range_y > 0 && req_y >= tac_range_y;
 
     // Mouse edge flags
     extern int g_mouse_x, g_mouse_y;
@@ -339,13 +352,12 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     hud_puts(2, y, line, yellow); y += 8;
 
     // TacticalCoord position and range
-    snprintf(line, sizeof(line), "TC %d-%d RNG%d-%d",
-             tac_coord_px, tac_coord_py, tac_range_x, tac_range_y);
+    snprintf(line, sizeof(line), "TC %d-%d RQ%d-%d",
+             tac_coord_px, tac_coord_py, req_x, req_y);
     hud_puts(2, y, line, white); y += 8;
 
-    // World top-left = TacticalCoord + viewport offset (in pixels)
-    snprintf(line, sizeof(line), "WORLD %d-%d",
-             tac_coord_px + (int)vp_x, tac_coord_py + (int)vp_y);
+    snprintf(line, sizeof(line), "RNG %d-%d W %d-%d",
+             tac_range_x, tac_range_y, req_x, req_y);
     hud_puts(2, y, line, green); y += 8;
 
     // Boundary and mouse-edge flags
