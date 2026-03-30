@@ -97,6 +97,71 @@ g_mouse_x/y + _Kbd->MouseQX/Y updated with transformed values
 Game logic reads correct coordinates
 ```
 
+## Debug HUD And Overlay
+
+The GL bridge renders a debug HUD in the top-left corner and a screen-space
+debug rectangle overlay on top of the frame. `F8` dumps the same values to the
+debug log.
+
+### HUD fields
+
+| Field | Meaning |
+|-------|---------|
+| `NAT WxH` | Native tactical texture size in pixels. This is the offscreen GL world buffer. |
+| `TAC WxH` | Legacy tactical viewport size in game-buffer pixels after tab/sidebar layout. |
+| `Z n.nn` | Current GL world zoom. `1.00` is the outermost world view. Higher values zoom in. |
+| `VIS WxH` | Visible source rectangle size inside `NAT` after zoom/aspect fitting. |
+| `VP X-Y` | Top-left of the visible source rectangle inside `NAT`, in native texture pixels. |
+| `VP MAX X-Y` | Maximum legal viewport travel inside `NAT`. `0-0` means the whole native texture is visible. |
+| `TC X-Y` | Tactical world origin relative to map origin, in pixels, from `Map.TacticalCoord`. |
+| `RNG X-Y` | Maximum tactical-coordinate travel range from the legacy engine viewport model. |
+| `WORLD X-Y` | Effective world top-left shown by the GL bridge. Roughly `TC + VP`. |
+| `BND LRTB` | World clamp flags. `L/R/T/B` show that the map edge is reached on that side. `.` means unclamped. |
+| `MSE LRTB` | Mouse-edge flags inside the tactical viewport after mouse transform. |
+| `DL N` | Total draw-list commands recorded this frame. |
+| `S N` | `CMD_SHAPE` count in the draw list. |
+| `T N` | `CMD_STAMP` count in the draw list. |
+| `P N` | Primitive overlay command count in the draw list. |
+| `ATL NF NP` | Atlas cache totals: cached frames and atlas pages. |
+| `ATL NEW N` | New atlas entries built this frame. |
+| `GL S N` | Sprites rendered by the experimental GL sprite overlay. |
+| `D N` | GL sprite batch draw calls. |
+| `CPU S N` | Sprite draws that fell back to legacy CPU replay. |
+| `GL P N` | Overlay primitives rendered by the GL primitive pass. |
+| `MAP WxH` | Map dimensions in cells. |
+| `SCR WxH` | Output screen resolution in pixels. |
+| `MSE X-Y` | Current transformed in-game mouse position in game-buffer coordinates. |
+
+### Flag details
+
+- `BND LRTB`: scroll clamp at map boundaries.
+- `MSE LRTB`: transformed mouse touching tactical edges used for edge scrolling.
+- `WORLD`: useful when `TC` and `VP` disagree and the bridge is showing the wrong world origin.
+
+### Overlay color legend
+
+| Label | Color | Meaning |
+|-------|-------|---------|
+| `TAC` | Green | Tactical presentation area on screen. |
+| `VP` | Cyan | Current visible viewport within the native tactical texture. Rendered in the minimap box. |
+| `HDR` | Yellow | Header/tab strip. |
+| `SID` | Blue | Sidebar region. |
+| `MSE` | White | Mouse clamp region and transformed gameplay mouse marker. |
+| `SCRL` | Red | Edge-scroll bands. Bright red indicates a currently clamped map edge. |
+| `RAW` | Orange | Raw mouse marker before render-bridge transform. |
+
+### Overlay shapes
+
+- Green rectangle: tactical screen region.
+- Yellow rectangle: tab/header strip.
+- Blue rectangle: sidebar region.
+- White inset rectangle: tactical mouse clamp/input region.
+- Red translucent bands: edge-scroll trigger zones.
+- Minimap box: native tactical texture extents.
+- Cyan box inside minimap: current visible viewport sampled from the native texture.
+- Orange square: raw SDL mouse position mapped into screen space.
+- White square: transformed gameplay mouse position mapped into screen space.
+
 ## Hooked Functions
 
 | File | Function | Hook |
@@ -139,8 +204,12 @@ Future:   draw list → ISpriteProvider → GL sprite batch → GPU zoom + rende
 Steps:
 1. ✓ Draw list captures all tactical rendering
 2. ✓ World/overlay separation during zoom
-3. Route CMD_SHAPE through LegacySpriteProvider → SpriteFrame
-4. Pack SpriteFrames into TextureAtlas
-5. Replay via GLSpriteBatch (one draw call per atlas page)
-6. GL palette shader for terrain (CMD_STAMP → indexed texture)
-7. GL primitives for overlays (lines, rects as GL quads)
+3. ✓ Experimental: CMD_SHAPE can be routed through `LegacySpriteProvider` behind `USE_RENDER_BRIDGE_GL_SPRITES`
+4. ✓ Experimental: SpriteFrames can be packed into `TextureAtlas` behind `USE_RENDER_BRIDGE_GL_SPRITES`
+5. ✓ Experimental: GL sprite replay can overlay atlas-backed quads behind `USE_RENDER_BRIDGE_GL_SPRITES`
+6. ✓ GL palette shader for terrain (CMD_STAMP → indexed texture)
+7. ✓ GL primitives for overlays (lines, rects, pixels) in the GL present pass
+
+Notes:
+- Unsupported or unclassified sprite effects still fall back to the legacy CPU replay path.
+- `USE_RENDER_BRIDGE_GL_SPRITES` remains experimental until runtime visual parity is verified.
