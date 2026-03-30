@@ -62,6 +62,11 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include	"function.h"
+#ifdef USE_RENDER_BRIDGE
+extern void Render_Bridge_Debug_HUD_Toggle();
+extern void Render_Bridge_Debug_Bars_Toggle();
+extern void Render_Bridge_Debug_Dump();
+#endif
 #include "actmenu.h"
 #include  "tcpip.h"
 
@@ -624,6 +629,19 @@ void Keyboard_Process(KeyNumType &input)
 		case VK_F8:
 		case VK_F9:
 		case VK_F10:
+#ifdef USE_RENDER_BRIDGE
+			if (KN_To_VK(plain) == VK_F8) {
+				Render_Bridge_Debug_Dump();
+			}
+			if (KN_To_VK(plain) == VK_F9 && (input & KN_CTRL_BIT)) {
+				Render_Bridge_Debug_HUD_Toggle();
+				break;
+			}
+			if (KN_To_VK(plain) == VK_F10 && (input & KN_CTRL_BIT)) {
+				Render_Bridge_Debug_Bars_Toggle();
+				break;
+			}
+#endif
 			if (!Debug_Map) {
 				Handle_View(KN_To_VK(plain) - VK_F7, action);
 			}

@@ -1,5 +1,6 @@
 #ifdef USE_RENDER_BRIDGE
 extern float Render_Get_World_Zoom();
+extern void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
 #endif
 /*
 **	Command & Conquer(tm)
@@ -133,8 +134,16 @@ void ScrollClass::AI(KeyNumType &input, int x, int y)
 				*/
 				int min_x = Cell_To_Lepton(MapCellX);
 				int min_y = Cell_To_Lepton(MapCellY);
+				#ifdef USE_RENDER_BRIDGE
+				int clamp_w = TacLeptonWidth;
+				int clamp_h = TacLeptonHeight;
+				Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
+				int max_x = Cell_To_Lepton(MapCellX + MapCellWidth) - clamp_w;
+				int max_y = Cell_To_Lepton(MapCellY + MapCellHeight) - clamp_h;
+				#else
 				int max_x = Cell_To_Lepton(MapCellX + MapCellWidth) - TacLeptonWidth;
 				int max_y = Cell_To_Lepton(MapCellY + MapCellHeight) - TacLeptonHeight;
+				#endif
 				cur_x = Bound(cur_x, min_x, max_x);
 				cur_y = Bound(cur_y, min_y, max_y);
 
@@ -311,5 +320,4 @@ bool ScrollClass::Set_Autoscroll(int control)
 	}
 	return(old);
 }
-
 

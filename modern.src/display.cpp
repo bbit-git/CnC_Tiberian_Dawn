@@ -17,6 +17,10 @@
 */
 
 /* $Header:   F:\projects\c&c\vcs\code\display.cpv   2.16   16 Oct 1995 16:48:24   JOE_BOSTIC  $ */
+#ifdef USE_RENDER_BRIDGE
+extern void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h);
+extern bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& mapped_x, int& mapped_y);
+#endif
 /***********************************************************************************************
  ***             C O N F I D E N T I A L  ---  W E S T W O O D   S T U D I O S               ***
  ***********************************************************************************************
@@ -1127,6 +1131,13 @@ void DisplayClass::Remove(ObjectClass const * object, LayerType layer)
  *=============================================================================================*/
 CELL DisplayClass::Click_Cell_Calc(int x, int y)
 {
+#ifdef USE_RENDER_BRIDGE
+	int mapped_x = x;
+	int mapped_y = y;
+	Render_Bridge_Map_Tactical_Point(x, y, mapped_x, mapped_y);
+	x = mapped_x;
+	y = mapped_y;
+#endif
 	int sx = x - TacPixelX;
 	int sy = y - TacPixelY;
 	int lx = Pixel_To_Lepton(sx);
@@ -1407,7 +1418,14 @@ bool DisplayClass::Scroll_Map(DirType facing, int & distance, bool really)
 	*/
 	int xx = Coord_X(coord) - Cell_To_Lepton(MapCellX);
 	int yy = Coord_Y(coord) - Cell_To_Lepton(MapCellY);
+	#ifdef USE_RENDER_BRIDGE
+	int clamp_w = TacLeptonWidth;
+	int clamp_h = TacLeptonHeight;
+	Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
+	bool shifted = Confine_Rect(&xx, &yy, clamp_w, clamp_h, Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight));
+	#else
 	bool shifted = Confine_Rect(&xx, &yy, TacLeptonWidth, TacLeptonHeight, Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight));
+	#endif
 	if (xx < 0) {
 		xx = 0;
 		shifted = true;
@@ -2451,6 +2469,13 @@ ObjectClass * DisplayClass::Prev_Object(ObjectClass * object)
  *=============================================================================================*/
 COORDINATE DisplayClass::Pixel_To_Coord(int x, int y)
 {
+#ifdef USE_RENDER_BRIDGE
+	int mapped_x = x;
+	int mapped_y = y;
+	Render_Bridge_Map_Tactical_Point(x, y, mapped_x, mapped_y);
+	x = mapped_x;
+	y = mapped_y;
+#endif
 	/*
 	**	Normalize the pixel coorindates to be relative to the upper left corner
 	**	of the tactical map. The coordinates are expressed in leptons.
@@ -3609,7 +3634,14 @@ void DisplayClass::Set_Tactical_Position(COORDINATE coord)
 	// 	xx, yy, (int)TacLeptonWidth, (int)TacLeptonHeight,
 	// 	Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight),
 	// 	MapCellX, MapCellY);
+	#ifdef USE_RENDER_BRIDGE
+	int clamp_w = TacLeptonWidth;
+	int clamp_h = TacLeptonHeight;
+	Render_Bridge_Get_Visible_Size_Leptons(clamp_w, clamp_h);
+	Confine_Rect(&xx, &yy, clamp_w, clamp_h, Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight));
+	#else
 	Confine_Rect(&xx, &yy, TacLeptonWidth, TacLeptonHeight, Cell_To_Lepton(MapCellWidth), Cell_To_Lepton(MapCellHeight));
+	#endif
 	coord = XY_Coord(xx + Cell_To_Lepton(MapCellX), yy + Cell_To_Lepton(MapCellY));
 
 	if (ScenarioInit) {

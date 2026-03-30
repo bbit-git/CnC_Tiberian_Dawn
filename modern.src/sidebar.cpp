@@ -1061,9 +1061,13 @@ bool SidebarClass::Activate(int control)
 		if (IsSidebarActive /*&& X*/) {
 			DBG("Sidebar: activating, Set_View_Dimensions(0, %d, %d)", Map.Get_Tab_Height(), SeenBuff.Get_Width() - sidewidth);
 			#ifdef USE_RENDER_BRIDGE
-                        Set_View_Dimensions(0, Map.Get_Tab_Height(), (SeenBuff.Get_Width() - sidewidth) / ICON_PIXEL_W);
+			/*
+			**	Render bridge still needs the legacy tactical viewport width in pixels.
+			**	Passing cells here collapses TacLeptonWidth and breaks GL viewport math.
+			*/
+			Set_View_Dimensions(0, Map.Get_Tab_Height(), SeenBuff.Get_Width() - sidewidth);
 #else
-                        Set_View_Dimensions(0, Map.Get_Tab_Height(), SeenBuff.Get_Width() - sidewidth);
+			Set_View_Dimensions(0, Map.Get_Tab_Height(), SeenBuff.Get_Width() - sidewidth);
 #endif
 			IsToRedraw = true;
 			Help_Text(TXT_NONE);
@@ -2612,5 +2616,4 @@ bool SidebarClass::StripClass::Abandon_Production(int factory)
 	}
 	return(abandon);
 }
-
 
