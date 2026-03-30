@@ -18,6 +18,7 @@
 #include <GLES2/gl2.h>
 #include <cmath>
 #include "render_bridge.h"
+#include "draw_list.h"
 #include "function.h"
 #include "dbg.h"
 
@@ -61,6 +62,15 @@ extern void GL_Primitives_Render_Debug_Overlay(int win_w, int win_h,
                                                int raw_mouse_screen_x, int raw_mouse_screen_y,
                                                int mouse_screen_x, int mouse_screen_y);
 extern bool Render_Bridge_Debug_Bars_Enabled();
+extern void GL_Primitives_Render_Source_Overlay(int win_w, int win_h,
+                                                int game_screen_x, int game_screen_y,
+                                                int game_screen_w, int game_screen_h,
+                                                int header_screen_h,
+                                                int tac_screen_x, int tac_screen_y,
+                                                int tac_screen_w, int tac_screen_h,
+                                                int side_screen_x, int side_screen_w,
+                                                bool has_ui_overlay);
+extern bool Render_Bridge_Debug_Sources_Enabled();
 
 static constexpr bool k_enable_gl_sprite_overlay = true;
 
@@ -138,6 +148,17 @@ static void bind_client_quad_pointer(const float* quad)
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, quad);
+}
+
+static bool frame_has_shroud_overlay()
+{
+    for (int i = 0; i < g_draw_list.Command_Count(); i++) {
+        const DrawCommand& cmd = g_draw_list.Get(i);
+        if (cmd.type == CMD_SHAPE && cmd.layer == LAYER_SHADOW) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static GLuint compile_shader(GLenum type, const char* src)
@@ -523,7 +544,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
 #ifdef USE_RENDER_BRIDGE_GL_SPRITES
-                if (k_enable_gl_sprite_overlay) {
+                if (k_enable_gl_sprite_overlay && !frame_has_shroud_overlay()) {
                     GL_Sprites_Render(win_w, win_h,
                                       dst_x, dst_y, dst_w, dst_h,
                                       0, 0, g_tac_tex_w, g_tac_tex_h,
@@ -546,11 +567,13 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
 
         // UI overlay: dialogs, buttons, messages drawn after Draw_It.
         // Rendered on top of tactical quad with transparent index 0.
+        bool has_ui_overlay = false;
         {
             extern const uint8_t* Render_Bridge_Get_UI_Overlay(int& w, int& h);
             int ui_w = 0, ui_h = 0;
             const uint8_t* ui_pixels = Render_Bridge_Get_UI_Overlay(ui_w, ui_h);
             if (ui_pixels && ui_w > 0 && ui_h > 0 && g_ui_program) {
+                has_ui_overlay = true;
                 // Upload UI overlay texture
                 if (!g_ui_tex || g_ui_tex_w != ui_w || g_ui_tex_h != ui_h) {
                     if (g_ui_tex) glDeleteTextures(1, &g_ui_tex);
@@ -602,6 +625,18 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
                 glBindTexture(GL_TEXTURE_2D, g_palette_tex);
                 glUniform1i(g_u_palette, 1);
             }
+        }
+
+        if (Render_Bridge_Debug_Sources_Enabled()) {
+            GL_Primitives_Render_Source_Overlay(win_w, win_h,
+                                                offset_x, offset_y,
+                                                static_cast<int>(w * ui_scale),
+                                                static_cast<int>(h * ui_scale),
+                                                static_cast<int>(tac_y * ui_scale),
+                                                avail_x, avail_y, avail_w, avail_h,
+                                                offset_x + static_cast<int>(side_x * ui_scale),
+                                                static_cast<int>(side_w * ui_scale),
+                                                has_ui_overlay);
         }
 
         // Sidebar already drawn above (before tactical).

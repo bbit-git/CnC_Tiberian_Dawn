@@ -65,6 +65,7 @@
 #ifdef USE_RENDER_BRIDGE
 extern void Render_Bridge_Debug_HUD_Toggle();
 extern void Render_Bridge_Debug_Bars_Toggle();
+extern void Render_Bridge_Debug_Sources_Toggle();
 extern void Render_Bridge_Debug_Dump();
 #endif
 #include "actmenu.h"
@@ -647,6 +648,11 @@ void Keyboard_Process(KeyNumType &input)
 				Handle_View(KN_To_VK(plain) - VK_F7, action);
 			}
 			break;
+		case VK_F11:
+#ifdef USE_RENDER_BRIDGE
+			Render_Bridge_Debug_Sources_Toggle();
+			break;
+#endif
 #if (0)
  case VK_F11:
 	Winsock.Set_Protocol_UDP(FALSE);

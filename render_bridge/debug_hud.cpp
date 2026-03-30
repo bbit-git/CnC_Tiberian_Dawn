@@ -47,6 +47,7 @@ static GLuint g_hud_prog = 0;
 static bool   g_hud_gl_ready = false;
 static bool   g_debug_hud_visible = true;
 static bool   g_debug_bars_visible = true;
+static bool   g_debug_sources_visible = false;
 
 // HUD bitmap
 static constexpr int HUD_W = 160;
@@ -458,4 +459,15 @@ void Render_Bridge_Debug_Bars_Toggle()
 bool Render_Bridge_Debug_Bars_Enabled()
 {
     return g_debug_bars_visible;
+}
+
+void Render_Bridge_Debug_Sources_Toggle()
+{
+    g_debug_sources_visible = !g_debug_sources_visible;
+    DBG("bridge: debug sources %s", g_debug_sources_visible ? "on" : "off");
+}
+
+bool Render_Bridge_Debug_Sources_Enabled()
+{
+    return g_debug_sources_visible;
 }

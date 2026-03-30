@@ -330,6 +330,98 @@ int GL_Primitives_Last_Count()
     return g_last_primitive_count;
 }
 
+/// Render source-tint overlays showing native tactical, SeenBuff chrome, and UI overlay bounds.
+void GL_Primitives_Render_Source_Overlay(int win_w, int win_h,
+                                         int game_screen_x, int game_screen_y,
+                                         int game_screen_w, int game_screen_h,
+                                         int header_screen_h,
+                                         int tac_screen_x, int tac_screen_y,
+                                         int tac_screen_w, int tac_screen_h,
+                                         int side_screen_x, int side_screen_w,
+                                         bool has_ui_overlay)
+{
+    if (!init_gl()) {
+        return;
+    }
+
+    std::vector<PrimVertex> tris;
+    std::vector<PrimVertex> lines;
+    tris.reserve(48);
+    lines.reserve(48);
+
+    const float nat_r = 1.00f, nat_g = 0.18f, nat_b = 0.18f;
+    const float seen_r = 0.18f, seen_g = 0.90f, seen_b = 0.28f;
+    const float hid_r = 0.18f, hid_g = 0.55f, hid_b = 1.00f;
+
+    if (header_screen_h > 0) {
+        push_rect(tris,
+                  static_cast<float>(game_screen_x),
+                  static_cast<float>(game_screen_y),
+                  static_cast<float>(game_screen_x + game_screen_w),
+                  static_cast<float>(game_screen_y + header_screen_h),
+                  seen_r, seen_g, seen_b, 0.16f);
+        push_outline(lines,
+                     static_cast<float>(game_screen_x) + 0.5f,
+                     static_cast<float>(game_screen_y) + 0.5f,
+                     static_cast<float>(game_screen_x + game_screen_w) - 0.5f,
+                     static_cast<float>(game_screen_y + header_screen_h) - 0.5f,
+                     seen_r, seen_g, seen_b, 0.95f);
+    }
+
+    if (side_screen_w > 0) {
+        push_rect(tris,
+                  static_cast<float>(side_screen_x),
+                  static_cast<float>(game_screen_y),
+                  static_cast<float>(side_screen_x + side_screen_w),
+                  static_cast<float>(game_screen_y + game_screen_h),
+                  seen_r, seen_g, seen_b, 0.16f);
+        push_outline(lines,
+                     static_cast<float>(side_screen_x) + 0.5f,
+                     static_cast<float>(game_screen_y) + 0.5f,
+                     static_cast<float>(side_screen_x + side_screen_w) - 0.5f,
+                     static_cast<float>(game_screen_y + game_screen_h) - 0.5f,
+                     seen_r, seen_g, seen_b, 0.95f);
+    }
+
+    if (tac_screen_w > 0 && tac_screen_h > 0) {
+        push_rect(tris,
+                  static_cast<float>(tac_screen_x),
+                  static_cast<float>(tac_screen_y),
+                  static_cast<float>(tac_screen_x + tac_screen_w),
+                  static_cast<float>(tac_screen_y + tac_screen_h),
+                  nat_r, nat_g, nat_b, 0.14f);
+        push_outline(lines,
+                     static_cast<float>(tac_screen_x) + 0.5f,
+                     static_cast<float>(tac_screen_y) + 0.5f,
+                     static_cast<float>(tac_screen_x + tac_screen_w) - 0.5f,
+                     static_cast<float>(tac_screen_y + tac_screen_h) - 0.5f,
+                     nat_r, nat_g, nat_b, 0.95f);
+    }
+
+    if (has_ui_overlay && game_screen_w > 0 && game_screen_h > 0) {
+        push_outline(lines,
+                     static_cast<float>(game_screen_x) + 2.5f,
+                     static_cast<float>(game_screen_y) + 2.5f,
+                     static_cast<float>(game_screen_x + game_screen_w) - 2.5f,
+                     static_cast<float>(game_screen_y + game_screen_h) - 2.5f,
+                     hid_r, hid_g, hid_b, 1.0f);
+    }
+
+    glUseProgram(g_state.program);
+    glUniform2f(g_state.u_viewport, static_cast<float>(win_w), static_cast<float>(win_h));
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glEnableVertexAttribArray(g_state.a_pos);
+    glEnableVertexAttribArray(g_state.a_color);
+    draw_vertices(GL_TRIANGLES, tris);
+    draw_vertices(GL_LINES, lines);
+    glDisableVertexAttribArray(g_state.a_pos);
+    glDisableVertexAttribArray(g_state.a_color);
+    glDisable(GL_BLEND);
+}
+
 /// Render diagnostic rectangles for tactical layout, viewport, and clamp zones.
 void GL_Primitives_Render_Debug_Overlay(int win_w, int win_h,
                                         int header_screen_h,
