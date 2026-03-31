@@ -201,6 +201,33 @@ void push_rect(std::vector<PrimVertex>& tris,
     tris.push_back({x1, y1, r, g, b, a});
 }
 
+void push_line_rect(std::vector<PrimVertex>& tris,
+                    float x0, float y0, float x1, float y1,
+                    float thickness,
+                    float r, float g, float b, float a)
+{
+    if (thickness < 1.0f) {
+        thickness = 1.0f;
+    }
+
+    if (y0 == y1) {
+        float min_x = (x0 < x1) ? x0 : x1;
+        float max_x = (x0 > x1) ? x0 : x1;
+        push_rect(tris, min_x, y0, max_x + 1.0f, y0 + thickness, r, g, b, a);
+        return;
+    }
+
+    if (x0 == x1) {
+        float min_y = (y0 < y1) ? y0 : y1;
+        float max_y = (y0 > y1) ? y0 : y1;
+        push_rect(tris, x0, min_y, x0 + thickness, max_y + 1.0f, r, g, b, a);
+        return;
+    }
+
+    // Diagonal overlays are rare. Keep them as lines if we ever see them.
+    push_line(tris, x0, y0, x1, y1, r, g, b, a);
+}
+
 void push_outline(std::vector<PrimVertex>& lines,
                   float x0, float y0, float x1, float y1,
                   float r, float g, float b, float a)
@@ -244,12 +271,19 @@ int GL_Primitives_Render(int win_w, int win_h,
         return 0;
     }
 
-    std::vector<PrimVertex> tris;
-    std::vector<PrimVertex> lines;
     int primitive_count = 0;
 
-    tris.reserve(256);
-    lines.reserve(256);
+    glUseProgram(g_state.program);
+    glUniform2f(g_state.u_viewport, static_cast<float>(win_w), static_cast<float>(win_h));
+    glDisable(GL_BLEND);
+
+    glEnableVertexAttribArray(g_state.a_pos);
+    glEnableVertexAttribArray(g_state.a_color);
+
+    // Clamp all tactical primitives to the final tactical screen rect so no
+    // overlay geometry can bleed into the header or sidebar.
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(tac_screen_x, win_h - (tac_screen_y + tac_screen_h), tac_screen_w, tac_screen_h);
 
     for (int i = 0; i < g_draw_list.Command_Count(); i++) {
         const DrawCommand& cmd = g_draw_list.Get(i);
@@ -265,6 +299,8 @@ int GL_Primitives_Render(int win_w, int win_h,
         float b = 0.0f;
         float a = 0.0f;
         palette_color(cmd.prim.color, palette, r, g, b, a);
+        std::vector<PrimVertex> verts;
+        GLenum mode = GL_LINES;
 
         if (cmd.type == CMD_FILL_RECT) {
             // Rect fills are captured as tactical-local pixel bounds. Project
@@ -273,8 +309,11 @@ int GL_Primitives_Render(int win_w, int win_h,
             float y0 = world_to_screen(static_cast<float>(tac_screen_y), static_cast<float>(cmd.prim.y1), vp_y, scale);
             float x1 = world_to_screen(static_cast<float>(tac_screen_x), static_cast<float>(cmd.prim.x2 + 1), vp_x, scale);
             float y1 = world_to_screen(static_cast<float>(tac_screen_y), static_cast<float>(cmd.prim.y2 + 1), vp_y, scale);
-            push_rect(tris, x0, y0, x1, y1, r, g, b, a);
+            verts.reserve(6);
+            push_rect(verts, x0, y0, x1, y1, r, g, b, a);
+            mode = GL_TRIANGLES;
             primitive_count++;
+            draw_vertices(mode, verts);
             continue;
         }
 
@@ -285,23 +324,30 @@ int GL_Primitives_Render(int win_w, int win_h,
             float y0 = world_to_screen(static_cast<float>(tac_screen_y), static_cast<float>(cmd.prim.y1), vp_y, scale);
             float x1 = x0 + scale;
             float y1 = y0 + scale;
-            push_rect(tris, x0, y0, x1, y1, r, g, b, a);
+            verts.reserve(6);
+            push_rect(verts, x0, y0, x1, y1, r, g, b, a);
+            mode = GL_TRIANGLES;
             primitive_count++;
+            draw_vertices(mode, verts);
             continue;
         }
 
         if (cmd.type == CMD_DRAW_RECT) {
             // Outline rectangles follow the same world-space projection as fills,
-            // but stay as GL lines to match selection and bracket overlays.
+            // but draw as thin quads instead of GL_LINES so short selection
+            // corners remain visible on all drivers.
             float x0 = world_to_screen(static_cast<float>(tac_screen_x), static_cast<float>(cmd.prim.x1), vp_x, scale);
             float y0 = world_to_screen(static_cast<float>(tac_screen_y), static_cast<float>(cmd.prim.y1), vp_y, scale);
             float x1 = world_to_screen(static_cast<float>(tac_screen_x), static_cast<float>(cmd.prim.x2), vp_x, scale);
             float y1 = world_to_screen(static_cast<float>(tac_screen_y), static_cast<float>(cmd.prim.y2), vp_y, scale);
-            push_line(lines, x0, y0, x1, y0, r, g, b, a);
-            push_line(lines, x1, y0, x1, y1, r, g, b, a);
-            push_line(lines, x1, y1, x0, y1, r, g, b, a);
-            push_line(lines, x0, y1, x0, y0, r, g, b, a);
+            verts.reserve(24);
+            push_line_rect(verts, x0, y0, x1, y0, 1.0f, r, g, b, a);
+            push_line_rect(verts, x1, y0, x1, y1, 1.0f, r, g, b, a);
+            push_line_rect(verts, x1, y1, x0, y1, 1.0f, r, g, b, a);
+            push_line_rect(verts, x0, y1, x0, y0, 1.0f, r, g, b, a);
+            mode = GL_TRIANGLES;
             primitive_count++;
+            draw_vertices(mode, verts);
             continue;
         }
 
@@ -311,29 +357,17 @@ int GL_Primitives_Render(int win_w, int win_h,
         float y0 = world_to_screen(static_cast<float>(tac_screen_y), static_cast<float>(cmd.prim.y1), vp_y, scale);
         float x1 = world_to_screen(static_cast<float>(tac_screen_x), static_cast<float>(cmd.prim.x2), vp_x, scale);
         float y1 = world_to_screen(static_cast<float>(tac_screen_y), static_cast<float>(cmd.prim.y2), vp_y, scale);
-        push_line(lines, x0, y0, x1, y1, r, g, b, a);
+        if (x0 == x1 || y0 == y1) {
+            verts.reserve(6);
+            push_line_rect(verts, x0, y0, x1, y1, 1.0f, r, g, b, a);
+            mode = GL_TRIANGLES;
+        } else {
+            verts.reserve(2);
+            push_line(verts, x0, y0, x1, y1, r, g, b, a);
+        }
         primitive_count++;
+        draw_vertices(mode, verts);
     }
-
-    if (primitive_count == 0) {
-        g_last_primitive_count = 0;
-        return 0;
-    }
-
-    glUseProgram(g_state.program);
-    glUniform2f(g_state.u_viewport, static_cast<float>(win_w), static_cast<float>(win_h));
-    glDisable(GL_BLEND);
-
-    glEnableVertexAttribArray(g_state.a_pos);
-    glEnableVertexAttribArray(g_state.a_color);
-
-    // Clamp all tactical primitives to the final tactical screen rect so no
-    // overlay geometry can bleed into the header or sidebar.
-    glEnable(GL_SCISSOR_TEST);
-    glScissor(tac_screen_x, win_h - (tac_screen_y + tac_screen_h), tac_screen_w, tac_screen_h);
-
-    draw_vertices(GL_TRIANGLES, tris);
-    draw_vertices(GL_LINES, lines);
 
     glDisable(GL_SCISSOR_TEST);
     glDisableVertexAttribArray(g_state.a_pos);
