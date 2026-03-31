@@ -147,12 +147,12 @@ bool GL_Present_Draw_Regions(const GLPresentFrameContext& ctx,
     int dst_x = ctx.render_tac_screen_x + (ctx.render_tac_screen_w - dst_w) / 2;
     int dst_y = ctx.render_tac_screen_y + (ctx.render_tac_screen_h - dst_h) / 2;
 
-    // Scissor to the visible tactical screen rect so world pixels do not bleed
-    // into the sidebar region.
+    // Scissor to the actual render tactical rect so world pixels are clipped
+    // against the same screen area used for presentation.
     glEnable(GL_SCISSOR_TEST);
-    glScissor(ctx.tactical_screen_x,
-              ctx.win_h - (ctx.tactical_screen_y + ctx.tactical_screen_h),
-              ctx.tactical_screen_w, ctx.tactical_screen_h);
+    glScissor(ctx.render_tac_screen_x,
+              ctx.win_h - (ctx.render_tac_screen_y + ctx.render_tac_screen_h),
+              ctx.render_tac_screen_w, ctx.render_tac_screen_h);
 
     float nx0 = static_cast<float>(dst_x) / ctx.win_w * 2.0f - 1.0f;
     float ny0 = 1.0f - static_cast<float>(dst_y) / ctx.win_h * 2.0f;

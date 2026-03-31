@@ -25,6 +25,7 @@ extern void Render_Bridge_Record_Tactical_Request_Fallback(int x, int y);
 extern void Render_Bridge_Get_Requested_Tactical_Position(int& x, int& y);
 extern void Render_Bridge_Get_Clamp_Ranges(int& max_x, int& max_y);
 extern void Render_Bridge_Get_Tactical_Rect(int& x, int& y, int& w, int& h);
+extern void Render_Bridge_Get_Mouse_Input_Rect(int& x, int& y, int& w, int& h);
 extern void Render_Bridge_Get_Visible_World_Rect(int& origin_x, int& origin_y, int& width, int& height);
 extern bool Render_Bridge_World_To_Tactical(int world_lepton_x, int world_lepton_y, int& pixel_x, int& pixel_y);
 extern bool Render_Bridge_Tactical_To_World(int pixel_x, int pixel_y, int& world_lepton_x, int& world_lepton_y);
@@ -710,7 +711,7 @@ void DisplayClass::Set_View_Dimensions(int x, int y, int width, int height)
 		int rb_tac_y = 0;
 		int rb_tac_w = 0;
 		int rb_tac_h = 0;
-		Render_Bridge_Get_Tactical_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
+		Render_Bridge_Get_Mouse_Input_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
 		TacButton.X = rb_tac_x;
 		TacButton.Y = rb_tac_y;
 		TacButton.Width = rb_tac_w;
@@ -1072,7 +1073,7 @@ void DisplayClass::AI(KeyNumType & input, int x, int y)
 	if (IsRubberBand) {
 #ifdef USE_RENDER_BRIDGE
 		int rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h;
-		Render_Bridge_Get_Tactical_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
+		Render_Bridge_Get_Mouse_Input_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
 		bool rb_outside = Get_Mouse_X() < rb_tac_x ||
 		                  Get_Mouse_Y() < rb_tac_y ||
 		                  Get_Mouse_X() >= rb_tac_x + rb_tac_w ||
@@ -2252,7 +2253,7 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
 		if (IsRubberBand) {
 #ifdef USE_RENDER_BRIDGE
 			int rb_tac_x = 0, rb_tac_y = 0, rb_tac_w = 0, rb_tac_h = 0;
-			Render_Bridge_Get_Tactical_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
+			Render_Bridge_Get_Mouse_Input_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
 			LogicPage->Draw_Rect(BandX + rb_tac_x, BandY + rb_tac_y,
 				NewX + rb_tac_x, NewY + rb_tac_y, WHITE);
 #else
@@ -2880,7 +2881,7 @@ void DisplayClass::Select_These(COORDINATE coord1, COORDINATE coord2)
 	int rb_tac_y = 0;
 	int rb_tac_w = 0;
 	int rb_tac_h = 0;
-	Render_Bridge_Get_Tactical_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
+	Render_Bridge_Get_Mouse_Input_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
 	coord1 = Pixel_To_Coord(rb_tac_x + x1, rb_tac_y + y1);
 	coord2 = Pixel_To_Coord(rb_tac_x + x2, rb_tac_y + y2);
 	if (!coord1 || !coord2) {
@@ -2970,7 +2971,7 @@ void DisplayClass::Refresh_Band(void)
 		int tac_w = Lepton_To_Pixel(TacLeptonWidth);
 		int tac_h = Lepton_To_Pixel(TacLeptonHeight);
 #ifdef USE_RENDER_BRIDGE
-		Render_Bridge_Get_Tactical_Rect(tac_x, tac_y, tac_w, tac_h);
+		Render_Bridge_Get_Mouse_Input_Rect(tac_x, tac_y, tac_w, tac_h);
 #endif
 		int x1 = BandX + tac_x;
 		int y1 = BandY + tac_y;
@@ -3060,7 +3061,7 @@ int DisplayClass::TacticalClass::Action(unsigned flags, KeyNumType & key)
 			int rb_tac_y = 0;
 			int rb_tac_w = 0;
 			int rb_tac_h = 0;
-			Render_Bridge_Get_Tactical_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
+			Render_Bridge_Get_Mouse_Input_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
 			x -= rb_tac_x;
 			y -= rb_tac_y;
 		}
@@ -3748,7 +3749,7 @@ void DisplayClass::Mouse_Left_Held(int x, int y)
 #ifdef USE_RENDER_BRIDGE
 	{
 		int rb_tac_x = 0, rb_tac_y = 0;
-		Render_Bridge_Get_Tactical_Rect(rb_tac_x, rb_tac_y, clamp_w, clamp_h);
+		Render_Bridge_Get_Mouse_Input_Rect(rb_tac_x, rb_tac_y, clamp_w, clamp_h);
 	}
 #endif
 	if (IsRubberBand) {

@@ -228,9 +228,9 @@ static void get_visible_window_leptons(int& w, int& h)
 }
 
 /// Bridge-level effective clamp in leptons. When the sidebar is active, the
-/// clamp shrinks by the sidebar's world coverage so g_requested_tac_x can go
-/// further. The viewport offset (g_vp_x) absorbs the extra; if the native
-/// buffer doesn't have enough room, clamp_viewport caps it harmlessly.
+/// clamp window expands by the sidebar's world coverage. The player still only
+/// sees the render tactical rect on screen, but the hidden sidebar-covered area
+/// must count toward map-edge clamping so Z 1.0 render scale stays constant.
 /// TacticalCoord is confined separately (display.cpp, native size) so the
 /// replay buffer never extends past the map edge.
 static void get_effective_clamp_leptons(int& w, int& h)
@@ -256,8 +256,7 @@ static void get_effective_clamp_leptons(int& w, int& h)
             if (vp_room < 0) vp_room = 0;
             if (sidebar_world_px > vp_room) sidebar_world_px = vp_room;
 
-            w -= Pixel_To_Lepton(sidebar_world_px);
-            if (w < 0) w = 0;
+            w += Pixel_To_Lepton(sidebar_world_px);
         }
     }
 
@@ -684,11 +683,12 @@ void Render_Bridge_Get_Render_Tactical_Rect(int& x, int& y, int& w, int& h)
 
 void Render_Bridge_Get_Mouse_Input_Rect(int& x, int& y, int& w, int& h)
 {
-    // Mouse input area is the tactical rect — clicks inside become tactical actions.
-    x = g_layout.tactical_x;
-    y = g_layout.tactical_y;
-    w = g_layout.tactical_w;
-    h = g_layout.tactical_h;
+    // Input follows the actual on-screen tactical presentation, not the legacy
+    // narrower tactical window. Sidebar changes clamp behaviour, not click area.
+    x = g_layout.render_tac_x;
+    y = g_layout.render_tac_y;
+    w = g_layout.render_tac_w;
+    h = g_layout.render_tac_h;
 }
 
 void Render_Bridge_Get_Native_World_Rect(int& w, int& h)
