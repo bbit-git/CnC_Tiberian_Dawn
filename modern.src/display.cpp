@@ -2239,7 +2239,14 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
 		**	Draw the rubber band over the top of it all.
 		*/
 		if (IsRubberBand) {
+#ifdef USE_RENDER_BRIDGE
+			int rb_tac_x = 0, rb_tac_y = 0, rb_tac_w = 0, rb_tac_h = 0;
+			Render_Bridge_Get_Tactical_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
+			LogicPage->Draw_Rect(BandX + rb_tac_x, BandY + rb_tac_y,
+				NewX + rb_tac_x, NewY + rb_tac_y, WHITE);
+#else
 			LogicPage->Draw_Rect(BandX+TacPixelX, BandY+TacPixelY, NewX+TacPixelX, NewY+TacPixelY, WHITE);
+#endif
 		}
 		/*
 		**	Clear the redraw flags so that normal redraw flag setting can resume.
@@ -2858,8 +2865,13 @@ void DisplayClass::Select_These(COORDINATE coord1, COORDINATE coord2)
 	y1 = Coord_Y(coord1);
 	x2 = Coord_X(coord2);
 	y2 = Coord_Y(coord2);
-	coord1 = Pixel_To_Coord(TacPixelX + x1, TacPixelY + y1);
-	coord2 = Pixel_To_Coord(TacPixelX + x2, TacPixelY + y2);
+	int rb_tac_x = 0;
+	int rb_tac_y = 0;
+	int rb_tac_w = 0;
+	int rb_tac_h = 0;
+	Render_Bridge_Get_Tactical_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
+	coord1 = Pixel_To_Coord(rb_tac_x + x1, rb_tac_y + y1);
+	coord2 = Pixel_To_Coord(rb_tac_x + x2, rb_tac_y + y2);
 	if (!coord1 || !coord2) {
 		return;
 	}
@@ -2942,10 +2954,17 @@ void DisplayClass::Refresh_Band(void)
 		**	In rubber band mode, mark all cells under the "rubber band" to be
 		**	redrawn.
 		*/
-		int x1 = BandX+TacPixelX;
-		int y1 = BandY+TacPixelY;
-		int x2 = NewX+TacPixelX;
-		int y2 = NewY+TacPixelY;
+		int tac_x = TacPixelX;
+		int tac_y = TacPixelY;
+		int tac_w = Lepton_To_Pixel(TacLeptonWidth);
+		int tac_h = Lepton_To_Pixel(TacLeptonHeight);
+#ifdef USE_RENDER_BRIDGE
+		Render_Bridge_Get_Tactical_Rect(tac_x, tac_y, tac_w, tac_h);
+#endif
+		int x1 = BandX + tac_x;
+		int y1 = BandY + tac_y;
+		int x2 = NewX + tac_x;
+		int y2 = NewY + tac_y;
 
 		if (x1 > x2) {
 			int temp = x1;
@@ -2960,18 +2979,18 @@ void DisplayClass::Refresh_Band(void)
 
 		CELL cell;
 		for (int y = y1; y <= y2+CELL_PIXEL_H; y += CELL_PIXEL_H) {
-			cell = Click_Cell_Calc(x1, Bound(y, 0, TacPixelY+Lepton_To_Pixel(TacLeptonHeight)));
+			cell = Click_Cell_Calc(x1, Bound(y, 0, tac_y + tac_h));
 			if (cell != -1) (*this)[cell].Redraw_Objects();
 
-			cell = Click_Cell_Calc(x2, Bound(y, 0, TacPixelY+Lepton_To_Pixel(TacLeptonHeight)));
+			cell = Click_Cell_Calc(x2, Bound(y, 0, tac_y + tac_h));
 			if (cell != -1) (*this)[cell].Redraw_Objects();
 		}
 
 		for (int x = x1; x <= x2+CELL_PIXEL_W; x += CELL_PIXEL_W) {
-			cell = Click_Cell_Calc(Bound(x, 0, TacPixelX+Lepton_To_Pixel(TacLeptonWidth)), y1);
+			cell = Click_Cell_Calc(Bound(x, 0, tac_x + tac_w), y1);
 			if (cell != -1) (*this)[cell].Redraw_Objects();
 
-			cell = Click_Cell_Calc(Bound(x, 0, TacPixelX+Lepton_To_Pixel(TacLeptonWidth)), y2);
+			cell = Click_Cell_Calc(Bound(x, 0, tac_x + tac_w), y2);
 			if (cell != -1) (*this)[cell].Redraw_Objects();
 		}
 	}
@@ -3024,8 +3043,20 @@ int DisplayClass::TacticalClass::Action(unsigned flags, KeyNumType & key)
 //	CELL cell = Map.Click_Cell_Calc(x, y);
 	if (coord) {
 		shadow = (!Map[cell].IsVisible && !Debug_Unshroud);
+#ifdef USE_RENDER_BRIDGE
+		{
+			int rb_tac_x = 0;
+			int rb_tac_y = 0;
+			int rb_tac_w = 0;
+			int rb_tac_h = 0;
+			Render_Bridge_Get_Tactical_Rect(rb_tac_x, rb_tac_y, rb_tac_w, rb_tac_h);
+			x -= rb_tac_x;
+			y -= rb_tac_y;
+		}
+#else
 		x -= Map.TacPixelX;
 		y -= Map.TacPixelY;
+#endif
 
 		/*
 		** Cause any displayed cursor to move along with the mouse cursor.
@@ -3489,7 +3520,11 @@ void DisplayClass::Mouse_Left_Release(CELL cell, int x, int y, ObjectClass * obj
 
 		if (IsRubberBand) {
 			Refresh_Band();
+#ifdef USE_RENDER_BRIDGE
+			Select_These(XY_Coord(BandX, BandY), XY_Coord(x, y));
+#else
 			Select_These(XYPixel_Coord(BandX, BandY), XYPixel_Coord(x, y));
+#endif
 
 			Set_Default_Mouse(MOUSE_NORMAL, wwsmall);
 #ifdef NEVER
@@ -3697,10 +3732,18 @@ void DisplayClass::Mouse_Left_Press(int x, int y)
  *=============================================================================================*/
 void DisplayClass::Mouse_Left_Held(int x, int y)
 {
+	int clamp_w = Lepton_To_Pixel(TacLeptonWidth);
+	int clamp_h = Lepton_To_Pixel(TacLeptonHeight);
+#ifdef USE_RENDER_BRIDGE
+	{
+		int rb_tac_x = 0, rb_tac_y = 0;
+		Render_Bridge_Get_Tactical_Rect(rb_tac_x, rb_tac_y, clamp_w, clamp_h);
+	}
+#endif
 	if (IsRubberBand) {
 		if (x != NewX || y != NewY) {
-			x = Bound(x, 0, Lepton_To_Pixel(TacLeptonWidth)-1);
-			y = Bound(y, 0, Lepton_To_Pixel(TacLeptonHeight)-1);
+			x = Bound(x, 0, clamp_w - 1);
+			y = Bound(y, 0, clamp_h - 1);
 			Refresh_Band();
 			NewX = x;
 			NewY = y;
@@ -3722,8 +3765,8 @@ void DisplayClass::Mouse_Left_Held(int x, int y)
 			*/
 			if (ABS(x - BandX) > 4 || ABS(y - BandY) > 4) {
 				IsRubberBand = true;
-				x = Bound(x, 0, Lepton_To_Pixel(TacLeptonWidth)-1);
-				y = Bound(y, 0, Lepton_To_Pixel(TacLeptonHeight)-1);
+				x = Bound(x, 0, clamp_w - 1);
+				y = Bound(y, 0, clamp_h - 1);
 				NewX = x;
 				NewY = y;
 				IsToRedraw = true;

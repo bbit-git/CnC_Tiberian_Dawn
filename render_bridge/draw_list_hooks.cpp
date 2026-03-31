@@ -25,6 +25,16 @@ void get_record_tactical_rect(int& x, int& y, int& w, int& h)
     Render_Bridge_Get_Record_Tactical_Rect(x, y, w, h);
 }
 
+bool is_tactical_viewport_origin(int origin_x, int origin_y)
+{
+    int tac_x = 0;
+    int tac_y = 0;
+    int tac_w = 0;
+    int tac_h = 0;
+    get_record_tactical_rect(tac_x, tac_y, tac_w, tac_h);
+    return origin_x == tac_x && origin_y == tac_y;
+}
+
 /// Return true if the target buffer points into HidPage memory.
 bool is_hidpage_buffer(const void* buffer)
 {
@@ -42,13 +52,22 @@ bool is_hidpage_buffer(const void* buffer)
 }
 
 /// Return true if the absolute rectangle overlaps the tactical region.
-bool intersect_tactical(int& x1, int& y1, int& x2, int& y2)
+bool intersect_tactical(int origin_x, int origin_y, int viewport_w, int viewport_h,
+                        int& x1, int& y1, int& x2, int& y2)
 {
     int tac_x = 0;
     int tac_y = 0;
     int tac_w = 0;
     int tac_h = 0;
     get_record_tactical_rect(tac_x, tac_y, tac_w, tac_h);
+    if (viewport_w > tac_w && viewport_h > tac_h && is_tactical_viewport_origin(origin_x, origin_y)) {
+        // Some tactical overlays (selection brackets, health bars) are drawn
+        // through a temporary tactical viewport that expands to native size
+        // during draw-list capture. Accept that larger tactical-local space,
+        // but only when the viewport origin still matches the tactical origin.
+        tac_w = viewport_w;
+        tac_h = viewport_h;
+    }
     if (tac_w <= 0 || tac_h <= 0) {
         return false;
     }
@@ -75,13 +94,18 @@ bool intersect_tactical(int& x1, int& y1, int& x2, int& y2)
 }
 
 /// Return true if the absolute point lies in the tactical region and normalize it.
-bool normalize_tactical_point(int& x, int& y)
+bool normalize_tactical_point(int origin_x, int origin_y, int viewport_w, int viewport_h,
+                              int& x, int& y)
 {
     int tac_x = 0;
     int tac_y = 0;
     int tac_w = 0;
     int tac_h = 0;
     get_record_tactical_rect(tac_x, tac_y, tac_w, tac_h);
+    if (viewport_w > tac_w && viewport_h > tac_h && is_tactical_viewport_origin(origin_x, origin_y)) {
+        tac_w = viewport_w;
+        tac_h = viewport_h;
+    }
     if (tac_w <= 0 || tac_h <= 0) {
         return false;
     }
@@ -139,6 +163,7 @@ bool Draw_List_Maybe_Record_Stamp(
 
 /// Record tactical fill rectangles such as health bars and selection fills.
 bool Draw_List_Maybe_Record_Fill_Rect(const void* buffer, int origin_x, int origin_y,
+                                      int viewport_w, int viewport_h,
                                       int x1, int y1, int x2, int y2,
                                       unsigned char color)
 {
@@ -148,13 +173,14 @@ bool Draw_List_Maybe_Record_Fill_Rect(const void* buffer, int origin_x, int orig
     // Convert them back to HidPage absolute space before testing tactical overlap.
     x1 += origin_x; y1 += origin_y;
     x2 += origin_x; y2 += origin_y;
-    if (!intersect_tactical(x1, y1, x2, y2)) return false;
+    if (!intersect_tactical(origin_x, origin_y, viewport_w, viewport_h, x1, y1, x2, y2)) return false;
     g_draw_list.Record_Fill_Rect(x1, y1, x2, y2, color);
     return true;
 }
 
 /// Record tactical rectangle outlines such as rubber band selection.
 bool Draw_List_Maybe_Record_Rect(const void* buffer, int origin_x, int origin_y,
+                                 int viewport_w, int viewport_h,
                                  int x1, int y1, int x2, int y2,
                                  unsigned char color)
 {
@@ -162,13 +188,14 @@ bool Draw_List_Maybe_Record_Rect(const void* buffer, int origin_x, int origin_y,
     if (!is_hidpage_buffer(buffer)) return false;
     x1 += origin_x; y1 += origin_y;
     x2 += origin_x; y2 += origin_y;
-    if (!intersect_tactical(x1, y1, x2, y2)) return false;
+    if (!intersect_tactical(origin_x, origin_y, viewport_w, viewport_h, x1, y1, x2, y2)) return false;
     g_draw_list.Record_Draw_Rect(x1, y1, x2, y2, color);
     return true;
 }
 
 /// Record tactical overlay lines such as unit corner brackets.
 bool Draw_List_Maybe_Record_Line(const void* buffer, int origin_x, int origin_y,
+                                 int viewport_w, int viewport_h,
                                  int x1, int y1, int x2, int y2,
                                  unsigned char color)
 {
@@ -178,20 +205,21 @@ bool Draw_List_Maybe_Record_Line(const void* buffer, int origin_x, int origin_y,
     // overlap is the bridge-side filter that separates tactical overlays from UI.
     x1 += origin_x; y1 += origin_y;
     x2 += origin_x; y2 += origin_y;
-    if (!intersect_tactical(x1, y1, x2, y2)) return false;
+    if (!intersect_tactical(origin_x, origin_y, viewport_w, viewport_h, x1, y1, x2, y2)) return false;
     g_draw_list.Record_Draw_Line(x1, y1, x2, y2, color);
     return true;
 }
 
 /// Record tactical debug pixels and cursor markers.
 bool Draw_List_Maybe_Record_Pixel(const void* buffer, int origin_x, int origin_y,
+                                  int viewport_w, int viewport_h,
                                   int x, int y, unsigned char color)
 {
     if (!g_draw_list.IsRecording()) return false;
     if (!is_hidpage_buffer(buffer)) return false;
     x += origin_x;
     y += origin_y;
-    if (!normalize_tactical_point(x, y)) return false;
+    if (!normalize_tactical_point(origin_x, origin_y, viewport_w, viewport_h, x, y)) return false;
     g_draw_list.Record_Put_Pixel(x, y, color);
     return true;
 }
