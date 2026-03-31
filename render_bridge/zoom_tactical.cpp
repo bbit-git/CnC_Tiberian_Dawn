@@ -283,9 +283,22 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
             GL_Present_Upload_Tactical(g_native_buf, native_w, native_h);
         }
 
-        // DO NOT replay to HidPage — tactical content lives in native buffer only.
-        // HidPage has sidebar/tab/UI content from Draw_It (not captured by draw list).
-        // This prevents tactical content from leaking into SeenBuff UI quads.
+        // Tactical content lives in the native buffer only. However, the legacy
+        // Draw_It still paints into HidPage during capture. Clear the tactical
+        // region so it doesn't leak through the GL UI overlay (index-0 = transparent).
+        {
+            int tac_px = Map.TacPixelX;
+            int tac_py = Map.TacPixelY;
+            int tac_pw = WindowList[WINDOW_TACTICAL][WINDOWWIDTH] << 3;
+            int tac_ph = WindowList[WINDOW_TACTICAL][WINDOWHEIGHT];
+            int buf_w = page.Get_Width();
+            int buf_h = page.Get_Height();
+            if (tac_pw > buf_w - tac_px) tac_pw = buf_w - tac_px;
+            if (tac_ph > buf_h - tac_py) tac_ph = buf_h - tac_py;
+            if (tac_pw > 0 && tac_ph > 0) {
+                page.Fill_Rect(tac_px, tac_py, tac_px + tac_pw - 1, tac_py + tac_ph - 1, 0);
+            }
+        }
 
     } else {
         // CPU-only path (no GL): replay to HidPage at 712x400
