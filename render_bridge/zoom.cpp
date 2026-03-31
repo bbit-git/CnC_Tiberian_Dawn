@@ -341,8 +341,17 @@ static bool apply_zoom_at_point(float new_zoom, int screen_x, int screen_y)
         g_requested_tac_y = Coord_Y(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellY);
         g_have_requested_tac = true;
     }
-    clamp_requested_tac();
     clamp_viewport();
+
+    // After zoom, the visible top-left is the current native replay origin plus
+    // the viewport offset inside it. Keep the requested visible origin in sync
+    // with that actual result so the next frame does not pull the viewport back
+    // toward the stale pre-zoom request.
+    int native_origin_x = Coord_X(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellX);
+    int native_origin_y = Coord_Y(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellY);
+    g_requested_tac_x = native_origin_x + Pixel_To_Lepton(static_cast<int>(std::round(g_vp_x)));
+    g_requested_tac_y = native_origin_y + Pixel_To_Lepton(static_cast<int>(std::round(g_vp_y)));
+    clamp_requested_tac();
     return true;
 }
 
@@ -471,15 +480,13 @@ void Render_Bridge_Transform_Mouse()
     int raw_y = 0;
     TD_SDL_Get_Raw_Mouse_Position(raw_x, raw_y);
 
-    // Always remap the mouse through the bridge tactical geometry so gameplay
-    // input reads from the bridge-visible world window rather than the old
-    // small-buffer tactical model. Outside the tactical rect the raw position
-    // passes through unchanged.
-    int mapped_x = raw_x;
-    int mapped_y = raw_y;
-    Render_Bridge_Map_Tactical_Point(raw_x, raw_y, mapped_x, mapped_y);
-    g_mouse_x = mapped_x;
-    g_mouse_y = mapped_y;
+    // Gameplay mouse now stays in bridge logical screen space. Bridge-aware
+    // callers convert into world space explicitly through Pixel_To_Coord /
+    // Click_Cell_Calc / Render_Bridge_Tactical_To_World. Rewriting g_mouse_x/y
+    // into native-source coordinates was shrinking the actionable tactical area
+    // near the right/bottom edges.
+    g_mouse_x = raw_x;
+    g_mouse_y = raw_y;
 }
 
 bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& mapped_x, int& mapped_y)
@@ -552,27 +559,30 @@ void Render_Bridge_Refresh_Layout()
     g_layout.logical_w = (g_screen_w > 0) ? g_screen_w : base_w;
     g_layout.logical_h = (g_screen_h > 0) ? g_screen_h : base_h;
 
-    float sx = (base_w > 0) ? static_cast<float>(g_layout.logical_w) / static_cast<float>(base_w) : 1.0f;
-    float sy = (base_h > 0) ? static_cast<float>(g_layout.logical_h) / static_cast<float>(base_h) : 1.0f;
+    float scale_x = (base_w > 0) ? static_cast<float>(g_layout.logical_w) / static_cast<float>(base_w) : 1.0f;
+    float scale_y = (base_h > 0) ? static_cast<float>(g_layout.logical_h) / static_cast<float>(base_h) : 1.0f;
+    float scale = (scale_x < scale_y) ? scale_x : scale_y;
+    int offset_x = static_cast<int>(std::round((g_layout.logical_w - base_w * scale) * 0.5f));
+    int offset_y = static_cast<int>(std::round((g_layout.logical_h - base_h * scale) * 0.5f));
 
-    g_layout.tactical_x = static_cast<int>(std::round(Map.TacPixelX * sx));
-    g_layout.tactical_y = static_cast<int>(std::round(Map.TacPixelY * sy));
-    g_layout.tactical_w = static_cast<int>(std::round((WindowList[WINDOW_TACTICAL][WINDOWWIDTH] << 3) * sx));
-    g_layout.tactical_h = static_cast<int>(std::round(WindowList[WINDOW_TACTICAL][WINDOWHEIGHT] * sy));
+    g_layout.tactical_x = offset_x + static_cast<int>(std::round(Map.TacPixelX * scale));
+    g_layout.tactical_y = offset_y + static_cast<int>(std::round(Map.TacPixelY * scale));
+    g_layout.tactical_w = static_cast<int>(std::round((WindowList[WINDOW_TACTICAL][WINDOWWIDTH] << 3) * scale));
+    g_layout.tactical_h = static_cast<int>(std::round(WindowList[WINDOW_TACTICAL][WINDOWHEIGHT] * scale));
 
-    // Header: full-width strip above the tactical area.
-    g_layout.header_x = 0;
-    g_layout.header_y = 0;
-    g_layout.header_w = g_layout.logical_w;
-    g_layout.header_h = g_layout.tactical_y;
+    // Header: promoted with the same uniform fit as the rest of the legacy layout.
+    g_layout.header_x = offset_x;
+    g_layout.header_y = offset_y;
+    g_layout.header_w = static_cast<int>(std::round(base_w * scale));
+    g_layout.header_h = g_layout.tactical_y - offset_y;
 
     // Sidebar: use the real legacy sidebar span, not the narrow bookkeeping
     // width field alone. Tactical width and sidebar width must sum back to the
     // full legacy SeenBuff width after promotion.
-    g_layout.sidebar_x = static_cast<int>(std::round(Map.SideX * sx));
-    g_layout.sidebar_y = 0;
-    g_layout.sidebar_w = static_cast<int>(std::round(Map.SideWidth * sx));
-    g_layout.sidebar_h = g_layout.logical_h;
+    g_layout.sidebar_x = offset_x + static_cast<int>(std::round(Map.SideX * scale));
+    g_layout.sidebar_y = offset_y;
+    g_layout.sidebar_w = static_cast<int>(std::round(Map.SideWidth * scale));
+    g_layout.sidebar_h = static_cast<int>(std::round(base_h * scale));
 
     // Native world replay texture.
     g_layout.native_world_w = Render_Bridge_Get_Native_Tac_W();
@@ -629,13 +639,26 @@ void Render_Bridge_Get_Native_World_Rect(int& w, int& h)
 void Render_Bridge_Get_Visible_World_Rect(int& origin_x, int& origin_y,
                                            int& width, int& height)
 {
-    // The authoritative bridge-visible world window.
-    // Origin is map-relative; callers add MapCellX/Y when they need absolute world coords.
-    origin_x = g_requested_tac_x;
-    origin_y = g_requested_tac_y;
-
-    // Size: visible window in leptons
     get_visible_window_leptons(width, height);
+
+    // The authoritative bridge-visible world window is the current native replay
+    // origin plus the sub-viewport offset inside that replay. Using the requested
+    // origin directly is only correct at outer zoom when vp == 0; once zoom moves
+    // the viewport inside the native replay texture, input/selection/shroud must
+    // follow the actual visible top-left.
+    int native_origin_x = Coord_X(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellX);
+    int native_origin_y = Coord_Y(Map.TacticalCoord) - Cell_To_Lepton(Map.MapCellY);
+    origin_x = native_origin_x + Pixel_To_Lepton(static_cast<int>(std::round(g_vp_x)));
+    origin_y = native_origin_y + Pixel_To_Lepton(static_cast<int>(std::round(g_vp_y)));
+
+    int max_x = Cell_To_Lepton(Map.MapCellWidth) - width;
+    int max_y = Cell_To_Lepton(Map.MapCellHeight) - height;
+    if (max_x < 0) max_x = 0;
+    if (max_y < 0) max_y = 0;
+    if (origin_x < 0) origin_x = 0;
+    if (origin_y < 0) origin_y = 0;
+    if (origin_x > max_x) origin_x = max_x;
+    if (origin_y > max_y) origin_y = max_y;
 }
 
 void Render_Bridge_Get_Clamp_Ranges(int& max_x, int& max_y)
@@ -673,6 +696,10 @@ bool Render_Bridge_World_To_Tactical(int world_lx, int world_ly,
     int yoff = (world_ly + EDGE_ZONE_L) - world_origin_y;
     if ((unsigned)yoff > (unsigned)(vis_h + EDGE_ZONE_L * 2)) return false;
 
+    // Render-side callers still expect tactical-local legacy pixels here because
+    // they hand the result to the old tactical drawing code, which is later
+    // promoted by the bridge presenter. Keep world->screen projection in that
+    // tactical-local space. Input uses Render_Bridge_Tactical_To_World().
     pixel_x = Lepton_To_Pixel(xoff) - CELL_PIXEL_W * 2;
     pixel_y = Lepton_To_Pixel(yoff) - CELL_PIXEL_W * 2;
     return true;
@@ -688,8 +715,6 @@ bool Render_Bridge_Tactical_To_World(int pixel_x, int pixel_y,
 
     int sx = pixel_x - tac_x;
     int sy = pixel_y - tac_y;
-    int lx = Pixel_To_Lepton(sx);
-    int ly = Pixel_To_Lepton(sy);
 
     int origin_x = 0;
     int origin_y = 0;
@@ -697,9 +722,22 @@ bool Render_Bridge_Tactical_To_World(int pixel_x, int pixel_y,
     int vis_h = 0;
     Render_Bridge_Get_Visible_World_Rect(origin_x, origin_y, vis_w, vis_h);
 
-    if ((unsigned)lx >= (unsigned)vis_w || (unsigned)ly >= (unsigned)vis_h) {
+    if (tac_w <= 0 || tac_h <= 0 || vis_w <= 0 || vis_h <= 0) {
         return false;
     }
+
+    if ((unsigned)sx >= (unsigned)tac_w || (unsigned)sy >= (unsigned)tac_h) {
+        return false;
+    }
+
+    // Convert promoted tactical screen pixels back into the visible-world window
+    // proportionally instead of assuming legacy 1:1 tactical pixels.
+    int lx = static_cast<int>((static_cast<int64_t>(sx) * vis_w) / tac_w);
+    int ly = static_cast<int>((static_cast<int64_t>(sy) * vis_h) / tac_h);
+    if (lx < 0) lx = 0;
+    if (ly < 0) ly = 0;
+    if (lx >= vis_w) lx = vis_w - 1;
+    if (ly >= vis_h) ly = vis_h - 1;
 
     world_lx = origin_x + Cell_To_Lepton(Map.MapCellX) + lx;
     world_ly = origin_y + Cell_To_Lepton(Map.MapCellY) + ly;
