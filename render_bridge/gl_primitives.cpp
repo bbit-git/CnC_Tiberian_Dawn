@@ -382,6 +382,119 @@ int GL_Primitives_Last_Count()
     return g_last_primitive_count;
 }
 
+// --- Labeled debug rectangle ---------------------------------------------------
+
+namespace {
+
+// 4x6 bitmap font (0-9, A-Z) — same glyphs as debug_hud.cpp.
+static const uint8_t k_dbg_font[][6] = {
+    {0x6,0x9,0x9,0x9,0x9,0x6},{0x2,0x6,0x2,0x2,0x2,0x7},
+    {0x6,0x9,0x2,0x4,0x8,0xF},{0xE,0x1,0x6,0x1,0x1,0xE},
+    {0x9,0x9,0xF,0x1,0x1,0x1},{0xF,0x8,0xE,0x1,0x1,0xE},
+    {0x6,0x8,0xE,0x9,0x9,0x6},{0xF,0x1,0x2,0x4,0x4,0x4},
+    {0x6,0x9,0x6,0x9,0x9,0x6},{0x6,0x9,0x7,0x1,0x1,0x6},
+    {0x6,0x9,0x9,0xF,0x9,0x9},{0xE,0x9,0xE,0x9,0x9,0xE},
+    {0x6,0x9,0x8,0x8,0x9,0x6},{0xE,0x9,0x9,0x9,0x9,0xE},
+    {0xF,0x8,0xE,0x8,0x8,0xF},{0xF,0x8,0xE,0x8,0x8,0x8},
+    {0x6,0x9,0x8,0xB,0x9,0x6},{0x9,0x9,0xF,0x9,0x9,0x9},
+    {0x7,0x2,0x2,0x2,0x2,0x7},{0x1,0x1,0x1,0x1,0x9,0x6},
+    {0x9,0xA,0xC,0xA,0x9,0x9},{0x8,0x8,0x8,0x8,0x8,0xF},
+    {0x9,0xF,0xF,0x9,0x9,0x9},{0x9,0xD,0xB,0x9,0x9,0x9},
+    {0x6,0x9,0x9,0x9,0x9,0x6},{0xE,0x9,0xE,0x8,0x8,0x8},
+    {0x6,0x9,0x9,0xB,0x9,0x7},{0xE,0x9,0xE,0xA,0x9,0x9},
+    {0x7,0x8,0x6,0x1,0x1,0xE},{0x7,0x2,0x2,0x2,0x2,0x2},
+    {0x9,0x9,0x9,0x9,0x9,0x6},{0x9,0x9,0x9,0x9,0x6,0x6},
+    {0x9,0x9,0x9,0xF,0xF,0x9},{0x9,0x9,0x6,0x6,0x9,0x9},
+    {0x9,0x9,0x6,0x2,0x2,0x2},{0xF,0x1,0x2,0x4,0x8,0xF},
+};
+
+static const uint8_t* glyph_for(char ch)
+{
+    if (ch >= '0' && ch <= '9') return k_dbg_font[ch - '0'];
+    if (ch >= 'A' && ch <= 'Z') return k_dbg_font[ch - 'A' + 10];
+    if (ch >= 'a' && ch <= 'z') return k_dbg_font[ch - 'a' + 10];
+    return nullptr;
+}
+
+static int label_pixel_width(const char* s)
+{
+    int w = 0;
+    while (*s) { w += 5; s++; }
+    return w;
+}
+
+static void push_label(std::vector<PrimVertex>& tris,
+                        float ox, float oy, const char* text,
+                        float r, float g, float b, float a)
+{
+    float cx = ox;
+    while (*text) {
+        const uint8_t* gl = glyph_for(*text);
+        if (gl) {
+            for (int row = 0; row < 6; row++) {
+                for (int col = 0; col < 4; col++) {
+                    if (gl[row] & (0x8 >> col)) {
+                        float px = cx + col;
+                        float py = oy + row;
+                        push_rect(tris, px, py, px + 1.0f, py + 1.0f, r, g, b, a);
+                    }
+                }
+            }
+        }
+        cx += 5.0f;
+        text++;
+    }
+}
+
+} // namespace
+
+void GL_Debug_Rect(int win_w, int win_h,
+                   int x, int y, int w, int h,
+                   float r, float g, float b,
+                   const char* label)
+{
+    if (w <= 0 || h <= 0 || !label) return;
+    if (!init_gl()) return;
+
+    std::vector<PrimVertex> tris;
+    std::vector<PrimVertex> lines;
+    tris.reserve(256);
+    lines.reserve(16);
+
+    float x0 = static_cast<float>(x) + 0.5f;
+    float y0 = static_cast<float>(y) + 0.5f;
+    float x1 = static_cast<float>(x + w) - 0.5f;
+    float y1 = static_cast<float>(y + h) - 0.5f;
+
+    push_outline(lines, x0, y0, x1, y1, r, g, b, 1.0f);
+
+    int lw = label_pixel_width(label);
+    float pad = 2.0f;
+
+    // Top-left
+    push_label(tris, x0 + pad, y0 + pad, label, r, g, b, 1.0f);
+    // Top-right
+    push_label(tris, x1 - pad - lw, y0 + pad, label, r, g, b, 1.0f);
+    // Bottom-left
+    push_label(tris, x0 + pad, y1 - pad - 6.0f, label, r, g, b, 1.0f);
+    // Bottom-right
+    push_label(tris, x1 - pad - lw, y1 - pad - 6.0f, label, r, g, b, 1.0f);
+
+    glUseProgram(g_state.program);
+    glUniform2f(g_state.u_viewport, static_cast<float>(win_w), static_cast<float>(win_h));
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glEnableVertexAttribArray(g_state.a_pos);
+    glEnableVertexAttribArray(g_state.a_color);
+    draw_vertices(GL_TRIANGLES, tris);
+    draw_vertices(GL_LINES, lines);
+    glDisableVertexAttribArray(g_state.a_pos);
+    glDisableVertexAttribArray(g_state.a_color);
+    glDisable(GL_BLEND);
+}
+
 /// Render source-tint overlays showing native tactical, SeenBuff chrome, and UI overlay bounds.
 void GL_Primitives_Render_Source_Overlay(int win_w, int win_h,
                                          int game_screen_x, int game_screen_y,
