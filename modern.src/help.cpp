@@ -273,7 +273,7 @@ void HelpClass::Draw_It(bool forced)
 	if (Text != TXT_NONE && (forced || !CountDownTimer.Time())) {
 #ifdef USE_RENDER_BRIDGE
 		{ extern bool Render_Bridge_UI_Use_Native_Help();
-		  if (Render_Bridge_UI_Use_Native_Help()) {
+		  if (Render_Bridge_UI_Use_Native_Help() && !IsRight) {
 			  return;
 		  } }
 #endif
@@ -337,35 +337,17 @@ bool HelpClass::Get_Render_Bridge_Text(char const*& text, int& color, int& cost)
  *=============================================================================================*/
 void HelpClass::Set_Text(int text)
 {
+	if (text != TXT_NONE && IsRight) {
+		Text = text;
+		Width = String_Pixel_Width(Text_String(Text));
+		DrawX = X - Width;
+		DrawY = Y;
+		return;
+	}
+
 	/* TODO: Set_Text crashes during initial game frame — likely Text_Overlap_List
 	 * or Click_Cell_Calc has LP64 COORDINATE issues. Disabled until fixed. */
 	return;
-	if (text != TXT_NONE) {
-		Text = text;
-//		Fancy_Text_Print(TXT_NONE, 0, 0, 0, 0, TPF_6POINT|TPF_NOSHADOW);
-		Fancy_Text_Print(TXT_NONE, 0, 0, 0, 0, TPF_MAP|TPF_NOSHADOW);
-		Width = String_Pixel_Width(Text_String(Text));
-		if (IsRight) {
-			DrawX = X - Width;
-			DrawY = Y;
-		} else {
-			int	right = TacPixelX + Lepton_To_Pixel(TacLeptonWidth) - 3;
-			int	bottom = TacPixelY + Lepton_To_Pixel(TacLeptonHeight) - 1;
-
-			DrawX = X+X_OFFSET;
-			DrawY = Y+Y_OFFSET;
-			if (DrawX + Width > right) {
-				DrawX -= (DrawX+Width) - right;
-			}
-			if (DrawY + FontHeight > bottom) {
-				DrawY -= (DrawY+FontHeight) - bottom;
-			}
-			if (DrawX < TacPixelX+1) DrawX = TacPixelX+1;
-			if (DrawY < TacPixelY+1) DrawY = TacPixelY+1;
-		}
-		int lines = (Cost) ? 2 : 1;
-		memcpy((void*)OverlapList, Text_Overlap_List(Text_String(Text), DrawX-1, DrawY, lines), sizeof(OverlapList));
-	}
 }
 
 
