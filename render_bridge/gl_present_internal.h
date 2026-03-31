@@ -31,6 +31,12 @@ struct GLPresentFrameContext {
     int tactical_screen_y = 0;
     int tactical_screen_w = 0;
     int tactical_screen_h = 0;
+    // Render tactical rect in final window pixels — sidebar-independent.
+    // Used for GL world presentation so render scale stays constant.
+    int render_tac_screen_x = 0;
+    int render_tac_screen_y = 0;
+    int render_tac_screen_w = 0;
+    int render_tac_screen_h = 0;
     // Sidebar region in game-buffer pixels.
     int side_game_x = 0;
     int side_game_w = 0;

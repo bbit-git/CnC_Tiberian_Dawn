@@ -112,9 +112,11 @@ bool GL_Present_Draw_Regions(const GLPresentFrameContext& ctx,
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_tac_tex);
 
-    // The tactical world uses its own source texture. The source viewport inside
-    // that texture is selected from zoom/viewport state and then stretched onto
-    // the tactical screen rect.
+    // The tactical world texture is displayed at 1:1 pixel scale: at Z 1.0 each
+    // native buffer pixel maps to exactly one screen pixel. The destination rect
+    // is a fixed size (base_w × base_h) centered in the render tactical area.
+    // Zoom changes which portion of the texture is sampled (vis_w × vis_h) but
+    // the destination stays the same — higher zoom magnifies fewer pixels.
     float tex_w = static_cast<float>(g_tac_tex_w);
     float tex_h = static_cast<float>(g_tac_tex_h);
     float vp_x = Render_Bridge_Get_Viewport_X();
@@ -136,10 +138,25 @@ bool GL_Present_Draw_Regions(const GLPresentFrameContext& ctx,
     if (u1 > 1.0f) u1 = 1.0f;
     if (v1 > 1.0f) v1 = 1.0f;
 
-    int dst_x = ctx.tactical_screen_x;
-    int dst_y = ctx.tactical_screen_y;
-    int dst_w = ctx.tactical_screen_w;
-    int dst_h = ctx.tactical_screen_h;
+    // base_w/h = vis * zoom: the constant screen footprint of the world.
+    // At Z 1.0 this equals native dimensions → 1:1. At higher zoom the same
+    // screen area shows fewer (magnified) native pixels.
+    float zoom = Render_Bridge_Get_Zoom_Level();
+    int base_w = static_cast<int>(std::round(vis_w * zoom));
+    int base_h = static_cast<int>(std::round(vis_h * zoom));
+
+    // Center the world rect inside the render tactical area.
+    int dst_x = ctx.render_tac_screen_x + (ctx.render_tac_screen_w - base_w) / 2;
+    int dst_y = ctx.render_tac_screen_y + (ctx.render_tac_screen_h - base_h) / 2;
+    int dst_w = base_w;
+    int dst_h = base_h;
+
+    // Scissor to the visible tactical screen rect so world pixels do not bleed
+    // into the sidebar region or the letterbox margins.
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(ctx.tactical_screen_x,
+              ctx.win_h - (ctx.tactical_screen_y + ctx.tactical_screen_h),
+              ctx.tactical_screen_w, ctx.tactical_screen_h);
 
     float nx0 = static_cast<float>(dst_x) / ctx.win_w * 2.0f - 1.0f;
     float ny0 = 1.0f - static_cast<float>(dst_y) / ctx.win_h * 2.0f;
@@ -153,20 +170,23 @@ bool GL_Present_Draw_Regions(const GLPresentFrameContext& ctx,
     GL_Present_Bind_Client_Quad(quad);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
+    // render_scale = zoom: each native pixel occupies 'zoom' screen pixels.
+    float render_scale = zoom;
+
 #ifdef USE_RENDER_BRIDGE_GL_SPRITES
     if (k_enable_gl_sprite_overlay && !frame_has_shroud_overlay()) {
-        // Sprite overlay is suppressed on shroud frames until ordering is fully bridge-owned.
         GL_Sprites_Render(ctx.win_w, ctx.win_h,
                           dst_x, dst_y, dst_w, dst_h,
                           0, 0, g_tac_tex_w, g_tac_tex_h,
-                          static_cast<float>(dst_w) / vis_w,
-                          vp_x, vp_y);
+                          render_scale, vp_x, vp_y);
     }
 #endif
+    // Primitives use the same 1:1 world rect and zoom-based scale.
     GL_Primitives_Render(ctx.win_w, ctx.win_h,
                          dst_x, dst_y, dst_w, dst_h,
-                         static_cast<float>(dst_w) / vis_w,
-                         vp_x, vp_y, vga_palette);
+                         render_scale, vp_x, vp_y, vga_palette);
+
+    glDisable(GL_SCISSOR_TEST);
 
     GL_Present_Bind_Palette_Program();
     return true;

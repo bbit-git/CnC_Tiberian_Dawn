@@ -135,6 +135,12 @@ void Render_Bridge_Get_Sidebar_Rect(int& x, int& y, int& w, int& h);
 /// This is the authoritative tactical area — callers must not recompute from Map.*.
 void Render_Bridge_Get_Tactical_Rect(int& x, int& y, int& w, int& h);
 
+/// Render tactical rect — sidebar-independent.
+/// Always spans the full content width below the header regardless of sidebar state.
+/// Used for GL world presentation so toggling the sidebar does not change render
+/// scale, visible size, or zoom behaviour.
+void Render_Bridge_Get_Render_Tactical_Rect(int& x, int& y, int& w, int& h);
+
 /// Tactical record rect in legacy buffer pixels used while capturing draw-list commands.
 void Render_Bridge_Get_Record_Tactical_Rect(int& x, int& y, int& w, int& h);
 
@@ -152,6 +158,11 @@ void Render_Bridge_Get_Visible_World_Rect(int& origin_x, int& origin_y,
 /// Maximum scroll position in map-relative leptons. Scrolling beyond this
 /// would move the visible window past the map edge.
 void Render_Bridge_Get_Clamp_Ranges(int& max_x, int& max_y);
+
+/// Effective clamp window size in leptons. When the sidebar is active this
+/// shrinks by the sidebar's world-space coverage, giving more scroll room
+/// so the player can reach the map edge behind the sidebar.
+void Render_Bridge_Get_Effective_Clamp_Size(int& w, int& h);
 
 /// Map a world coordinate to tactical-relative pixel offset.
 /// Returns true if the coordinate falls within the visible tactical area

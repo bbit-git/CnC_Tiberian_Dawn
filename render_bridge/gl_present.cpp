@@ -490,6 +490,12 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         int side_y = 0, side_h = 0;
         Render_Bridge_Get_Sidebar_Rect(ctx.side_game_x, side_y,
                                        ctx.side_game_w, side_h);
+        int rtac_x = 0, rtac_y = 0, rtac_w = 0, rtac_h = 0;
+        Render_Bridge_Get_Render_Tactical_Rect(rtac_x, rtac_y, rtac_w, rtac_h);
+        ctx.render_tac_screen_x = offset_x + static_cast<int>(std::round(rtac_x * ui_scale));
+        ctx.render_tac_screen_y = offset_y + static_cast<int>(std::round(rtac_y * ui_scale));
+        ctx.render_tac_screen_w = static_cast<int>(std::round(rtac_w * ui_scale));
+        ctx.render_tac_screen_h = static_cast<int>(std::round(rtac_h * ui_scale));
     } else {
         ctx.tactical_game_x = 0;
         ctx.tactical_game_y = 0;

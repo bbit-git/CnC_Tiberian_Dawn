@@ -64,7 +64,12 @@ static struct {
     int header_x, header_y, header_w, header_h;
     int sidebar_x, sidebar_y, sidebar_w, sidebar_h;
     int tactical_x, tactical_y, tactical_w, tactical_h;
+    // Render tactical rect: sidebar-independent. Spans the full content width
+    // below the header regardless of sidebar state. Used for GL world presentation
+    // so that toggling the sidebar does not change render scale or visible size.
+    int render_tac_x, render_tac_y, render_tac_w, render_tac_h;
     int native_world_w, native_world_h;
+    bool sidebar_active;
     bool valid;
 } g_layout = {};
 
@@ -168,28 +173,12 @@ void Render_Bridge_Get_Visible_Size(float& w, float& h)
         return;
     }
 
-    // Preserve the tactical screen aspect when sampling from the native replay texture.
-    float tac_w = static_cast<float>(Lepton_To_Pixel(Map.TacLeptonWidth));
-    float tac_h = static_cast<float>(Lepton_To_Pixel(Map.TacLeptonHeight));
-    if (tac_w <= 0.0f || tac_h <= 0.0f) {
-        w = static_cast<float>(ntw);
-        h = static_cast<float>(nth);
-        return;
-    }
-
-    float tactical_aspect = tac_w / tac_h;
-    float native_aspect = static_cast<float>(ntw) / static_cast<float>(nth);
-
-    float base_w = static_cast<float>(ntw);
-    float base_h = static_cast<float>(nth);
-    if (native_aspect > tactical_aspect) {
-        base_w = base_h * tactical_aspect;
-    } else {
-        base_h = base_w / tactical_aspect;
-    }
-
-    w = base_w / g_zoom;
-    h = base_h / g_zoom;
+    // The visible size is the native replay buffer divided by zoom. At Z 1.0
+    // this equals the native dimensions → 1:1 pixel mapping. No aspect
+    // correction is applied because the GL presentation letterboxes the world
+    // rect inside the tactical area instead of stretching to fill it.
+    w = static_cast<float>(ntw) / g_zoom;
+    h = static_cast<float>(nth) / g_zoom;
 }
 
 void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h)
@@ -240,16 +229,57 @@ static void get_visible_window_leptons(int& w, int& h)
     if (h > map_h) h = map_h;
 }
 
+/// Bridge-level effective clamp in leptons. When the sidebar is active, the
+/// clamp shrinks by the sidebar's world coverage so g_requested_tac_x can go
+/// further. The viewport offset (g_vp_x) absorbs the extra; if the native
+/// buffer doesn't have enough room, clamp_viewport caps it harmlessly.
+/// TacticalCoord is confined separately (display.cpp, native size) so the
+/// replay buffer never extends past the map edge.
+static void get_effective_clamp_leptons(int& w, int& h)
+{
+    get_visible_window_leptons(w, h);
+
+    if (g_layout.sidebar_active && g_layout.render_tac_w > 0) {
+        float vis_w_f = 0.0f;
+        float vis_h_unused = 0.0f;
+        Render_Bridge_Get_Visible_Size(vis_w_f, vis_h_unused);
+        if (vis_w_f > 0.0f) {
+            // How many world pixels the sidebar covers at the current render scale.
+            float world_per_screen = vis_w_f / static_cast<float>(g_layout.render_tac_w);
+            int sidebar_world_px = static_cast<int>(
+                static_cast<float>(g_layout.sidebar_w) * world_per_screen);
+
+            // Cap to the viewport room inside the native replay buffer.
+            // The viewport can only offset by (native_w - vis_w) pixels;
+            // any sidebar adjustment beyond that is unachievable.
+            extern int Render_Bridge_Get_Native_Tac_W();
+            int native_w = Render_Bridge_Get_Native_Tac_W();
+            int vp_room = native_w - static_cast<int>(vis_w_f);
+            if (vp_room < 0) vp_room = 0;
+            if (sidebar_world_px > vp_room) sidebar_world_px = vp_room;
+
+            w -= Pixel_To_Lepton(sidebar_world_px);
+            if (w < 0) w = 0;
+        }
+    }
+
+    int map_w = Cell_To_Lepton(Map.MapCellWidth);
+    int map_h = Cell_To_Lepton(Map.MapCellHeight);
+    if (w > map_w) w = map_w;
+    if (h > map_h) h = map_h;
+}
+
 static void clamp_requested_tac()
 {
-    // Clamp the bridge-visible world origin against the map using the zoomed
-    // visible window size, not the native replay size.
-    int vis_w = Map.TacLeptonWidth;
-    int vis_h = Map.TacLeptonHeight;
-    get_visible_window_leptons(vis_w, vis_h);
+    // Bridge-visible origin uses the effective clamp (sidebar-adjusted).
+    // TacticalCoord is confined separately in display.cpp using the native
+    // replay size, so the buffer stays within the map.
+    int eff_w = Map.TacLeptonWidth;
+    int eff_h = Map.TacLeptonHeight;
+    get_effective_clamp_leptons(eff_w, eff_h);
 
-    int max_x = Cell_To_Lepton(Map.MapCellWidth) - vis_w;
-    int max_y = Cell_To_Lepton(Map.MapCellHeight) - vis_h;
+    int max_x = Cell_To_Lepton(Map.MapCellWidth) - eff_w;
+    int max_y = Cell_To_Lepton(Map.MapCellHeight) - eff_h;
     if (max_x < 0) max_x = 0;
     if (max_y < 0) max_y = 0;
 
@@ -584,6 +614,20 @@ void Render_Bridge_Refresh_Layout()
     g_layout.sidebar_w = static_cast<int>(std::round(Map.SideWidth * scale));
     g_layout.sidebar_h = static_cast<int>(std::round(base_h * scale));
 
+    // Render tactical rect: always full content width, never narrowed by sidebar.
+    // The GL world presentation uses this so toggling the sidebar does not change
+    // the render scale or the visible world size.
+    int full_content_w = static_cast<int>(std::round(base_w * scale));
+    g_layout.render_tac_x = g_layout.tactical_x;
+    g_layout.render_tac_y = g_layout.tactical_y;
+    g_layout.render_tac_w = full_content_w;
+    g_layout.render_tac_h = g_layout.tactical_h;
+
+    // Sidebar is active when the tactical area is narrower than the full content.
+    // Map.SideWidth is always non-zero after init, so checking sidebar_w alone
+    // would give a false positive when the sidebar is closed.
+    g_layout.sidebar_active = (g_layout.tactical_w < full_content_w);
+
     // Native world replay texture.
     g_layout.native_world_w = Render_Bridge_Get_Native_Tac_W();
     g_layout.native_world_h = Render_Bridge_Get_Native_Tac_H();
@@ -619,6 +663,14 @@ void Render_Bridge_Get_Tactical_Rect(int& x, int& y, int& w, int& h)
     y = g_layout.tactical_y;
     w = g_layout.tactical_w;
     h = g_layout.tactical_h;
+}
+
+void Render_Bridge_Get_Render_Tactical_Rect(int& x, int& y, int& w, int& h)
+{
+    x = g_layout.render_tac_x;
+    y = g_layout.render_tac_y;
+    w = g_layout.render_tac_w;
+    h = g_layout.render_tac_h;
 }
 
 void Render_Bridge_Get_Mouse_Input_Rect(int& x, int& y, int& w, int& h)
@@ -663,14 +715,21 @@ void Render_Bridge_Get_Visible_World_Rect(int& origin_x, int& origin_y,
 
 void Render_Bridge_Get_Clamp_Ranges(int& max_x, int& max_y)
 {
-    int vis_w = Map.TacLeptonWidth;
-    int vis_h = Map.TacLeptonHeight;
-    get_visible_window_leptons(vis_w, vis_h);
+    int eff_w = Map.TacLeptonWidth;
+    int eff_h = Map.TacLeptonHeight;
+    get_effective_clamp_leptons(eff_w, eff_h);
 
-    max_x = Cell_To_Lepton(Map.MapCellWidth) - vis_w;
-    max_y = Cell_To_Lepton(Map.MapCellHeight) - vis_h;
+    max_x = Cell_To_Lepton(Map.MapCellWidth) - eff_w;
+    max_y = Cell_To_Lepton(Map.MapCellHeight) - eff_h;
     if (max_x < 0) max_x = 0;
     if (max_y < 0) max_y = 0;
+}
+
+void Render_Bridge_Get_Effective_Clamp_Size(int& w, int& h)
+{
+    w = Map.TacLeptonWidth;
+    h = Map.TacLeptonHeight;
+    get_effective_clamp_leptons(w, h);
 }
 
 /// Edge zone in leptons — sprites near the viewport boundary still need rendering.

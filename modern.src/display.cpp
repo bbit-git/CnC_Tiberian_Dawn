@@ -701,6 +701,11 @@ void DisplayClass::Set_View_Dimensions(int x, int y, int width, int height)
 
 	#ifdef USE_RENDER_BRIDGE
 	{
+		// Refresh bridge layout immediately so downstream code sees consistent
+		// tactical and render rects for the new sidebar state.
+		extern void Render_Bridge_Refresh_Layout();
+		Render_Bridge_Refresh_Layout();
+
 		int rb_tac_x = 0;
 		int rb_tac_y = 0;
 		int rb_tac_w = 0;
@@ -2185,6 +2190,12 @@ ObjectClass * DisplayClass::Cell_Object(CELL cell, int x, int y)
 		**	Debug overlay: cell grid + object position markers.
 		**	Toggle with Debug_Icon flag.
 		*/
+#ifdef USE_RENDER_BRIDGE
+		// Debug grid is suppressed under the render bridge — the legacy
+		// game-buffer coordinates do not match the 1:1 GL presentation.
+		// Use the bridge debug HUD / overlay toggles instead.
+		if (false)
+#endif
 		if (Debug_Icon) {
 			int vpw = Lepton_To_Pixel(TacLeptonWidth);
 			int vph = Lepton_To_Pixel(TacLeptonHeight);

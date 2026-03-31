@@ -29,6 +29,8 @@ extern int  GL_Sprites_Last_Draw_Calls();
 extern int  GL_Sprites_Last_Fallback_Count();
 extern int  GL_Primitives_Last_Count();
 extern SDL_Window* g_window;
+extern void Render_Bridge_Get_Render_Tactical_Rect(int& x, int& y, int& w, int& h);
+extern void Render_Bridge_Get_Effective_Clamp_Size(int& w, int& h);
 
 static int      g_fps = 0;
 static int      g_fps_counter = 0;
@@ -53,9 +55,9 @@ static int    g_hud_drag_off_y = 0;
 
 // HUD bitmap
 static constexpr int HUD_W = 160;
-static constexpr int HUD_H = 160;
+static constexpr int HUD_H = 176;
 static constexpr int HUD_SCREEN_W = 320;
-static constexpr int HUD_SCREEN_H = 320;
+static constexpr int HUD_SCREEN_H = 352;
 static uint32_t g_hud_pixels[HUD_W * HUD_H];
 
 // 4x6 bitmap font
@@ -257,8 +259,15 @@ void Render_Bridge_Debug_Dump()
         SDL_GetWindowSizeInPixels(g_window, &win_w, &win_h);
     }
 
+    int rtac_x = 0, rtac_y = 0, rtac_w = 0, rtac_h = 0;
+    Render_Bridge_Get_Render_Tactical_Rect(rtac_x, rtac_y, rtac_w, rtac_h);
+    int eff_clamp_w = 0, eff_clamp_h = 0;
+    Render_Bridge_Get_Effective_Clamp_Size(eff_clamp_w, eff_clamp_h);
+
     dump_line("bridge: LOG %dx%d NAT %dx%d", log_w, log_h, ntac_w, ntac_h);
     dump_line("bridge: TAC %d,%d %dx%d", tac_x, tac_y, tac_w, tac_h);
+    dump_line("bridge: TAC R %d,%d %dx%d", rtac_x, rtac_y, rtac_w, rtac_h);
+    dump_line("bridge: CLAMP %dx%d", Lepton_To_Pixel(eff_clamp_w), Lepton_To_Pixel(eff_clamp_h));
     dump_line("bridge: HDR %d,%d %dx%d", hdr_x, hdr_y, hdr_w, hdr_h);
     dump_line("bridge: SID %d,%d %dx%d", side_x, side_y, side_w, side_h);
     dump_line("bridge: Z %.2f DEF %.2f VIS %dx%d VP %.0f-%.0f", zoom, zoom_default, vp_w, vp_h, vp_x, vp_y);
@@ -313,6 +322,10 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     Render_Bridge_Get_Sidebar_Rect(side_x, side_y, side_w, side_h);
     int ntac_w = 0, ntac_h = 0;
     Render_Bridge_Get_Native_World_Rect(ntac_w, ntac_h);
+    int rtac_x2 = 0, rtac_y2 = 0, rtac_w2 = 0, rtac_h2 = 0;
+    Render_Bridge_Get_Render_Tactical_Rect(rtac_x2, rtac_y2, rtac_w2, rtac_h2);
+    int eff_clamp_w2 = 0, eff_clamp_h2 = 0;
+    Render_Bridge_Get_Effective_Clamp_Size(eff_clamp_w2, eff_clamp_h2);
     int atlas_f = GL_Sprites_Atlas_Frame_Count(), atlas_p = GL_Sprites_Atlas_Page_Count();
     int atlas_new = GL_Sprites_Last_Atlas_New_Count();
     int gl_sprites = GL_Sprites_Last_Sprite_Count(), gl_draws = GL_Sprites_Last_Draw_Calls();
@@ -394,6 +407,12 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     snprintf(line, sizeof(line), "NAT %dX%d TAC%dX%d", ntac_w, ntac_h, tac_w, tac_h);
     hud_puts(2, y, line, green); y += 8;
 
+    snprintf(line, sizeof(line), "TACR %dX%d", rtac_w2, rtac_h2);
+    hud_puts(2, y, line, cyan); y += 8;
+
+    snprintf(line, sizeof(line), "CLAMP %dX%d", Lepton_To_Pixel(eff_clamp_w2), Lepton_To_Pixel(eff_clamp_h2));
+    hud_puts(2, y, line, red); y += 8;
+
     snprintf(line, sizeof(line), "HDR%d.%d SID%d.%d", hdr_w, hdr_h, side_x, side_w);
     hud_puts(2, y, line, yellow); y += 8;
 
@@ -466,6 +485,10 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     hud_puts(46, y, "SCRL", red);
     hud_puts(75, y, "SHRD", magenta);
     hud_puts(104, y, "RAW", orange);
+    y += 8;
+
+    hud_puts(2, y, "TACR", cyan);
+    hud_puts(30, y, "CLMP", red);
     y += 8;
 
     // Upload and render
