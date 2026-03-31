@@ -75,22 +75,11 @@ static struct {
 
 void Render_Bridge_Get_Screen_Size(int& w, int& h) { w = g_screen_w; h = g_screen_h; }
 
-/// Compute the startup zoom from the classic 640x400 high-resolution baseline.
+/// Default zoom is 1.0 — each native buffer pixel maps to one screen pixel.
+/// This gives the widest possible view at native resolution.
 static float compute_default_zoom()
 {
-    int base_w = SeenBuff.Get_Width();
-    int base_h = SeenBuff.Get_Height();
-    if (base_w <= 0 || base_h <= 0) {
-        return ZOOM_MIN;
-    }
-
-    float zx = static_cast<float>(base_w) / HIRES_W;
-    float zy = static_cast<float>(base_h) / HIRES_H;
-    float z = (zx > zy) ? zx : zy;
-    if (z < ZOOM_MIN) {
-        z = ZOOM_MIN;
-    }
-    return z;
+    return ZOOM_MIN;
 }
 
 /// Refresh default zoom from the live tactical buffer sizing.
@@ -173,12 +162,21 @@ void Render_Bridge_Get_Visible_Size(float& w, float& h)
         return;
     }
 
-    // The visible size is the native replay buffer divided by zoom. At Z 1.0
-    // this equals the native dimensions → 1:1 pixel mapping. No aspect
-    // correction is applied because the GL presentation letterboxes the world
-    // rect inside the tactical area instead of stretching to fill it.
-    w = static_cast<float>(ntw) / g_zoom;
-    h = static_cast<float>(nth) / g_zoom;
+    // At each zoom level, show as much of the world as the screen can fit.
+    // At Z 1.0 each native pixel = 1 screen pixel (render_tac_w screen pixels
+    // can hold render_tac_w native pixels). At Z k, each native pixel = k
+    // screen pixels, so the screen holds render_tac_w / k native pixels.
+    // Cap to native buffer and map extents.
+    int map_px_w = Map.MapCellWidth * CELL_PIXEL_W;
+    int map_px_h = Map.MapCellHeight * CELL_PIXEL_W;
+    int cap_w = (ntw < map_px_w) ? ntw : map_px_w;
+    int cap_h = (nth < map_px_h) ? nth : map_px_h;
+
+    float screen_vis_w = static_cast<float>(g_layout.render_tac_w) / g_zoom;
+    float screen_vis_h = static_cast<float>(g_layout.render_tac_h) / g_zoom;
+
+    w = (screen_vis_w < cap_w) ? screen_vis_w : static_cast<float>(cap_w);
+    h = (screen_vis_h < cap_h) ? screen_vis_h : static_cast<float>(cap_h);
 }
 
 void Render_Bridge_Get_Visible_Size_Leptons(int& w, int& h)
@@ -329,20 +327,31 @@ static bool apply_zoom_at_point(float new_zoom, int screen_x, int screen_y)
         return false;
     }
 
-    int tac_x, tac_y, tac_w, tac_h;
-    Render_Bridge_Get_Tactical_Rect(tac_x, tac_y, tac_w, tac_h);
+    // Zoom pivot is a fraction of the uniform-fitted world destination rect.
+    // This must match the GL presentation's fit logic so the native pixel
+    // under the cursor stays fixed across zoom changes.
+    int rtac_x, rtac_y, rtac_w, rtac_h;
+    Render_Bridge_Get_Render_Tactical_Rect(rtac_x, rtac_y, rtac_w, rtac_h);
+    float vis_w = 0.0f;
+    float vis_h = 0.0f;
+    Render_Bridge_Get_Visible_Size(vis_w, vis_h);
+    float fit_sx = (vis_w > 0.0f) ? static_cast<float>(rtac_w) / vis_w : 1.0f;
+    float fit_sy = (vis_h > 0.0f) ? static_cast<float>(rtac_h) / vis_h : 1.0f;
+    float fit_scale = (fit_sx < fit_sy) ? fit_sx : fit_sy;
+    int world_w = static_cast<int>(std::round(vis_w * fit_scale));
+    int world_h = static_cast<int>(std::round(vis_h * fit_scale));
+    int world_x = rtac_x + (rtac_w - world_w) / 2;
+    int world_y = rtac_y + (rtac_h - world_h) / 2;
 
-    // Zoom pivot is expressed as a fraction of the tactical screen rect so the
-    // same anchor works regardless of current native replay size.
     float frac_x = 0.5f;
     float frac_y = 0.5f;
-    if (tac_w > 0 && tac_h > 0) {
-        bool inside_tactical =
-            screen_x >= tac_x && screen_y >= tac_y &&
-            screen_x < tac_x + tac_w && screen_y < tac_y + tac_h;
-        if (inside_tactical) {
-            frac_x = static_cast<float>(screen_x - tac_x) / static_cast<float>(tac_w);
-            frac_y = static_cast<float>(screen_y - tac_y) / static_cast<float>(tac_h);
+    if (world_w > 0 && world_h > 0) {
+        bool inside_world =
+            screen_x >= world_x && screen_y >= world_y &&
+            screen_x < world_x + world_w && screen_y < world_y + world_h;
+        if (inside_world) {
+            frac_x = static_cast<float>(screen_x - world_x) / static_cast<float>(world_w);
+            frac_y = static_cast<float>(screen_y - world_y) / static_cast<float>(world_h);
             if (frac_x < 0.0f) frac_x = 0.0f;
             if (frac_x > 1.0f) frac_x = 1.0f;
             if (frac_y < 0.0f) frac_y = 0.0f;
