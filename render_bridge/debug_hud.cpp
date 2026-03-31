@@ -55,9 +55,9 @@ static int    g_hud_drag_off_y = 0;
 
 // HUD bitmap
 static constexpr int HUD_W = 160;
-static constexpr int HUD_H = 176;
+static constexpr int HUD_H = 256;
 static constexpr int HUD_SCREEN_W = 320;
-static constexpr int HUD_SCREEN_H = 352;
+static constexpr int HUD_SCREEN_H = 512;
 static uint32_t g_hud_pixels[HUD_W * HUD_H];
 
 // 4x6 bitmap font
@@ -472,24 +472,48 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     snprintf(line, sizeof(line), "RAW %d-%d", raw_mx, raw_my);
     hud_puts(2, y, line, orange); y += 8;
 
-    hud_puts(2, y, "BOX", white);
-    hud_puts(24, y, "BUF", violet);
-    hud_puts(46, y, "TAC", green);
-    hud_puts(68, y, "VP", cyan);
-    hud_puts(85, y, "HDR", yellow);
-    hud_puts(108, y, "SID", blue);
-    y += 8;
+    // Debug rect legend — matches gl_present_debug.cpp
+    y += 2;
+    hud_puts(2, y, "RECT LEGEND", white); y += 8;
 
-    hud_puts(2, y, "CLP", white);
-    hud_puts(24, y, "MSE", white);
-    hud_puts(46, y, "SCRL", red);
-    hud_puts(75, y, "SHRD", magenta);
-    hud_puts(104, y, "RAW", orange);
-    y += 8;
+    hud_puts(2, y, "BUF", violet);
+    hud_puts(30, y, "GAME BUFFER", white); y += 8;
 
-    hud_puts(2, y, "TACR", cyan);
-    hud_puts(30, y, "CLMP", red);
-    y += 8;
+    hud_puts(2, y, "HDR", yellow);
+    hud_puts(30, y, "HEADER STRIP", white); y += 8;
+
+    hud_puts(2, y, "SID", blue);
+    hud_puts(30, y, "SIDEBAR", white); y += 8;
+
+    hud_puts(2, y, "TAC", green);
+    hud_puts(30, y, "TACTICAL VIS", white); y += 8;
+
+    hud_puts(2, y, "RTAC", 0xFF006600);
+    hud_puts(30, y, "RENDER TAC", white); y += 8;
+
+    hud_puts(2, y, "WORLD", red);
+    hud_puts(40, y, "FIT QUAD", white); y += 8;
+
+    hud_puts(2, y, "NATIVE", cyan);
+    hud_puts(45, y, "REPLAY BUF", white); y += 8;
+
+    hud_puts(2, y, "VP", white);
+    hud_puts(20, y, "VIEWPORT", white); y += 8;
+
+    hud_puts(2, y, "VPMAX", orange);
+    hud_puts(40, y, "VP LIMIT", white); y += 8;
+
+    hud_puts(2, y, "REQ", yellow);
+    hud_puts(25, y, "SCROLL POS", white); y += 8;
+
+    hud_puts(2, y, "RMAX", 0xFF00B0B0);
+    hud_puts(35, y, "SCROLL LIM", white); y += 8;
+
+    hud_puts(2, y, "MAP", white);
+    hud_puts(25, y, "FULL MAP", white); y += 8;
+
+    hud_puts(2, y, "VIS", magenta);
+    hud_puts(25, y, "WORLD RECT", white); y += 8;
 
     // Upload and render
     glBindTexture(GL_TEXTURE_2D, g_hud_tex);
