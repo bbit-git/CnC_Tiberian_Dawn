@@ -156,6 +156,12 @@ void Render_Bridge_Get_Render_Tactical_Rect(int& x, int& y, int& w, int& h);
 /// Tactical record rect in legacy buffer pixels used while capturing draw-list commands.
 void Render_Bridge_Get_Record_Tactical_Rect(int& x, int& y, int& w, int& h);
 
+/// Record a solid-black shroud fill rect with native-buffer-relative coordinates and
+/// LAYER_SHADOW, so the native buffer replay includes it (not the overlay pass which
+/// is skipped in GL mode). Returns true when recording; caller falls back to
+/// LogicPage->Fill_Rect only when false (CPU path).
+bool Render_Bridge_Record_Shroud_Fill_Rect(int x, int y, int w, int h);
+
 /// Mouse input rect in game-buffer pixels (area where clicks become tactical actions).
 void Render_Bridge_Get_Mouse_Input_Rect(int& x, int& y, int& w, int& h);
 

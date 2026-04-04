@@ -30,6 +30,7 @@ extern void Render_Bridge_Get_Visible_World_Rect(int& origin_x, int& origin_y, i
 extern bool Render_Bridge_World_To_Tactical(int world_lepton_x, int world_lepton_y, int& pixel_x, int& pixel_y);
 extern bool Render_Bridge_Tactical_To_World(int pixel_x, int pixel_y, int& world_lepton_x, int& world_lepton_y);
 extern bool Render_Bridge_Is_Cell_In_View(int cell_x, int cell_y);
+extern bool Render_Bridge_Record_Shroud_Fill_Rect(int x, int y, int w, int h);
 #endif
 /***********************************************************************************************
  ***             C O N F I D E N T I A L  ---  W E S T W O O D   S T U D I O S               ***
@@ -2384,21 +2385,12 @@ void DisplayClass::Redraw_Shadow(void)
 			IsShadowPresent, mapped, unmapped, Debug_Unshroud);
 	}
 	if (IsShadowPresent) {
-#ifdef USE_RENDER_BRIDGE
-		int origin_x = 0;
-		int origin_y = 0;
-		int iter_w = 0;
-		int iter_h = 0;
-		Render_Bridge_Get_Visible_World_Rect(origin_x, origin_y, iter_w, iter_h);
-		// Shroud iteration follows the bridge-visible world origin, not the native
-		// replay origin, so fog covers the same area that commands and selection use.
-		COORDINATE visible_tactical = XY_Coord(origin_x + Cell_To_Lepton(Map.MapCellX),
-		                                       origin_y + Cell_To_Lepton(Map.MapCellY));
-#else
+		// TacLeptonWidth/Height are expanded to native buffer size by
+		// Render_Bridge_Begin_Draw_List. Shroud must cover the full native
+		// buffer so coverage matches terrain iteration (Bug 1 fix).
 		int iter_w = TacLeptonWidth;
 		int iter_h = TacLeptonHeight;
 		COORDINATE visible_tactical = TacticalCoord;
-#endif
 		for (int y = -Coord_YLepton(visible_tactical); y <= iter_h; y += CELL_LEPTON_H) {
 			for (int x = -Coord_XLepton(visible_tactical); x <= iter_w; x += CELL_LEPTON_W) {
 				COORDINATE coord = Coord_Add(visible_tactical, XY_Coord(x, y));
@@ -2408,7 +2400,13 @@ void DisplayClass::Redraw_Shadow(void)
 				/*
 				**	Only cells flagged to be redraw are examined.
 				*/
+#ifdef USE_RENDER_BRIDGE
+				// In bridge mode In_View gates on the visible sub-window; skip it.
+				// Coord_To_Pixel culls cells outside the native buffer (Bug 4 fix).
+				if (Is_Cell_Flagged(cell)) {
+#else
 				if (In_View(cell) && Is_Cell_Flagged(cell)) {
+#endif
 					int xpixel;
 					int ypixel;
 
@@ -2449,25 +2447,14 @@ void DisplayClass::Redraw_Shadow(void)
 void DisplayClass::Redraw_Shadow_Rects(void)
 {
 	if (IsShadowPresent && !Debug_Unshroud) {
-#ifdef USE_RENDER_BRIDGE
-		int origin_x = 0;
-		int origin_y = 0;
-		int iter_w = 0;
-		int iter_h = 0;
-		Render_Bridge_Get_Visible_World_Rect(origin_x, origin_y, iter_w, iter_h);
-		int clip_w = Lepton_To_Pixel(iter_w);
-		int clip_h = Lepton_To_Pixel(iter_h);
-		// Rectangular black shroud fill uses the same visible-world window as the
-		// sprite shadow pass so both coverage paths stay aligned.
-		COORDINATE visible_tactical = XY_Coord(origin_x + Cell_To_Lepton(Map.MapCellX),
-		                                       origin_y + Cell_To_Lepton(Map.MapCellY));
-#else
+		// TacLeptonWidth/Height are expanded to native buffer size by
+		// Render_Bridge_Begin_Draw_List. Shroud must cover the full native
+		// buffer so coverage matches terrain iteration (Bug 1 fix).
 		int iter_w = TacLeptonWidth;
 		int iter_h = TacLeptonHeight;
-		int clip_w = Lepton_To_Pixel(TacLeptonWidth);
-		int clip_h = Lepton_To_Pixel(TacLeptonHeight);
+		int clip_w = Lepton_To_Pixel(iter_w);
+		int clip_h = Lepton_To_Pixel(iter_h);
 		COORDINATE visible_tactical = TacticalCoord;
-#endif
 		for (int y = -Coord_YLepton(visible_tactical); y <= iter_h; y += CELL_LEPTON_H) {
 			for (int x = -Coord_XLepton(visible_tactical); x <= iter_w; x += CELL_LEPTON_W) {
 				COORDINATE coord = Coord_Add(visible_tactical, XY_Coord(x, y));
@@ -2477,7 +2464,13 @@ void DisplayClass::Redraw_Shadow_Rects(void)
 				/*
 				**	Only cells flagged to be redraw are examined.
 				*/
+#ifdef USE_RENDER_BRIDGE
+				// In bridge mode In_View gates on the visible sub-window; skip it.
+				// Coord_To_Pixel culls cells outside the native buffer (Bug 4 fix).
+				if (Is_Cell_Flagged(cell)) {
+#else
 				if (In_View(cell) && Is_Cell_Flagged(cell)) {
+#endif
 					int xpixel;
 					int ypixel;
 
@@ -2490,7 +2483,16 @@ void DisplayClass::Redraw_Shadow_Rects(void)
 								int hh = CELL_PIXEL_H;
 
 								if (Clip_Rect(&xpixel, &ypixel, &ww, &hh, clip_w, clip_h) >= 0) {
+#ifdef USE_RENDER_BRIDGE
+									// Record with native-buffer-relative coords + LAYER_SHADOW
+									// so the native buffer replay can include these (Bug 2/3 fix).
+									// Falls back to direct HidPage draw in CPU mode.
+									if (!Render_Bridge_Record_Shroud_Fill_Rect(xpixel, ypixel, ww, hh)) {
+										LogicPage->Fill_Rect(TacPixelX+xpixel, TacPixelY+ypixel, TacPixelX+xpixel+ww-1, TacPixelY+ypixel+hh-1, BLACK);
+									}
+#else
 									LogicPage->Fill_Rect(TacPixelX+xpixel, TacPixelY+ypixel, TacPixelX+xpixel+ww-1, TacPixelY+ypixel+hh-1, BLACK);
+#endif
 								}
 							}
 						}

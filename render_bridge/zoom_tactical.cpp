@@ -154,6 +154,20 @@ static void replay_shapes(bool include_shadow)
     }
 }
 
+/// Replay shroud fill rects recorded with LAYER_SHADOW by
+/// Render_Bridge_Record_Shroud_Fill_Rect(). Coordinates are native-buffer-relative
+/// so no offset is needed. Called after replay_world() in the native buffer path.
+static void replay_shroud_fill_rects()
+{
+    for (int i = 0; i < g_draw_list.Command_Count(); i++) {
+        const DrawCommand& cmd = g_draw_list.Get(i);
+        if (cmd.type == CMD_FILL_RECT && cmd.layer == LAYER_SHADOW) {
+            LogicPage->Fill_Rect(cmd.prim.x1, cmd.prim.y1,
+                                 cmd.prim.x2, cmd.prim.y2, cmd.prim.color);
+        }
+    }
+}
+
 /// Replay world commands (terrain + sprites + shroud ordering).
 static void replay_world()
 {
@@ -271,7 +285,10 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
 
             // Replay to native buffer. In GL mode, overlays are rendered later
             // as GL primitives so the native texture contains only the world.
+            // Shroud fill rects (LAYER_SHADOW CMD_FILL_RECT) are replayed here
+            // because replay_overlays() is skipped in the GL path.
             replay_world();
+            replay_shroud_fill_rects();
 
             // Restore
             Set_Logic_Page(*saved_logic);

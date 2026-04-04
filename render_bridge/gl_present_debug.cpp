@@ -48,6 +48,8 @@
  * ┌─ Other ────────────────────────────────────────────────────────────┐
  * │  VIS     Magenta    Bridge-visible world rect in leptons          │
  * │                     zoom.cpp: Render_Bridge_Get_Visible_World_Rect│
+ * │  SFILL   Blue       Shroud fill coverage (native buf at TacCoord) │
+ * │                     display.cpp: Redraw_Shadow_Rects iteration    │
  * └───────────────────────────────────────────────────────────────────┘
  */
 
@@ -250,6 +252,16 @@ void GL_Present_Draw_Debug_Overlays(const GLPresentFrameContext& ctx)
                       static_cast<int>(std::round(Map.MapCellWidth * CELL_PIXEL_W * base_scale)),
                       static_cast<int>(std::round(Map.MapCellHeight * CELL_PIXEL_W * base_scale)),
                       1.00f, 1.00f, 1.00f, "MAP");
+
+        // SFILL — Shroud fill coverage: native buffer at TacticalCoord origin.
+        // After Bug 1/4 fixes this matches the terrain iteration exactly and
+        // should align with the NATIVE rect. Source: display.cpp Redraw_Shadow_Rects.
+        GL_Debug_Rect(ctx.win_w, ctx.win_h,
+                      nat_cx2,
+                      nat_cy2,
+                      static_cast<int>(std::round(native_w * base_scale)),
+                      static_cast<int>(std::round(native_h * base_scale)),
+                      0.20f, 0.40f, 1.00f, "SFILL");
     }
 
     // VIS — Bridge visible world rect.  Source: zoom.cpp Render_Bridge_Get_Visible_World_Rect

@@ -210,6 +210,18 @@ bool Draw_List_Maybe_Record_Line(const void* buffer, int origin_x, int origin_y,
     return true;
 }
 
+/// Record a solid-black shroud fill rect with native-buffer-relative coordinates.
+/// Called directly from Redraw_Shadow_Rects in bridge mode, bypassing the generic
+/// hook to store LAYER_SHADOW (so the native buffer replay includes these, not the
+/// overlay pass which is skipped in GL mode). Returns true when recording; callers
+/// fall back to LogicPage->Fill_Rect only when false (CPU path).
+bool Render_Bridge_Record_Shroud_Fill_Rect(int x, int y, int w, int h)
+{
+    if (!g_draw_list.IsRecording()) return false;
+    g_draw_list.Record_Fill_Rect(x, y, x + w - 1, y + h - 1, BLACK, LAYER_SHADOW);
+    return true;
+}
+
 /// Record tactical debug pixels and cursor markers.
 bool Draw_List_Maybe_Record_Pixel(const void* buffer, int origin_x, int origin_y,
                                   int viewport_w, int viewport_h,

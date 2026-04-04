@@ -553,6 +553,12 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     hud_puts(2, y, "VIS", magenta);
     hud_puts(25, y, "WORLD RECT", white); y += 8;
 
+    {
+        uint32_t sfill_col = 0xFFFF6633; // R=0x33,G=0x66,B=0xFF — matches GL_Debug_Rect 0.2,0.4,1.0
+        hud_puts(2, y, "SFILL", sfill_col);
+        hud_puts(40, y, "SHROUD FILL", white); y += 8;
+    }
+
     y += 2;
     hud_puts(2, y, "TOGGLES", white); y += 8;
 
