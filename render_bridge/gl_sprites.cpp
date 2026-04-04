@@ -451,8 +451,10 @@ int GL_Sprites_Render(int win_w, int win_h,
         float screen_h = region.h * scale;
 
         // Clip: skip if entirely outside tactical screen area
-        if (screen_x + screen_w < tac_screen_x || screen_x > tac_screen_x + tac_screen_w) continue;
-        if (screen_y + screen_h < tac_screen_y || screen_y > tac_screen_y + tac_screen_h) continue;
+        if (!Render_Bridge_Debug_No_GL_Cull()) {
+            if (screen_x + screen_w < tac_screen_x || screen_x > tac_screen_x + tac_screen_w) continue;
+            if (screen_y + screen_h < tac_screen_y || screen_y > tac_screen_y + tac_screen_h) continue;
+        }
         SpriteBatchEntry entry = {};
         entry.region = region;
         entry.dst_x = screen_x;

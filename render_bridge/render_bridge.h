@@ -108,6 +108,18 @@ void Render_Bridge_Debug_Sources_Toggle();
 /// Return whether the render-source visualization overlay is visible.
 bool Render_Bridge_Debug_Sources_Enabled();
 
+/// Returns true when scroll position clamping is bypassed (debug).
+bool Render_Bridge_Debug_No_Scroll_Clamp();
+
+/// Returns true when viewport clamping inside the native buffer is bypassed (debug).
+bool Render_Bridge_Debug_No_VP_Clamp();
+
+/// Returns true when GL sprite screen-space culling is bypassed (debug).
+bool Render_Bridge_Debug_No_GL_Cull();
+
+/// Returns true when cell-in-view culling always returns visible (debug).
+bool Render_Bridge_Debug_No_Cell_Cull();
+
 /// Get the last proportional viewport target in native tactical pixels.
 void Render_Bridge_Get_Viewport_Target(float& x, float& y);
 

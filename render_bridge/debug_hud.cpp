@@ -46,6 +46,10 @@ static bool   g_hud_gl_ready = false;
 static bool   g_debug_hud_visible = true;
 static bool   g_debug_bars_visible = true;
 static bool   g_debug_sources_visible = false;
+static bool   g_dbg_no_scroll_clamp = false;
+static bool   g_dbg_no_vp_clamp = false;
+static bool   g_dbg_no_gl_cull = false;
+static bool   g_dbg_no_cell_cull = false;
 static int    g_hud_screen_x = 0;
 static int    g_hud_screen_y = 0;
 static bool   g_hud_dragging = false;
@@ -55,10 +59,11 @@ static int    g_hud_drag_off_y = 0;
 
 // HUD bitmap
 static constexpr int HUD_W = 160;
-static constexpr int HUD_H = 256;
+static constexpr int HUD_H = 384;
 static constexpr int HUD_SCREEN_W = 320;
-static constexpr int HUD_SCREEN_H = 512;
+static constexpr int HUD_SCREEN_H = 640;
 static uint32_t g_hud_pixels[HUD_W * HUD_H];
+static int      g_cb_row[4] = {HUD_H, HUD_H, HUD_H, HUD_H};
 
 // 4x6 bitmap font
 static const uint8_t font_4x6[][6] = {
@@ -92,6 +97,14 @@ static void hud_putc(int x, int y, char ch, uint32_t color)
     else if (ch == ':') { if (x>=0&&x<HUD_W) { if(y+1>=0&&y+1<HUD_H) g_hud_pixels[(y+1)*HUD_W+x]=color; if(y+4>=0&&y+4<HUD_H) g_hud_pixels[(y+4)*HUD_W+x]=color; } return; }
     else if (ch == '-') { for(int c=0;c<4;c++){int px=x+c,py=y+3;if(px>=0&&px<HUD_W&&py>=0&&py<HUD_H)g_hud_pixels[py*HUD_W+px]=color;} return; }
     else if (ch == '(' || ch == ')' || ch == '/' || ch == '>' || ch == ' ') return;
+    else if (ch == '[') {
+        static const uint8_t g[] = {0xE,0x8,0x8,0x8,0x8,0xE};
+        glyph = g;
+    }
+    else if (ch == ']') {
+        static const uint8_t g[] = {0x7,0x1,0x1,0x1,0x1,0x7};
+        glyph = g;
+    }
     if (!glyph) return;
     for (int r=0;r<6;r++) for (int c=0;c<4;c++)
         if (glyph[r]&(0x8>>c)) { int px=x+c,py=y+r; if(px>=0&&px<HUD_W&&py>=0&&py<HUD_H) g_hud_pixels[py*HUD_W+px]=color; }
@@ -155,10 +168,35 @@ static void update_hud_drag(int win_w, int win_h)
                   mouse_y >= g_hud_screen_y &&
                   mouse_y < g_hud_screen_y + HUD_SCREEN_H;
 
+    bool consumed = false;
     if (left_down && !g_hud_mouse_was_down && inside) {
-        g_hud_dragging = true;
-        g_hud_drag_off_x = static_cast<int>(mouse_x) - g_hud_screen_x;
-        g_hud_drag_off_y = static_cast<int>(mouse_y) - g_hud_screen_y;
+        int hud_rel_x = static_cast<int>(mouse_x) - g_hud_screen_x;
+        int hud_rel_y = static_cast<int>(mouse_y) - g_hud_screen_y;
+        int tex_x = hud_rel_x * HUD_W / HUD_SCREEN_W;
+        int tex_y = hud_rel_y * HUD_H / HUD_SCREEN_H;
+
+        if (tex_x >= 0 && tex_x < HUD_W) {
+            // tex_x comes from hud_rel_x ∈ [0, HUD_SCREEN_W) so this guard is defensive.
+            bool* cb_flags[4] = {
+                &g_dbg_no_scroll_clamp,
+                &g_dbg_no_vp_clamp,
+                &g_dbg_no_gl_cull,
+                &g_dbg_no_cell_cull,
+            };
+            for (int i = 0; i < 4; i++) {
+                if (tex_y >= g_cb_row[i] && tex_y < g_cb_row[i] + 8) {
+                    *cb_flags[i] = !*cb_flags[i];
+                    consumed = true;
+                    break;
+                }
+            }
+        }
+
+        if (!consumed) {
+            g_hud_dragging = true;
+            g_hud_drag_off_x = static_cast<int>(mouse_x) - g_hud_screen_x;
+            g_hud_drag_off_y = static_cast<int>(mouse_y) - g_hud_screen_y;
+        }
     } else if (!left_down) {
         g_hud_dragging = false;
     }
@@ -515,6 +553,29 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     hud_puts(2, y, "VIS", magenta);
     hud_puts(25, y, "WORLD RECT", white); y += 8;
 
+    y += 2;
+    hud_puts(2, y, "TOGGLES", white); y += 8;
+
+    const bool* cb_flags[4] = {
+        &g_dbg_no_scroll_clamp,
+        &g_dbg_no_vp_clamp,
+        &g_dbg_no_gl_cull,
+        &g_dbg_no_cell_cull,
+    };
+    const char* cb_labels[4] = {
+        "NO SCLAMP",
+        "NO VPCLAMP",
+        "NO GLCULL",
+        "NO CELLCULL",
+    };
+    for (int i = 0; i < 4; i++) {
+        g_cb_row[i] = y;
+        uint32_t color = *cb_flags[i] ? red : white;
+        hud_puts(2, y, *cb_flags[i] ? "[X]" : "[ ]", color);
+        hud_puts(22, y, cb_labels[i], color);
+        y += 8;
+    }
+
     // Upload and render
     glBindTexture(GL_TEXTURE_2D, g_hud_tex);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, HUD_W, HUD_H, GL_RGBA, GL_UNSIGNED_BYTE, g_hud_pixels);
@@ -584,4 +645,24 @@ void Render_Bridge_Debug_Sources_Toggle()
 bool Render_Bridge_Debug_Sources_Enabled()
 {
     return g_debug_sources_visible;
+}
+
+bool Render_Bridge_Debug_No_Scroll_Clamp()
+{
+    return g_dbg_no_scroll_clamp;
+}
+
+bool Render_Bridge_Debug_No_VP_Clamp()
+{
+    return g_dbg_no_vp_clamp;
+}
+
+bool Render_Bridge_Debug_No_GL_Cull()
+{
+    return g_dbg_no_gl_cull;
+}
+
+bool Render_Bridge_Debug_No_Cell_Cull()
+{
+    return g_dbg_no_cell_cull;
 }

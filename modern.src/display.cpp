@@ -3812,7 +3812,14 @@ void DisplayClass::Set_Tactical_Position(COORDINATE coord)
 	int xx = Coord_X(coord) - Cell_To_Lepton(MapCellX);
 	int yy = Coord_Y(coord) - Cell_To_Lepton(MapCellY);
 #ifdef USE_RENDER_BRIDGE
-	Render_Bridge_Record_Tactical_Request_Fallback(xx, yy);
+	// Skip the fallback when ScenarioInit > 0: that means we're inside the
+	// Draw_It ScenarioInit++ block that copies DesiredTacticalCoord → TacticalCoord.
+	// The bridge-requested origin is already correct; overwriting g_requested_tac
+	// with the native-clamped value here would corrupt the sub-viewport offset
+	// (g_vp_x) that the second Apply_Scroll_Zoom would then re-derive to zero.
+	if (!ScenarioInit) {
+		Render_Bridge_Record_Tactical_Request_Fallback(xx, yy);
+	}
 #endif
 
 	// DBG("Set_Tactical: xx=%d yy=%d TacW=%d TacH=%d MapW=%d MapH=%d MapX=%d MapY=%d",

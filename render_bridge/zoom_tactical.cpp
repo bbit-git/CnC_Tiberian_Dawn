@@ -79,6 +79,7 @@ static void get_native_tactical(int& out_w, int& out_h)
 
 void Render_Bridge_Begin_Draw_List()
 {
+    Render_Bridge_Apply_Scroll_Zoom();  // Apply zoom before draw list capture
     g_draw_list.Clear();
     g_draw_list.SetRecording(true);
 
