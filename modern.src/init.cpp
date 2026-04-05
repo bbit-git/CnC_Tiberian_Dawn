@@ -48,6 +48,10 @@
 #include	"tcpip.h"
 #include	"conio.h"
 #include  "ccdde.h"
+#ifdef USE_RENDER_BRIDGE
+#include  "render_bridge.h"
+#include  "ui/ui_main_menu.h"
+#endif
 
 static HANDLE			hCCLibrary;
 
@@ -1039,8 +1043,79 @@ bool Select_Game(bool fade)
 			}
 
 			if (selection == SEL_NONE) {
-//				selection = Main_Menu(0);
+#ifdef USE_RENDER_BRIDGE
+				{
+					UIMainMenuState mm = {};
+					mm.screen_w = SeenBuff.Get_Width();
+					mm.screen_h = SeenBuff.Get_Height();
+					snprintf(mm.lbl_new_game,       sizeof(mm.lbl_new_game),       "%s", Text_String(TXT_START_NEW_GAME));
+					snprintf(mm.lbl_load_game,      sizeof(mm.lbl_load_game),      "%s", Text_String(TXT_LOAD_MISSION));
+					snprintf(mm.lbl_skirmish,       sizeof(mm.lbl_skirmish),       "Skirmish");
+					snprintf(mm.lbl_options,        sizeof(mm.lbl_options),         "Options");
+					snprintf(mm.lbl_exit,           sizeof(mm.lbl_exit),            "%s", Text_String(TXT_EXIT_GAME));
+					snprintf(mm.lbl_gdi,            sizeof(mm.lbl_gdi),            "GDI");
+					snprintf(mm.lbl_nod,            sizeof(mm.lbl_nod),            "NOD");
+					snprintf(mm.lbl_back,           sizeof(mm.lbl_back),           "Back");
+					snprintf(mm.lbl_campaign_title, sizeof(mm.lbl_campaign_title), "Choose Your Side");
+#ifdef NEWMENU
+					mm.has_expansion = true;
+					snprintf(mm.lbl_expansion, sizeof(mm.lbl_expansion), "Covert Operations");
+#endif
+					Version_Number();
+					snprintf(mm.lbl_version, sizeof(mm.lbl_version), "%s", VersionText);
+					snprintf(mm.lbl_copyright, sizeof(mm.lbl_copyright),
+					         "Copyright 1995, 1996, 1997 Westwood Studios Inc.");
+
+					UI_Main_Menu_Load_HD_Title();
+
+					Render_Bridge_UI_Set_Main_Menu(mm);
+
+					unsigned long mm_start = TickCount.Time();
+					while (Render_Bridge_UI_Get_Main_Menu_Result() == 0) {
+						if (Render_Bridge_UI_Main_Menu_Had_Input())
+							mm_start = TickCount.Time();
+						if (ATTRACT_MODE_TIMEOUT > 0 &&
+						    TickCount.Time() - mm_start > ATTRACT_MODE_TIMEOUT) {
+							Render_Bridge_UI_Clear_Main_Menu();
+							selection = SEL_TIMEOUT;
+							break;
+						}
+						Call_Back();
+					}
+
+					if (selection != SEL_TIMEOUT) {
+						int mm_result = Render_Bridge_UI_Get_Main_Menu_Result();
+						Render_Bridge_UI_Clear_Main_Menu();
+
+						switch (mm_result) {
+							case 1:  // GDI campaign
+								selection = SEL_START_NEW_GAME;
+								ScenPlayer = SCEN_PLAYER_GDI;
+								ScenDir = SCEN_DIR_EAST;
+								Whom = HOUSE_GOOD;
+								Theme.Fade_Out();
+								break;
+							case 2:  // NOD campaign
+								selection = SEL_START_NEW_GAME;
+								ScenPlayer = SCEN_PLAYER_NOD;
+								ScenDir = SCEN_DIR_EAST;
+								Whom = HOUSE_BAD;
+								Theme.Fade_Out();
+								break;
+							case 3: selection = SEL_LOAD_MISSION;   break;
+							case 4: selection = SEL_MULTIPLAYER_GAME; GameToPlay = GAME_NORMAL; break;
+							case 5: selection = SEL_NONE; break;  // Options placeholder
+							case 6: selection = SEL_EXIT; break;
+#ifdef NEWMENU
+							case 7: selection = SEL_NEW_SCENARIO; break;
+#endif
+							default: selection = SEL_NONE; break;
+						}
+					}
+				}
+#else
 				selection = Main_Menu(ATTRACT_MODE_TIMEOUT);
+#endif
 			}
 			Call_Back();
 
@@ -1156,13 +1231,17 @@ bool Select_Game(bool fade)
 					Scenario = 1;
 					BuildLevel = 1;
 #endif
+#ifndef USE_RENDER_BRIDGE
 					ScenPlayer = SCEN_PLAYER_GDI;
 					ScenDir = SCEN_DIR_EAST;
 					Whom = HOUSE_GOOD;
+#endif
 
 #ifndef DEMO
+#ifndef USE_RENDER_BRIDGE
 					Theme.Fade_Out();
 					Choose_Side();
+#endif
 #endif
 
 					/*

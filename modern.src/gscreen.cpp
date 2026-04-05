@@ -51,6 +51,9 @@
 #include "actmenu.h"
 
 #include "filepcx.h"
+#ifdef USE_RENDER_BRIDGE
+#include "render_bridge.h"
+#endif
 
 GadgetClass * GScreenClass::Buttons = 0;
 
@@ -444,13 +447,22 @@ void GScreenClass::Render(void)
 		}
 #ifdef USE_RENDER_BRIDGE
 		{ extern bool Render_Bridge_UI_Use_Native_Messages();
-		  if (!Render_Bridge_UI_Use_Native_Messages()) {
+		  extern bool Render_Bridge_UI_Has_Active_Dialog();
+		  if (!Render_Bridge_UI_Use_Native_Messages() &&
+		      !Render_Bridge_UI_Has_Active_Dialog()) {
 			  Messages.Draw();
 		  } }
 #else
 		Messages.Draw();
 #endif
+#ifdef USE_RENDER_BRIDGE
+		{ extern bool Render_Bridge_UI_Has_Active_Dialog();
+		  if (!Render_Bridge_UI_Has_Active_Dialog()) {
+			  ActionMenu.Draw_It();
+		  } }
+#else
 		ActionMenu.Draw_It();
+#endif
 
 #ifdef USE_RENDER_BRIDGE
 		// Capture UI overlay: diff HidPage with world snapshot
@@ -569,7 +581,6 @@ void GScreenClass::Blit_Display(void)
 	}
 
 }
-
 
 
 

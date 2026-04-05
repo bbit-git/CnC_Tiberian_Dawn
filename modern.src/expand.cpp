@@ -36,6 +36,9 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "function.h"
+#ifdef USE_RENDER_BRIDGE
+#include "render_bridge.h"
+#endif
 
 #ifdef NEWMENU
 
@@ -114,6 +117,69 @@ void EListClass::Draw_Entry(int index, int x, int y, int width, int selected)
 
 bool Expansion_Dialog(void)
 {
+#ifdef USE_RENDER_BRIDGE
+	{
+		int screen_w = SeenBuff.Get_Width();
+		int screen_h = SeenBuff.Get_Height();
+		{ extern void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h);
+		  Render_Bridge_Get_Logical_Screen_Size(screen_w, screen_h); }
+
+		// Build scenario list (same scan as legacy)
+		const char* items[64];
+		int item_count = 0;
+		static char item_bufs[64][40];
+		static int item_scenarios[64];
+		static bool item_is_gdi[64];
+
+		for (int index = 20; index < 60; index++) {
+			for (int side = 0; side < 2; side++) {
+				char fullname[128];
+				Set_Scenario_Name(fullname, index,
+					(side == 0) ? SCEN_PLAYER_GDI : SCEN_PLAYER_NOD,
+					SCEN_DIR_EAST);
+				CCFileClass file(fullname);
+				if (file.Is_Available()) {
+					char* sbuffer = (char*)_ShapeBuffer;
+					file.Read(sbuffer, 1000);
+					sbuffer[1000] = '\r'; sbuffer[1001] = '\n'; sbuffer[1002] = '\0';
+					char buf[128];
+					WWGetPrivateProfileString("Basic", "Name", "Unknown", buf, sizeof(buf), sbuffer);
+					snprintf(item_bufs[item_count], 40, "%s: %s", side == 0 ? "GDI" : "NOD", buf);
+					items[item_count] = item_bufs[item_count];
+					item_scenarios[item_count] = index;
+					item_is_gdi[item_count] = (side == 0);
+					item_count++;
+					if (item_count >= 64) break;
+				}
+			}
+			if (item_count >= 64) break;
+		}
+
+		Render_Bridge_UI_Set_Expansion_Dialog(0, Text_String(TXT_MISSION_DESCRIPTION),
+		                                       items, item_count, screen_w, screen_h,
+		                                       Text_String(TXT_OK), Text_String(TXT_CANCEL));
+
+		while (Render_Bridge_UI_Get_Expansion_Dialog_Result() == 0) {
+			Call_Back();
+		}
+
+		int expansion_result = Render_Bridge_UI_Get_Expansion_Dialog_Result();
+		Render_Bridge_UI_Clear_Expansion_Dialog();
+		if (expansion_result == 1) {
+			int sel = 0;
+			float scroll = 0;
+			Render_Bridge_UI_Get_Expansion_Dialog_State(sel, scroll);
+			if (sel >= 0 && sel < item_count) {
+				ScenPlayer = item_is_gdi[sel] ? SCEN_PLAYER_GDI : SCEN_PLAYER_NOD;
+				ScenDir = SCEN_DIR_EAST;
+				Whom = HOUSE_GOOD;
+				Scenario = item_scenarios[sel];
+				return true;
+			}
+		}
+		return false;
+	}
+#else
 	int factor			= (SeenBuff.Get_Width() == 320) ? 1 : 2;
 
 	int	option_width 	= 236 * factor;
@@ -266,10 +332,8 @@ bool Expansion_Dialog(void)
 	}
 
 	return(okval);
+#endif // USE_RENDER_BRIDGE
 }
-
-
-
 
 
 
@@ -295,6 +359,73 @@ bool Expansion_Dialog(void)
  *=============================================================================================*/
 bool Bonus_Dialog(void)
 {
+#ifdef USE_RENDER_BRIDGE
+	{
+		int screen_w = SeenBuff.Get_Width();
+		int screen_h = SeenBuff.Get_Height();
+		{ extern void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h);
+		  Render_Bridge_Get_Logical_Screen_Size(screen_w, screen_h); }
+
+		const char* items[8];
+		int item_count = 0;
+		static char bonus_bufs[8][40];
+		static int bonus_scenarios[8];
+		static bool bonus_is_gdi[8];
+
+		// GDI bonus missions (60-62)
+		for (int i = 60; i <= 62; i++) {
+			char fullname[128];
+			Set_Scenario_Name(fullname, i, SCEN_PLAYER_GDI, SCEN_DIR_EAST);
+			CCFileClass file(fullname);
+			if (file.Is_Available()) {
+				snprintf(bonus_bufs[item_count], 40, "GDI: %s",
+				         Text_String(TXT_BONUS_MISSION_1 + (i - 60)));
+				items[item_count] = bonus_bufs[item_count];
+				bonus_scenarios[item_count] = i;
+				bonus_is_gdi[item_count] = true;
+				item_count++;
+			}
+		}
+		// NOD bonus missions (60-61)
+		for (int i = 60; i <= 61; i++) {
+			char fullname[128];
+			Set_Scenario_Name(fullname, i, SCEN_PLAYER_NOD, SCEN_DIR_EAST);
+			CCFileClass file(fullname);
+			if (file.Is_Available()) {
+				snprintf(bonus_bufs[item_count], 40, "NOD: %s",
+				         Text_String(TXT_BONUS_MISSION_4 + (i - 60)));
+				items[item_count] = bonus_bufs[item_count];
+				bonus_scenarios[item_count] = i;
+				bonus_is_gdi[item_count] = false;
+				item_count++;
+			}
+		}
+
+		Render_Bridge_UI_Set_Expansion_Dialog(1, Text_String(TXT_BONUS_MISSIONS),
+		                                       items, item_count, screen_w, screen_h,
+		                                       Text_String(TXT_OK), Text_String(TXT_CANCEL));
+
+		while (Render_Bridge_UI_Get_Expansion_Dialog_Result() == 0) {
+			Call_Back();
+		}
+
+		int bonus_result = Render_Bridge_UI_Get_Expansion_Dialog_Result();
+		Render_Bridge_UI_Clear_Expansion_Dialog();
+		if (bonus_result == 1) {
+			int sel = 0;
+			float scroll = 0;
+			Render_Bridge_UI_Get_Expansion_Dialog_State(sel, scroll);
+			if (sel >= 0 && sel < item_count) {
+				ScenPlayer = bonus_is_gdi[sel] ? SCEN_PLAYER_GDI : SCEN_PLAYER_NOD;
+				ScenDir = SCEN_DIR_EAST;
+				Whom = HOUSE_GOOD;
+				Scenario = bonus_scenarios[sel];
+				return true;
+			}
+		}
+		return false;
+	}
+#else
 	int factor			= (SeenBuff.Get_Width() == 320) ? 1 : 2;
 
 	int	option_width 	= 236 * factor;
@@ -449,6 +580,7 @@ bool Bonus_Dialog(void)
 	}
 
 	return(okval);
+#endif // USE_RENDER_BRIDGE
 }
 
 

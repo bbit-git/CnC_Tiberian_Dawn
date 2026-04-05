@@ -135,4 +135,11 @@ bool UI_Checkbox(int x, int y, int size, const char* label,
                  bool checked, UIFontID font,
                  uint8_t r = 200, uint8_t g = 200, uint8_t b = 200);
 
+/// Emit a single-line text input field.
+/// buf: mutable character buffer (edited in place).
+/// buf_size: buffer capacity including null terminator.
+/// Returns true if the field has focus (is being edited).
+bool UI_TextInput(int x, int y, int w, int h, char* buf, int buf_size,
+                  UIFontID font, uint8_t r = 220, uint8_t g = 220, uint8_t b = 220);
+
 #endif // CNC_UI_CONTROLS_H

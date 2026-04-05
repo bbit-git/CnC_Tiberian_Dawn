@@ -47,6 +47,9 @@
 #include "textbtn.h"
 #include "confdlg.h"
 #include "descdlg.h"
+#ifdef USE_RENDER_BRIDGE
+#include "render_bridge.h"
+#endif
 
 void GameOptionsClass::Adjust_Variables_For_Resolution(void)
 {
@@ -82,6 +85,118 @@ void GameOptionsClass::Adjust_Variables_For_Resolution(void)
  *=============================================================================================*/
 void GameOptionsClass::Process(void)
 {
+#ifdef USE_RENDER_BRIDGE
+	bool show_restate = (GameToPlay == GAME_NORMAL);
+	bool is_multiplayer = (GameToPlay != GAME_NORMAL && GameToPlay != GAME_SKIRMISH);
+
+	bool process = true;
+	while (process) {
+		UIGameOptionsLabels go_labels = {
+			Text_String(TXT_OPTIONS),
+			Text_String(TXT_LOAD_MISSION),
+			Text_String(TXT_SAVE_MISSION),
+			is_multiplayer ? Text_String(TXT_RESIGN) : Text_String(TXT_DELETE_MISSION),
+			Text_String(TXT_GAME_CONTROLS),
+			Text_String(TXT_QUIT_MISSION),
+			Text_String(TXT_RESUME_MISSION),
+			Text_String(TXT_RESTATE_MISSION),
+		};
+		Render_Bridge_UI_Set_Game_Options(show_restate, is_multiplayer, go_labels);
+
+		while (Render_Bridge_UI_Get_Game_Options_Result() == UI_GOPTION_NONE) {
+			if (Main_Loop()) {
+				Render_Bridge_UI_Clear_Game_Options();
+				process = false;
+				break;
+			}
+		}
+		if (!process) break;
+
+		UIGameOptionsResult result = Render_Bridge_UI_Get_Game_Options_Result();
+
+		switch (result) {
+			case UI_GOPTION_LOAD:
+				if (LoadOptionsClass(LoadOptionsClass::LOAD).Process()) {
+					process = false;
+				}
+				break;
+
+			case UI_GOPTION_SAVE:
+				LoadOptionsClass(LoadOptionsClass::SAVE).Process();
+				break;
+
+			case UI_GOPTION_DELETE:
+				if (GameToPlay != GAME_NORMAL) {
+					if (Surrender_Dialog()) {
+						OutList.Add(EventClass(EventClass::DESTRUCT));
+					}
+					process = false;
+				} else {
+					LoadOptionsClass(LoadOptionsClass::WWDELETE).Process();
+				}
+				break;
+
+			case UI_GOPTION_GAME:
+				GameControlsClass().Process();
+				break;
+
+			case UI_GOPTION_QUIT:
+				if (GameToPlay == GAME_NORMAL) {
+					switch (CCMessageBox().Process(TXT_CONFIRM_EXIT, TXT_ABORT, TXT_CANCEL, TXT_RESTART)) {
+						case 0:
+							process = false;
+							Queue_Exit();
+							break;
+						case 1:
+							PlayerRestarts = true;
+							process = false;
+							break;
+						default:
+							break;
+					}
+				} else {
+					if (ConfirmationClass().Process(TXT_CONFIRM_EXIT)) {
+						process = false;
+						Queue_Exit();
+					}
+				}
+				break;
+
+			case UI_GOPTION_RESTATE:
+				if (!Restate_Mission(ScenarioName, TXT_VIDEO, TXT_OPTIONS)) {
+					BreakoutAllowed = true;
+					char buffer[520];
+					snprintf(buffer, sizeof(buffer), "%s.VQA", BriefMovie);
+					if (CCFileClass(buffer).Is_Available()) {
+						Play_Movie(BriefMovie);
+					} else {
+						Play_Movie(ActionMovie);
+					}
+					memset(BlackPalette, 0x01, 768);
+					Set_Palette(BlackPalette);
+					memset(BlackPalette, 0x00, 768);
+					Set_Palette(BlackPalette);
+					Map.Flag_To_Redraw(true);
+					Theme.Queue_Song(THEME_PICK_ANOTHER);
+					process = false;
+				}
+				break;
+
+			case UI_GOPTION_RESUME:
+			default:
+				process = false;
+				break;
+		}
+	}
+
+	Keyboard::Clear();
+	Call_Back();
+	HiddenPage.Clear();
+	Call_Back();
+	Map.Flag_To_Redraw(true);
+	Map.Render();
+	return;
+#else
 	/* Recalculate dialog dimensions for current resolution */
 	Adjust_Variables_For_Resolution();
 
@@ -485,6 +600,7 @@ void GameOptionsClass::Process(void)
 	Call_Back();
 	Map.Flag_To_Redraw(true);
 	Map.Render();
+#endif // USE_RENDER_BRIDGE
 }
 
 

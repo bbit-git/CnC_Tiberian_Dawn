@@ -23,7 +23,7 @@ static constexpr int FONTHEIGHTBLOCK = 12;
 static constexpr int FONTINFOMAXHEIGHT = 4;
 static constexpr int FONTINFOMAXWIDTH  = 5;
 
-static UIFontAtlas g_atlases[UI_FONT_COUNT];
+UIFontAtlas g_atlases[UI_FONT_COUNT];
 
 bool UI_Text_Build_Atlas(UIFontID font_id, const void* fnt_data)
 {
@@ -139,6 +139,9 @@ const UIFontAtlas* UI_Text_Get_Atlas(UIFontID font_id)
     return &g_atlases[font_id];
 }
 
+// Defined in ui_text_sdf.cpp; returns 1.0 if SDF system not linked.
+float UI_Text_Get_Font_Scale();
+
 int UI_Text_Measure_Width(UIFontID font_id, const char* text, int length)
 {
     const UIFontAtlas* atlas = UI_Text_Get_Atlas(font_id);
@@ -149,13 +152,22 @@ int UI_Text_Measure_Width(UIFontID font_id, const char* text, int length)
         uint8_t ch = static_cast<uint8_t>(text[i]);
         width += atlas->glyphs[ch].advance;
     }
+    if (atlas->is_sdf) {
+        float s = UI_Text_Get_Font_Scale();
+        return static_cast<int>(width * s + 0.5f);
+    }
     return width;
 }
 
 int UI_Text_Line_Height(UIFontID font_id)
 {
     const UIFontAtlas* atlas = UI_Text_Get_Atlas(font_id);
-    return atlas ? atlas->line_height : 0;
+    if (!atlas) return 0;
+    if (atlas->is_sdf) {
+        float s = UI_Text_Get_Font_Scale();
+        return static_cast<int>(atlas->line_height * s + 0.5f);
+    }
+    return atlas->line_height;
 }
 
 void UI_Text_Shutdown()

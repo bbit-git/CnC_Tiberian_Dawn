@@ -39,6 +39,9 @@
 
 #include "function.h"
 #include "visudlg.h"
+#ifdef USE_RENDER_BRIDGE
+#include "render_bridge.h"
+#endif
 int VisualControlsClass::Init(void)
 {
 	int factor 			= (SeenBuff.Get_Width() == 320) ? 1 : 2;
@@ -73,6 +76,46 @@ int VisualControlsClass::Init(void)
  *=============================================================================================*/
 void VisualControlsClass::Process(void)
 {
+#ifdef USE_RENDER_BRIDGE
+	{
+		int screen_w = SeenBuff.Get_Width();
+		int screen_h = SeenBuff.Get_Height();
+		{ extern void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h);
+		  Render_Bridge_Get_Logical_Screen_Size(screen_w, screen_h); }
+
+		float brightness = static_cast<float>(Options.Get_Brightness()) / 255.0f;
+		float color = static_cast<float>(Options.Get_Color()) / 255.0f;
+		float contrast = static_cast<float>(Options.Get_Contrast()) / 255.0f;
+		float tint = static_cast<float>(Options.Get_Tint()) / 255.0f;
+
+		UIVisualControlsLabels vc_labels = {
+			Text_String(TXT_VISUAL_CONTROLS),
+			Text_String(TXT_BRIGHTNESS),
+			Text_String(TXT_COLOR),
+			Text_String(TXT_CONTRAST),
+			Text_String(TXT_TINT),
+			Text_String(TXT_RESET_MENU),
+			Text_String(TXT_GAME_CONTROLS),
+		};
+		Render_Bridge_UI_Set_Visual_Controls(brightness, color, contrast, tint,
+		                                      screen_w, screen_h, vc_labels);
+
+		while (Render_Bridge_UI_Get_Visual_Controls_Result() == 0) {
+			float b, c2, cn, t;
+			Render_Bridge_UI_Get_Visual_Controls_State(b, c2, cn, t);
+			Options.Set_Brightness(static_cast<int>(b * 255.0f));
+			Options.Set_Color(static_cast<int>(c2 * 255.0f));
+			Options.Set_Contrast(static_cast<int>(cn * 255.0f));
+			Options.Set_Tint(static_cast<int>(t * 255.0f));
+
+			if (Main_Loop()) {
+				Render_Bridge_UI_Clear_Visual_Controls();
+				return;
+			}
+		}
+		return;
+	}
+#else
 	static int _titles[4] = {
 		TXT_BRIGHTNESS,
 		TXT_COLOR,
@@ -420,5 +463,6 @@ void VisualControlsClass::Process(void)
 			pressed = false;
 		}
 	}
+#endif // USE_RENDER_BRIDGE
 }
 

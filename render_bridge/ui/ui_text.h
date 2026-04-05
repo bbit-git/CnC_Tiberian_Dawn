@@ -16,7 +16,10 @@ enum UIFontID : int {
     UI_FONT_8PT  = 1,  // 8-point default (8POINT.FNT / Font8Ptr)
     UI_FONT_LED  = 2,  // LED digits (LED.FNT)
     UI_FONT_VCR  = 3,  // VCR style (VCR.FNT)
-    UI_FONT_COUNT
+    UI_FONT_COUNT_LEGACY = 4,
+    UI_FONT_SDF_DEFAULT = 4,  // System sans-serif (SDF)
+    UI_FONT_SDF_MONO    = 5,  // System monospace (SDF)
+    UI_FONT_COUNT = 6,
 };
 
 /// Per-glyph metrics and atlas position.
@@ -28,7 +31,7 @@ struct UIGlyph {
     int   advance;          // total advance including spacing
 };
 
-/// Font atlas for one FNT font.
+/// Font atlas for one font (FNT bitmap or SDF).
 struct UIFontAtlas {
     uint8_t* pixels;     // alpha-only atlas (owned, freed on shutdown)
     int      atlas_w;
@@ -36,6 +39,9 @@ struct UIFontAtlas {
     int      line_height; // max glyph height
     UIGlyph  glyphs[256];
     bool     loaded;
+    bool     is_sdf;            // true for SDF TTF atlases
+    float    sdf_pixel_range;   // SDF spread in atlas pixels (e.g. 6.0)
+    int      sdf_font_size;     // rasterization size in pixels (e.g. 48)
 };
 
 /// Build atlas for a font from its FNT data pointer. Call after fonts are loaded.

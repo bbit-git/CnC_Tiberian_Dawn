@@ -15,6 +15,7 @@
 
 #include "render_compositor.h"
 #include "render_layer.h"
+#include "ui/ui_dialog.h"
 
 /// Initialize the render bridge. Call once after game viewport is configured.
 bool Render_Bridge_Init(int output_width, int output_height);
@@ -207,6 +208,10 @@ void Render_Bridge_UI_End_Frame();
 /// Initialize UI font atlases from loaded game font data.
 void Render_Bridge_UI_Init_Fonts();
 
+/// Set/get the UI font scale for SDF fonts (0.5–4.0, default 1.0).
+void  Render_Bridge_UI_Set_Font_Scale(float s);
+float Render_Bridge_UI_Get_Font_Scale();
+
 /// Returns true if the UI has captured pointer input this frame.
 bool Render_Bridge_UI_Has_Capture();
 
@@ -215,5 +220,268 @@ bool Render_Bridge_UI_Use_Native_Messages();
 
 /// Returns true when bridge-native help text replaces HelpClass::Draw_It().
 bool Render_Bridge_UI_Use_Native_Help();
+
+/// Returns true when a bridge-native modal dialog is pending or active.
+bool Render_Bridge_UI_Has_Active_Dialog();
+
+/// Update the bridge-owned pending modal dialog state.
+void Render_Bridge_UI_Set_Dialog(const char* title,
+                                 const char* message,
+                                 const char* ok_label,
+                                 const char* cancel_label,
+                                 int screen_w, int screen_h,
+                                 const char* extra_label = nullptr);
+
+/// Clear the pending modal dialog state and store the last result.
+void Render_Bridge_UI_Clear_Dialog(UIDialogResult result);
+
+/// Read the last dialog result written by the bridge.
+UIDialogResult Render_Bridge_UI_Get_Dialog_Result();
+
+/// Read the current pending dialog fields.
+void Render_Bridge_UI_Get_Dialog(int& screen_w, int& screen_h,
+                                 const char*& title,
+                                 const char*& message,
+                                 const char*& ok_label,
+                                 const char*& cancel_label,
+                                 const char*& extra_label);
+
+/// Drive one bridge UI frame without the game render chain.
+/// Suitable for pre-game dialogs where PlayerPtr is not yet valid.
+void Render_Bridge_Idle_Frame();
+
+// --- Game Options dialog (Phase 2) ---
+
+enum UIGameOptionsResult : int {
+    UI_GOPTION_NONE    = 0,
+    UI_GOPTION_LOAD    = 1,
+    UI_GOPTION_SAVE    = 2,
+    UI_GOPTION_DELETE  = 3,
+    UI_GOPTION_GAME    = 4,
+    UI_GOPTION_QUIT    = 5,
+    UI_GOPTION_RESUME  = 6,
+    UI_GOPTION_RESTATE = 7,
+};
+
+struct UIGameOptionsLabels {
+    const char* title;
+    const char* load;
+    const char* save;
+    const char* del;     // delete or resign
+    const char* game;
+    const char* quit;
+    const char* resume;
+    const char* restate;
+};
+void Render_Bridge_UI_Set_Game_Options(bool show_restate, bool is_multiplayer,
+                                       const UIGameOptionsLabels& labels);
+UIGameOptionsResult Render_Bridge_UI_Get_Game_Options_Result();
+void Render_Bridge_UI_Clear_Game_Options();
+bool Render_Bridge_UI_Has_Active_Game_Options();
+
+// --- Load dialog (Phase 3) ---
+
+enum UILoadMode : int { UI_LOAD_LOAD = 0, UI_LOAD_SAVE = 1, UI_LOAD_DELETE = 2 };
+
+void Render_Bridge_UI_Set_Load_Dialog(UILoadMode mode, const char* items[], int count,
+                                       int selected, const char* edit_text,
+                                       int screen_w, int screen_h,
+                                       const char* title = nullptr,
+                                       const char* action_label = nullptr,
+                                       const char* cancel_label = nullptr);
+void Render_Bridge_UI_Get_Load_Dialog_State(int& selected, float& scroll_pos,
+                                             char* edit_text, int edit_size);
+int  Render_Bridge_UI_Get_Load_Dialog_Result();
+void Render_Bridge_UI_Clear_Load_Dialog();
+bool Render_Bridge_UI_Has_Active_Load_Dialog();
+void Render_Bridge_UI_Update_Load_Dialog_Items(const char* items[], int count);
+
+// --- Game Controls dialog (Phase 4) ---
+
+struct UIGameControlsLabels {
+    const char* title;
+    const char* speed;
+    const char* slower;
+    const char* faster;
+    const char* scrollrate;
+    const char* visual;
+    const char* sound;
+    const char* ok;
+};
+void Render_Bridge_UI_Set_Game_Controls(float game_speed, float scroll_rate,
+                                         int screen_w, int screen_h,
+                                         const UIGameControlsLabels& labels);
+void Render_Bridge_UI_Get_Game_Controls_State(float& game_speed, float& scroll_rate);
+int  Render_Bridge_UI_Get_Game_Controls_Result();
+void Render_Bridge_UI_Clear_Game_Controls();
+bool Render_Bridge_UI_Has_Active_Game_Controls();
+
+enum UIGameControlsResult : int {
+    UI_GCTRL_NONE    = 0,
+    UI_GCTRL_OK      = 1,
+    UI_GCTRL_VISUAL  = 2,
+    UI_GCTRL_SOUND   = 3,
+};
+
+// --- Visual Controls dialog (Phase 4) ---
+
+struct UIVisualControlsLabels {
+    const char* title;
+    const char* brightness;
+    const char* color;
+    const char* contrast;
+    const char* tint;
+    const char* reset;
+    const char* ok;
+};
+void Render_Bridge_UI_Set_Visual_Controls(float brightness, float color,
+                                           float contrast, float tint,
+                                           int screen_w, int screen_h,
+                                           const UIVisualControlsLabels& labels);
+void Render_Bridge_UI_Get_Visual_Controls_State(float& brightness, float& color,
+                                                 float& contrast, float& tint);
+int  Render_Bridge_UI_Get_Visual_Controls_Result();
+void Render_Bridge_UI_Clear_Visual_Controls();
+bool Render_Bridge_UI_Has_Active_Visual_Controls();
+
+// --- Sound Controls dialog (Phase 4) ---
+
+struct UISoundControlsLabels {
+    const char* title;
+    const char* music_vol;
+    const char* sound_vol;
+    const char* shuffle;
+    const char* repeat;
+    const char* on;
+    const char* off;
+    const char* play;
+    const char* stop;
+    const char* ok;
+};
+void Render_Bridge_UI_Set_Sound_Controls(float music_vol, float sfx_vol,
+                                          const char* track_names[], int track_count,
+                                          int selected_track,
+                                          bool shuffle, bool repeat, bool is_playing,
+                                          int screen_w, int screen_h,
+                                          const UISoundControlsLabels& labels);
+void Render_Bridge_UI_Get_Sound_Controls_State(float& music_vol, float& sfx_vol,
+                                                int& selected_track, float& track_scroll,
+                                                bool& shuffle, bool& repeat);
+int  Render_Bridge_UI_Get_Sound_Controls_Result();
+void Render_Bridge_UI_Clear_Sound_Controls();
+bool Render_Bridge_UI_Has_Active_Sound_Controls();
+
+enum UISoundControlsResult : int {
+    UI_SND_NONE    = 0,
+    UI_SND_OK      = 1,
+    UI_SND_PLAY    = 2,
+    UI_SND_STOP    = 3,
+};
+
+// --- Special Dialog (Phase 5) ---
+
+void Render_Bridge_UI_Set_Special_Dialog(const bool options[10],
+                                          const char* labels[10],
+                                          int screen_w, int screen_h,
+                                          const char* title = nullptr,
+                                          const char* ok_label = nullptr,
+                                          const char* cancel_label = nullptr);
+void Render_Bridge_UI_Get_Special_Dialog_State(bool options[10]);
+int  Render_Bridge_UI_Get_Special_Dialog_Result();
+void Render_Bridge_UI_Clear_Special_Dialog();
+bool Render_Bridge_UI_Has_Active_Special_Dialog();
+
+// --- Expansion/Bonus Dialog (Phase 6) ---
+
+void Render_Bridge_UI_Set_Expansion_Dialog(int mode, const char* title,
+                                            const char* items[], int count,
+                                            int screen_w, int screen_h,
+                                            const char* ok_label = nullptr,
+                                            const char* cancel_label = nullptr);
+void Render_Bridge_UI_Get_Expansion_Dialog_State(int& selected, float& scroll_pos);
+int  Render_Bridge_UI_Get_Expansion_Dialog_Result();
+void Render_Bridge_UI_Clear_Expansion_Dialog();
+bool Render_Bridge_UI_Has_Active_Expansion_Dialog();
+
+// --- Com Scenario Dialog (Phase 7) ---
+
+struct UIComScenarioState {
+    bool     active;
+    char     player_name[32];
+    int      faction;         // 0=GDI, 1=NOD
+    int      credits;
+    char     scenarios[64][40];
+    int      scenario_count;
+    int      selected_scenario;
+    float    scenario_scroll;
+    float    build_level;     // 0.0–1.0
+    float    ai_players;      // 0.0–1.0
+    float    ai_skill;        // 0.0–1.0
+    float    unit_count;      // 0.0–1.0 (mapped to MPlayerCountMin..Max)
+    bool     options[4];
+    char     option_labels[4][32];
+    int      result;          // 0=none 1=ok 2=cancel
+    int      screen_w, screen_h;
+    // Localized labels
+    char     lbl_title[32];
+    char     lbl_name[32];
+    char     lbl_side[32];
+    char     lbl_gdi[16];
+    char     lbl_nod[16];
+    char     lbl_credits[32];
+    char     lbl_scenarios[32];
+    char     lbl_build_level[32];
+    char     lbl_ai_players[32];
+    char     lbl_ai_skill[32];
+    char     lbl_unit_count[32];
+    char     lbl_ok[32];
+    char     lbl_cancel[32];
+};
+
+void Render_Bridge_UI_Set_Com_Scenario(const UIComScenarioState& state);
+void Render_Bridge_UI_Get_Com_Scenario_State(UIComScenarioState& state);
+int  Render_Bridge_UI_Get_Com_Scenario_Result();
+void Render_Bridge_UI_Clear_Com_Scenario();
+bool Render_Bridge_UI_Has_Active_Com_Scenario();
+
+// --- Main Menu Dialog (Phase 8) ---
+
+enum UIMainMenuPage : int {
+    UI_MM_PAGE_ROOT     = 0,
+    UI_MM_PAGE_CAMPAIGN = 1,
+};
+
+struct UIMainMenuState {
+    bool   active;
+    int    result;            // 0=pending, 1=GDI, 2=NOD, 3=load, 4=skirmish, 5=options, 6=exit, 7=expansion
+    int    page;              // UIMainMenuPage
+    int    focused_button;    // keyboard focus index (-1 = none)
+    float  fade_alpha;        // current opacity 0.0–1.0
+    bool   dismissing;        // true during fade-out before committing result
+    int    pending_result;    // result to commit after fade-out completes
+    bool   had_input;         // set by emitter when input activity detected; cleared by Had_Input()
+    int    screen_w, screen_h;
+    char   lbl_new_game[48];
+    char   lbl_load_game[48];
+    char   lbl_skirmish[48];
+    char   lbl_options[48];
+    char   lbl_exit[48];
+    char   lbl_gdi[32];
+    char   lbl_nod[32];
+    char   lbl_back[32];
+    char   lbl_campaign_title[48];
+    char   lbl_expansion[48];     // "Covert Operations" (NEWMENU only)
+    bool   has_expansion;          // true if expansion button should show
+    char   lbl_version[32];       // version string for bottom-right
+    char   lbl_copyright[64];     // copyright for below panel
+};
+
+void Render_Bridge_UI_Set_Main_Menu(const UIMainMenuState& state);
+int  Render_Bridge_UI_Get_Main_Menu_Result();
+void Render_Bridge_UI_Clear_Main_Menu();
+bool Render_Bridge_UI_Has_Active_Main_Menu();
+
+// Returns true if any bridge-native dialog is currently open.
+bool Render_Bridge_UI_Has_Any_Active_Dialog();
 
 #endif // CNC_RENDER_BRIDGE_H

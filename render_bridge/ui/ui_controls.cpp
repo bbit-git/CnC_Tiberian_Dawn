@@ -3,6 +3,8 @@
  */
 
 #include "ui_controls.h"
+#include "ui_input.h"
+#include "function.h"
 #include <cstring>
 
 UIPanelStyle UI_Default_Panel_Style()
@@ -22,7 +24,7 @@ UIButtonStyle UI_Default_Button_Style()
     s.press_r  = 30;  s.press_g  = 30;  s.press_b  = 30;  s.press_a  = 255;
     s.text_r   = 200; s.text_g   = 200; s.text_b   = 200; s.text_a   = 255;
     s.border_r = 100; s.border_g = 100; s.border_b = 100; s.border_a = 255;
-    s.font = UI_FONT_8PT;
+    s.font = UI_FONT_SDF_DEFAULT;
     return s;
 }
 
@@ -78,24 +80,18 @@ UIButtonState UI_Button(int x, int y, int w, int h,
     uint8_t bg_b = style.normal_b, bg_a = style.normal_a;
 
     if (is_pressed && is_hovered) {
-        state = UI_BTN_PRESSED;
+        // Visual: show pressed style while held
         bg_r = style.press_r; bg_g = style.press_g;
         bg_b = style.press_b; bg_a = style.press_a;
-    } else if (is_pressed && !is_hovered) {
-        // Pressed but dragged away — show normal
-        state = UI_BTN_NORMAL;
     } else if (is_hovered) {
         state = UI_BTN_HOVERED;
         bg_r = style.hover_r; bg_g = style.hover_g;
         bg_b = style.hover_b; bg_a = style.hover_a;
     }
 
-    // Detect click: was pressed on this zone, now released while hovered
-    // (UI_Input tracks this — pressed goes to NONE on release)
-    if (pressed == UI_HIT_NONE && is_hovered && !UI_Input_Has_Capture()) {
-        // The input system clears pressed on release. If we were the
-        // last pressed zone and mouse is still over us, that's a click.
-        // This requires the caller to check state == UI_BTN_CLICKED.
+    // Fire PRESSED only on the single click-edge frame (not every held frame)
+    if (UI_Input_Was_Clicked(zone)) {
+        state = UI_BTN_PRESSED;
     }
 
     // Draw background
@@ -247,8 +243,9 @@ UIListBoxStyle UI_Default_ListBox_Style()
     s.item_r = 180; s.item_g = 180; s.item_b = 180; s.item_a = 255;
     s.sel_bg_r = 0; s.sel_bg_g = 80; s.sel_bg_b = 0; s.sel_bg_a = 255;
     s.sel_text_r = 255; s.sel_text_g = 255; s.sel_text_b = 255; s.sel_text_a = 255;
-    s.font = UI_FONT_8PT;
-    s.item_height = 12;
+    s.font = UI_FONT_SDF_DEFAULT;
+    s.item_height = UI_Text_Line_Height(UI_FONT_SDF_DEFAULT) + 4;
+    if (s.item_height < 12) s.item_height = 12;
     s.scrollbar_w = 8;
     return s;
 }
@@ -269,6 +266,23 @@ int UI_ListBox(int x, int y, int w, int h,
     int total_h = item_count * style.item_height;
     bool needs_scroll = total_h > h && style.scrollbar_w > 0;
 
+    // Mouse-wheel scrolling: register a hit zone for the whole list area
+    // and consume scroll delta when hovered.
+    UIHitZoneID list_zone = UI_Input_Register_Zone(x, y, w, h);
+    if (needs_scroll && list_zone == UI_Input_Get_Hovered()) {
+        float wheel = UI_Input_Consume_Scroll_Delta();
+        if (wheel != 0.0f) {
+            int max_scroll = total_h - h;
+            if (max_scroll > 0) {
+                // 3 items per wheel tick
+                float step = (3.0f * style.item_height) / static_cast<float>(max_scroll);
+                scroll_pos -= wheel * step;
+                if (scroll_pos < 0.0f) scroll_pos = 0.0f;
+                if (scroll_pos > 1.0f) scroll_pos = 1.0f;
+            }
+        }
+    }
+
     if (needs_scroll) {
         content_w = w - style.scrollbar_w;
         float vis_frac = static_cast<float>(h) / static_cast<float>(total_h);
@@ -287,6 +301,7 @@ int UI_ListBox(int x, int y, int w, int h,
     }
 
     int new_selected = selected;
+    UIHitZoneID hovered = UI_Input_Get_Hovered();
 
     for (int i = 0; i < item_count; i++) {
         int iy = y + i * style.item_height - scroll_offset;
@@ -298,10 +313,8 @@ int UI_ListBox(int x, int y, int w, int h,
         UIHitZoneID zone = UI_Input_Register_Zone(x + 1, iy,
                                                    content_w - 2,
                                                    style.item_height);
-        UIHitZoneID hovered = UI_Input_Get_Hovered();
-        UIHitZoneID pressed = UI_Input_Get_Pressed();
 
-        if (zone == pressed && zone == hovered) {
+        if (UI_Input_Was_Clicked(zone)) {
             new_selected = i;
         }
 
@@ -333,12 +346,16 @@ bool UI_Checkbox(int x, int y, int size, const char* label,
                  bool checked, UIFontID font,
                  uint8_t r, uint8_t g, uint8_t b)
 {
-    UIHitZoneID zone = UI_Input_Register_Zone(x, y, size, size);
+    // Expand hit zone to include the label text
+    int hit_w = size;
+    if (label && label[0]) {
+        hit_w = size + 4 + UI_Text_Measure_Width(font, label,
+                                                   static_cast<int>(strlen(label)));
+    }
+    UIHitZoneID zone = UI_Input_Register_Zone(x, y, hit_w, size);
     UIHitZoneID hovered = UI_Input_Get_Hovered();
-    UIHitZoneID pressed = UI_Input_Get_Pressed();
 
     bool is_hovered = (zone == hovered);
-    bool is_pressed = (zone == pressed);
 
     // Box background
     uint8_t bg = is_hovered ? (uint8_t)50 : (uint8_t)30;
@@ -352,8 +369,10 @@ bool UI_Checkbox(int x, int y, int size, const char* label,
                                  r, g, b, 255);
     }
 
-    // Toggle on press
-    if (is_pressed && is_hovered) {
+    // Toggle on click (mouse-down edge only, not every held frame).
+    // UI_Input_Was_Clicked returns true for the single frame the button
+    // transitions from released to pressed over this zone.
+    if (UI_Input_Was_Clicked(zone)) {
         checked = !checked;
     }
 
@@ -365,4 +384,89 @@ bool UI_Checkbox(int x, int y, int size, const char* label,
     }
 
     return checked;
+}
+
+// --- Text Input ---
+
+static int g_text_input_focus_id = -1;  // which zone has keyboard focus
+
+bool UI_TextInput(int x, int y, int w, int h, char* buf, int buf_size,
+                  UIFontID font, uint8_t r, uint8_t g, uint8_t b)
+{
+    UIHitZoneID zone = UI_Input_Register_Zone(x, y, w, h);
+    bool has_focus = (zone == g_text_input_focus_id);
+
+    // Click to focus / unfocus
+    if (UI_Input_Was_Clicked(zone)) {
+        g_text_input_focus_id = zone;
+        has_focus = true;
+    }
+
+    // Click outside this field while focused → lose focus
+    UIHitZoneID clicked_zone = UI_Input_Get_Pressed();
+    if (has_focus && clicked_zone != UI_HIT_NONE && clicked_zone != zone) {
+        g_text_input_focus_id = -1;
+        has_focus = false;
+    }
+
+    // Background
+    uint8_t bg = has_focus ? (uint8_t)25 : (uint8_t)15;
+    uint8_t br = has_focus ? (uint8_t)0 : (uint8_t)60;
+    uint8_t bg2 = has_focus ? (uint8_t)140 : (uint8_t)80;
+    uint8_t bb = has_focus ? (uint8_t)0 : (uint8_t)60;
+    g_ui_draw_list.Fill_Rect(x, y, w, h, bg, bg, bg, 240);
+    g_ui_draw_list.Draw_Rect(x, y, w, h, br, bg2, bb, 255);
+
+    // Process keyboard input when focused.
+    // Keys arrive via UI_Input_Push_Key from sdl3_input.cpp:
+    //   - Control keys: raw KN_* scancode (e.g. KN_BACKSPACE, KN_RETURN)
+    //   - Text chars: 0x8000 | ASCII char (from SDL_EVENT_TEXT_INPUT)
+    if (has_focus) {
+        int len = static_cast<int>(strlen(buf));
+        unsigned short key;
+        while ((key = UI_Input_Pop_Key()) != 0) {
+            if (key & 0x8000) {
+                // Text character — filter to alphanumeric + space + underscore
+                char ch = static_cast<char>(key & 0x7F);
+                bool allowed = (ch >= 'A' && ch <= 'Z') ||
+                               (ch >= 'a' && ch <= 'z') ||
+                               (ch >= '0' && ch <= '9') ||
+                               ch == ' ' || ch == '_' || ch == '-';
+                if (allowed && len < buf_size - 1) {
+                    buf[len++] = ch;
+                    buf[len] = '\0';
+                }
+            } else {
+                // Control key
+                unsigned short plain = key & 0xFF;
+                if (plain == (KN_BACKSPACE & 0xFF)) {
+                    if (len > 0) { buf[--len] = '\0'; }
+                } else if (plain == (KN_RETURN & 0xFF) || plain == (KN_ESC & 0xFF)) {
+                    g_text_input_focus_id = -1;
+                    has_focus = false;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Draw text
+    int text_h = UI_Text_Line_Height(font);
+    int ty = y + (h - text_h) / 2;
+    if (buf[0]) {
+        g_ui_draw_list.Draw_Text(x + 4, ty, buf, font, r, g, b, 255);
+    }
+
+    // Blinking cursor when focused
+    if (has_focus) {
+        static int blink = 0;
+        blink++;
+        if ((blink / 15) & 1) {  // ~2Hz blink at 25fps
+            int cursor_x = x + 4 + UI_Text_Measure_Width(font, buf,
+                                                           static_cast<int>(strlen(buf)));
+            g_ui_draw_list.Fill_Rect(cursor_x, ty, 2, text_h, r, g, b, 255);
+        }
+    }
+
+    return has_focus;
 }

@@ -44,6 +44,9 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "function.h"
+#ifdef USE_RENDER_BRIDGE
+#include "render_bridge.h"
+#endif
 
 extern void CC_Texture_Fill(void const *shapefile, int shapenum, int xpos, int ypos, int width, int height);
 
@@ -539,6 +542,102 @@ GameType Select_MPlayer_Game (void)
  *=============================================================================================*/
 int Com_Scenario_Dialog(void)
 {
+#ifdef USE_RENDER_BRIDGE
+	{
+		int screen_w = SeenBuff.Get_Width();
+		int screen_h = SeenBuff.Get_Height();
+
+		if (MPlayerScenarios.Count() == 0) {
+			Read_Scenario_Descriptions();
+		}
+
+		UIComScenarioState st = {};
+		strncpy(st.player_name, MPlayerName, 31);
+		st.faction = (MPlayerHouse == HOUSE_BAD) ? 1 : 0;
+		st.credits = MPlayerCredits;
+		st.scenario_count = MPlayerScenarios.Count() > 64 ? 64 : MPlayerScenarios.Count();
+		for (int i = 0; i < st.scenario_count; i++) {
+			strncpy(st.scenarios[i], MPlayerScenarios[i], 39);
+		}
+		st.selected_scenario = ScenarioIdx;
+		st.build_level = static_cast<float>(BuildLevel - 1) / static_cast<float>(MPLAYER_BUILD_LEVEL_MAX - 1);
+		st.ai_players = static_cast<float>(MPlayerAIs) / 5.0f;
+		st.ai_skill = static_cast<float>(MPlayerAISkill) / 2.0f;
+		{
+			int count_min = MPlayerCountMin[MPlayerBases] > 0 ? MPlayerCountMin[MPlayerBases] : 1;
+			int count_max = MPlayerCountMax[MPlayerBases];
+			int count_range = count_max - count_min;
+			st.unit_count = count_range > 0
+				? static_cast<float>(MPlayerUnitCount - count_min) / static_cast<float>(count_range)
+				: 0.5f;
+			if (st.unit_count < 0.0f) st.unit_count = 0.0f;
+			if (st.unit_count > 1.0f) st.unit_count = 1.0f;
+		}
+		st.options[0] = MPlayerBases;   strncpy(st.option_labels[0], "Bases", 31);
+		st.options[1] = MPlayerTiberium; strncpy(st.option_labels[1], "Tiberium", 31);
+		st.options[2] = MPlayerGoodies; strncpy(st.option_labels[2], "Crates", 31);
+		st.options[3] = Special.IsCaptureTheFlag; strncpy(st.option_labels[3], "Capture The Flag", 31);
+		st.screen_w = screen_w;
+		st.screen_h = screen_h;
+		strncpy(st.lbl_title, Text_String(TXT_SCENARIOS), 31);
+		strncpy(st.lbl_name, Text_String(TXT_YOUR_NAME), 31);
+		strncpy(st.lbl_side, Text_String(TXT_SIDE_COLON), 31);
+		strncpy(st.lbl_gdi, Text_String(TXT_G_D_I), 15);
+		strncpy(st.lbl_nod, Text_String(TXT_N_O_D), 15);
+		strncpy(st.lbl_credits, Text_String(TXT_START_CREDITS_COLON), 31);
+		strncpy(st.lbl_scenarios, Text_String(TXT_SCENARIOS), 31);
+		strncpy(st.lbl_build_level, Text_String(TXT_LEVEL), 31);
+		strncpy(st.lbl_ai_players, Text_String(TXT_AI_PLAYERS_COLON), 31);
+		strncpy(st.lbl_ai_skill, "Difficulty:", 31);
+		strncpy(st.lbl_unit_count, Text_String(TXT_COUNT), 31);
+		strncpy(st.lbl_ok, Text_String(TXT_OK), 31);
+		strncpy(st.lbl_cancel, Text_String(TXT_CANCEL), 31);
+
+		Render_Bridge_UI_Set_Com_Scenario(st);
+
+		while (Render_Bridge_UI_Get_Com_Scenario_Result() == 0) {
+			Call_Back();
+		}
+
+		UIComScenarioState result_st;
+		Render_Bridge_UI_Get_Com_Scenario_State(result_st);
+		Render_Bridge_UI_Clear_Com_Scenario();
+
+		if (result_st.result == 1) {
+			// OK — apply state
+			strncpy(MPlayerName, result_st.player_name, sizeof(MPlayerName) - 1);
+			MPlayerHouse = result_st.faction == 1 ? HOUSE_BAD : HOUSE_GOOD;
+			MPlayerCredits = result_st.credits;
+			BuildLevel = 1 + static_cast<int>(result_st.build_level * (MPLAYER_BUILD_LEVEL_MAX - 1));
+			if (BuildLevel < 1) BuildLevel = 1;
+			if (BuildLevel > MPLAYER_BUILD_LEVEL_MAX) BuildLevel = MPLAYER_BUILD_LEVEL_MAX;
+			MPlayerAIs = static_cast<int>(result_st.ai_players * 5.0f + 0.5f);
+			if (MPlayerAIs < 1) MPlayerAIs = 1;
+			if (MPlayerAIs > MPlayerMax - 1) MPlayerAIs = MPlayerMax - 1;
+			MPlayerGhosts = 1;  // enable AI ghost players
+			MPlayerAISkill = static_cast<int>(result_st.ai_skill * 2.0f + 0.5f);
+			if (MPlayerAISkill > 2) MPlayerAISkill = 2;
+			{
+				// MPlayerCountMin/Max: index 0 = bases ON, index 1 = bases OFF
+				int bases_idx = result_st.options[0] ? 0 : 1;
+				int count_min = MPlayerCountMin[bases_idx] > 0
+					? MPlayerCountMin[bases_idx] : 1;
+				int count_max = MPlayerCountMax[bases_idx];
+				MPlayerUnitCount = count_min + static_cast<int>(
+					result_st.unit_count * (count_max - count_min) + 0.5f);
+				if (MPlayerUnitCount < count_min) MPlayerUnitCount = count_min;
+				if (MPlayerUnitCount > count_max) MPlayerUnitCount = count_max;
+			}
+			MPlayerBases = result_st.options[0];
+			MPlayerTiberium = result_st.options[1];
+			MPlayerGoodies = result_st.options[2];
+			Special.IsCaptureTheFlag = result_st.options[3];
+			Prepare_Skirmish_Player_State(MPlayerName, result_st.selected_scenario);
+			return 1;
+		}
+		return 0;
+	}
+#else
 	int factor			= (SeenBuff.Get_Width() == 320) ? 1 : 2;
 	int d_dialog_w = 290*factor;
 	int d_dialog_h = 178*factor;
@@ -1011,6 +1110,7 @@ int Com_Scenario_Dialog(void)
 	}
 
 	return (retcode);
+#endif // USE_RENDER_BRIDGE
 }
 
 
@@ -1840,6 +1940,28 @@ static void Garble_Message(char *buf)
  *=========================================================================*/
 int Surrender_Dialog(void)
 {
+#ifdef USE_RENDER_BRIDGE
+	int screen_w = SeenBuff.Get_Width();
+	int screen_h = SeenBuff.Get_Height();
+	{ extern void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h);
+	  Render_Bridge_Get_Logical_Screen_Size(screen_w, screen_h); }
+
+	Render_Bridge_UI_Set_Dialog(Text_String(TXT_SURRENDER),
+	                            nullptr,
+	                            Text_String(TXT_OK),
+	                            Text_String(TXT_CANCEL),
+	                            screen_w,
+	                            screen_h);
+
+	while (Render_Bridge_UI_Get_Dialog_Result() == UI_DIALOG_NONE) {
+		if (Main_Loop()) {
+			Render_Bridge_UI_Clear_Dialog(UI_DIALOG_CANCEL);
+			return 0;
+		}
+	}
+
+	return (Render_Bridge_UI_Get_Dialog_Result() == UI_DIALOG_OK) ? 1 : 0;
+#else
 	int factor			= (SeenBuff.Get_Width() == 320) ? 1 : 2;
 	/*........................................................................
 	Dialog & button dimensions
@@ -2005,4 +2127,5 @@ int Surrender_Dialog(void)
 	Map.Render();
 
 	return (retcode);
+#endif
 }

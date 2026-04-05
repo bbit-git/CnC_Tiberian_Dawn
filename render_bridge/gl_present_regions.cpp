@@ -189,6 +189,11 @@ bool GL_Present_Draw_Regions(const GLPresentFrameContext& ctx,
 
 bool GL_Present_Draw_UI_Overlay(const GLPresentFrameContext& ctx, const uint8_t* vga_palette)
 {
+    extern bool Render_Bridge_UI_Has_Active_Dialog();
+    if (Render_Bridge_UI_Has_Active_Dialog()) {
+        return false;
+    }
+
     extern const uint8_t* Render_Bridge_Get_UI_Overlay(int& w, int& h);
     int ui_w = 0;
     int ui_h = 0;

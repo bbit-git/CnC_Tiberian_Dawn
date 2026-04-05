@@ -40,6 +40,9 @@
 #include "function.h"
 #include "msgbox.h"
 #include "gadget.h"
+#ifdef USE_RENDER_BRIDGE
+#include "render_bridge.h"
+#endif
 
 #ifdef JAPANESE
 CCMessageBox::CCMessageBox(int caption, bool pict) : Caption(caption), IsPicture(pict)
@@ -78,6 +81,38 @@ CCMessageBox::CCMessageBox(int caption, bool pict) : Caption(caption), IsPicture
 #define	BUTTON_FLAG	0x8000
 int CCMessageBox::Process(const char *msg, const char *b1txt, const char *b2txt, const char *b3txt, bool preserve)
 {
+#ifdef USE_RENDER_BRIDGE
+	int screen_w = SeenBuff.Get_Width();
+	int screen_h = SeenBuff.Get_Height();
+	{ extern void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h);
+	  Render_Bridge_Get_Logical_Screen_Size(screen_w, screen_h); }
+
+	if (b1txt && *b1txt == '\0') b1txt = nullptr;
+	if (b2txt && *b2txt == '\0') b2txt = nullptr;
+	if (b3txt && *b3txt == '\0') b3txt = nullptr;
+
+	const char* title_str = (Caption != TXT_NONE) ? Text_String(Caption) : nullptr;
+
+	Render_Bridge_UI_Set_Dialog(title_str,
+	                            msg,
+	                            b1txt,
+	                            b2txt,
+	                            screen_w, screen_h,
+	                            b3txt);
+
+	while (Render_Bridge_UI_Get_Dialog_Result() == UI_DIALOG_NONE) {
+		if (Main_Loop()) {
+			Render_Bridge_UI_Clear_Dialog(UI_DIALOG_CANCEL);
+			return 1;
+		}
+	}
+
+	UIDialogResult result = Render_Bridge_UI_Get_Dialog_Result();
+	if (result == UI_DIALOG_OK) return 0;
+	if (result == UI_DIALOG_CANCEL) return 1;
+	if (result == UI_DIALOG_EXTRA) return 2;
+	return 0;
+#else
 #define BUFFSIZE (511)
 //#define BUFFSIZE (255)
 	char buffer[BUFFSIZE];
@@ -428,6 +463,7 @@ int CCMessageBox::Process(const char *msg, const char *b1txt, const char *b2txt,
 		Show_Mouse();
 	}
 	return(retval);
+#endif // USE_RENDER_BRIDGE
 }
 
 

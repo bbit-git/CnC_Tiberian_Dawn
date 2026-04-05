@@ -44,6 +44,9 @@
 
 #include "function.h"
 #include "io.h"				// for unlink
+#ifdef USE_RENDER_BRIDGE
+#include "render_bridge.h"
+#endif
 extern const char* TD_Get_Save_Path(void);
 
 static void Build_Savegame_Search(char *buf, size_t size)
@@ -115,6 +118,71 @@ LoadOptionsClass::~LoadOptionsClass()
  *=============================================================================================*/
 int LoadOptionsClass::Process(void)
 {
+#ifdef USE_RENDER_BRIDGE
+	{
+		int screen_w = SeenBuff.Get_Width();
+		int screen_h = SeenBuff.Get_Height();
+
+		UILoadMode mode = UI_LOAD_LOAD;
+		if (Style == SAVE) mode = UI_LOAD_SAVE;
+		if (Style == WWDELETE) mode = UI_LOAD_DELETE;
+
+		// Build item list from Files
+		const char* item_strs[8];
+		int count = Files.Count() > 8 ? 8 : Files.Count();
+		for (int i = 0; i < count; i++) {
+			item_strs[i] = Files[i]->Descr;
+		}
+
+		const char* ld_title = Text_String(TXT_LOAD_MISSION);
+		const char* ld_action = Text_String(TXT_LOAD_BUTTON);
+		if (Style == SAVE) { ld_title = Text_String(TXT_SAVE_MISSION); ld_action = Text_String(TXT_SAVE_BUTTON); }
+		if (Style == WWDELETE) { ld_title = Text_String(TXT_DELETE_MISSION); ld_action = Text_String(TXT_DELETE_BUTTON); }
+		Render_Bridge_UI_Set_Load_Dialog(mode, item_strs, count, 0, "", screen_w, screen_h,
+		                                  ld_title, ld_action, Text_String(TXT_CANCEL));
+
+		while (Render_Bridge_UI_Get_Load_Dialog_Result() == 0) {
+			if (InMainLoop) {
+				// In-game: run full game loop (keeps the world ticking behind the dialog)
+				if (Main_Loop()) {
+					Render_Bridge_UI_Clear_Load_Dialog();
+					return false;
+				}
+			} else {
+				// From main menu: no game state to tick, just pump events + present
+				Call_Back();
+			}
+		}
+
+		int result = Render_Bridge_UI_Get_Load_Dialog_Result();
+		int sel = 0;
+		float scroll = 0;
+		char edit_buf[40] = {0};
+		Render_Bridge_UI_Get_Load_Dialog_State(sel, scroll, edit_buf, sizeof(edit_buf));
+
+		if (result == 2) {
+			// Cancel
+			return false;
+		}
+
+		// OK — perform the action
+		if (Style == LOAD && sel >= 0 && sel < Files.Count()) {
+			if (Files[sel]->Valid && Load_Game(Files[sel]->Num)) {
+				return true;
+			}
+		} else if (Style == SAVE && sel >= 0 && sel < Files.Count()) {
+			if (Save_Game(Files[sel]->Num, edit_buf[0] ? edit_buf : Files[sel]->Descr)) {
+				return true;
+			}
+		} else if (Style == WWDELETE && sel >= 0 && sel < Files.Count()) {
+			char fname[80];
+			snprintf(fname, sizeof(fname), "%sSAVEGAME.%03d", TD_Get_Save_Path(), Files[sel]->Num);
+			unlink(fname);
+			return true;
+		}
+		return false;
+	}
+#else
 	/*
 	**	Dialog & button dimensions
 	*/
@@ -535,6 +603,7 @@ int LoadOptionsClass::Process(void)
 	if (cancel) return(false);
 
 	return(true);
+#endif // USE_RENDER_BRIDGE
 }
 
 

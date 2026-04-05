@@ -853,10 +853,19 @@ bool Render_Bridge_Tactical_To_World(int pixel_x, int pixel_y,
         return false;
     }
 
+    // vis_w/h is computed from render_tac_w (full content width, sidebar-independent).
+    // Use render_tac_w/h as the denominator so the proportional mapping matches.
+    // Using tac_w (sidebar-narrowed) would over-scale by render_tac_w/tac_w (~1.33x
+    // with TD sidebar active).
+    int rtac_x, rtac_y, rtac_w, rtac_h;
+    Render_Bridge_Get_Render_Tactical_Rect(rtac_x, rtac_y, rtac_w, rtac_h);
+    if (rtac_w <= 0) rtac_w = tac_w;
+    if (rtac_h <= 0) rtac_h = tac_h;
+
     // Convert promoted tactical screen pixels back into the visible-world window
     // proportionally instead of assuming legacy 1:1 tactical pixels.
-    int lx = static_cast<int>((static_cast<int64_t>(sx) * vis_w) / tac_w);
-    int ly = static_cast<int>((static_cast<int64_t>(sy) * vis_h) / tac_h);
+    int lx = static_cast<int>((static_cast<int64_t>(sx) * vis_w) / rtac_w);
+    int ly = static_cast<int>((static_cast<int64_t>(sy) * vis_h) / rtac_h);
     if (lx < 0) lx = 0;
     if (ly < 0) ly = 0;
     if (lx >= vis_w) lx = vis_w - 1;

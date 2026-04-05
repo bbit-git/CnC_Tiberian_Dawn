@@ -9,7 +9,11 @@
 
 #include "ui_draw_list.h"
 #include "ui_text.h"
+#include "ui_text_sdf.h"
 #include "dbg.h"
+
+#include <cmath>
+#include <algorithm>
 
 #undef min
 #undef max
@@ -27,9 +31,13 @@ struct UIVertex {
 };
 
 GLuint g_program      = 0;
+GLuint g_program_sdf  = 0;
 GLint  g_u_viewport   = -1;
 GLint  g_u_use_tex    = -1;
 GLint  g_u_tex        = -1;
+GLint  g_sdf_u_viewport   = -1;
+GLint  g_sdf_u_tex        = -1;
+GLint  g_sdf_u_sdf_params = -1;
 bool   g_initialized  = false;
 
 // Font atlas GL textures (one per UIFontID)
@@ -73,6 +81,22 @@ static const char* k_frag_src = R"(
     }
 )";
 
+static const char* k_frag_sdf_src = R"(
+    precision mediump float;
+    varying vec2 v_uv;
+    varying vec4 v_color;
+    uniform sampler2D u_tex;
+    uniform vec2 u_sdf_params;
+    void main() {
+        float dist = texture2D(u_tex, v_uv).r;
+        float alpha = smoothstep(u_sdf_params.y - u_sdf_params.x,
+                                 u_sdf_params.y + u_sdf_params.x,
+                                 dist);
+        if (alpha < 0.005) discard;
+        gl_FragColor = vec4(v_color.rgb, v_color.a * alpha);
+    }
+)";
+
 bool init_gl()
 {
     if (g_initialized) return true;
@@ -107,6 +131,40 @@ bool init_gl()
     g_u_viewport = glGetUniformLocation(g_program, "u_viewport");
     g_u_use_tex  = glGetUniformLocation(g_program, "u_use_tex");
     g_u_tex      = glGetUniformLocation(g_program, "u_tex");
+
+    // SDF program (shares vertex shader, different fragment)
+    {
+        GLuint vs2 = glCreateShader(GL_VERTEX_SHADER);
+        glShaderSource(vs2, 1, &k_vert_src, nullptr);
+        glCompileShader(vs2);
+
+        GLuint fs2 = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(fs2, 1, &k_frag_sdf_src, nullptr);
+        glCompileShader(fs2);
+
+        g_program_sdf = glCreateProgram();
+        glAttachShader(g_program_sdf, vs2);
+        glAttachShader(g_program_sdf, fs2);
+        glBindAttribLocation(g_program_sdf, 0, "a_pos");
+        glBindAttribLocation(g_program_sdf, 1, "a_uv");
+        glBindAttribLocation(g_program_sdf, 2, "a_color");
+        glLinkProgram(g_program_sdf);
+        glDeleteShader(vs2);
+        glDeleteShader(fs2);
+
+        GLint ok2 = 0;
+        glGetProgramiv(g_program_sdf, GL_LINK_STATUS, &ok2);
+        if (!ok2) {
+            char log2[256];
+            glGetProgramInfoLog(g_program_sdf, sizeof(log2), nullptr, log2);
+            DBG("gl_ui: SDF link error: %s", log2);
+        } else {
+            g_sdf_u_viewport   = glGetUniformLocation(g_program_sdf, "u_viewport");
+            g_sdf_u_tex        = glGetUniformLocation(g_program_sdf, "u_tex");
+            g_sdf_u_sdf_params = glGetUniformLocation(g_program_sdf, "u_sdf_params");
+        }
+    }
+
     g_initialized = true;
     return true;
 }
@@ -123,8 +181,9 @@ void ensure_font_texture(UIFontID font_id)
         glGenTextures(1, &g_font_textures[font_id]);
     }
     glBindTexture(GL_TEXTURE_2D, g_font_textures[font_id]);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    GLenum filter = atlas->is_sdf ? GL_LINEAR : GL_NEAREST;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE,
@@ -157,11 +216,14 @@ void push_line_rect(std::vector<UIVertex>& verts,
     push_quad(verts, x1 - 1, y0, x1, y1, 0,0,0,0, r,g,b,a);
 }
 
-void flush_verts(std::vector<UIVertex>& verts, bool textured)
+// is_sdf: true when the SDF program is active. The SDF shader always
+// samples the texture, so u_use_tex (legacy program only) is skipped.
+void flush_verts(std::vector<UIVertex>& verts, bool textured, bool is_sdf = false)
 {
     if (verts.empty()) return;
 
-    glUniform1f(g_u_use_tex, textured ? 1.0f : 0.0f);
+    if (!is_sdf)
+        glUniform1f(g_u_use_tex, textured ? 1.0f : 0.0f);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -217,13 +279,26 @@ void GL_UI_Render(int win_w, int win_h,
     std::vector<UIVertex> solid_verts;
     std::vector<UIVertex> text_verts;
     int current_font = -1;
+    bool current_sdf = false;
+
+    auto restore_main_program = [&]() {
+        if (current_sdf) {
+            glUseProgram(g_program);
+            glUniform2f(g_u_viewport, static_cast<float>(win_w),
+                        static_cast<float>(win_h));
+            glUniform1i(g_u_tex, 0);
+            current_sdf = false;
+            current_font = -1;
+        }
+    };
 
     for (int i = 0; i < g_ui_draw_list.Command_Count(); i++) {
         const UIDrawCmd& cmd = g_ui_draw_list.Get(i);
 
         switch (cmd.type) {
         case UI_CMD_FILL_RECT: {
-            flush_verts(text_verts, true);
+            flush_verts(text_verts, true, current_sdf);
+            restore_main_program();
             float x0 = off_x + cmd.rect.x * scale;
             float y0 = off_y + cmd.rect.y * scale;
             float x1 = x0 + cmd.rect.w * scale;
@@ -237,7 +312,8 @@ void GL_UI_Render(int win_w, int win_h,
         }
 
         case UI_CMD_DRAW_RECT: {
-            flush_verts(text_verts, true);
+            flush_verts(text_verts, true, current_sdf);
+            restore_main_program();
             float x0 = off_x + cmd.rect.x * scale;
             float y0 = off_y + cmd.rect.y * scale;
             float x1 = x0 + cmd.rect.w * scale;
@@ -251,16 +327,45 @@ void GL_UI_Render(int win_w, int win_h,
         }
 
         case UI_CMD_TEXT: {
-            flush_verts(solid_verts, false);
+            // Flush pending solid geometry under the legacy program before
+            // any potential switch to the SDF program.
+            if (!solid_verts.empty()) {
+                restore_main_program();
+                flush_verts(solid_verts, false);
+            }
             UIFontID fid = static_cast<UIFontID>(cmd.text.font_id);
             const UIFontAtlas* atlas = UI_Text_Get_Atlas(fid);
             if (!atlas) break;
 
-            if (current_font != fid) {
-                flush_verts(text_verts, true);
+            // Re-setup when font changes OR when the SDF/legacy program
+            // doesn't match what this atlas needs (prevents SDF program
+            // leaking into subsequent FNT text commands).
+            bool need_sdf = atlas->is_sdf && g_program_sdf;
+            if (current_font != fid || current_sdf != need_sdf) {
+                flush_verts(text_verts, true, current_sdf);
                 ensure_font_texture(fid);
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, g_font_textures[fid]);
+
+                if (need_sdf) {
+                    glUseProgram(g_program_sdf);
+                    glUniform2f(g_sdf_u_viewport,
+                                static_cast<float>(win_w),
+                                static_cast<float>(win_h));
+                    glUniform1i(g_sdf_u_tex, 0);
+
+                    float font_scale = UI_Text_Get_Font_Scale();
+                    float render_size = atlas->line_height * scale * font_scale;
+                    float screen_px_range = atlas->sdf_pixel_range *
+                        (render_size / atlas->sdf_font_size);
+                    float smoothing = 0.5f / screen_px_range;
+                    smoothing = std::max(0.01f, std::min(0.5f, smoothing));
+                    glUniform2f(g_sdf_u_sdf_params, smoothing, 0.5f);
+                    current_sdf = true;
+                } else {
+                    if (current_sdf) restore_main_program();
+                    current_sdf = false;
+                }
                 current_font = fid;
             }
 
@@ -273,27 +378,31 @@ void GL_UI_Render(int win_w, int win_h,
             float cx = off_x + cmd.text.x * scale;
             float cy = off_y + cmd.text.y * scale;
 
+            float glyph_scale = scale;
+            if (atlas->is_sdf) glyph_scale *= UI_Text_Get_Font_Scale();
+
             for (int c = 0; c < cmd.text.text_length; c++) {
                 uint8_t ch = static_cast<uint8_t>(str[c]);
                 const UIGlyph& gl = atlas->glyphs[ch];
-                if (gl.width <= 0) { cx += gl.advance * scale; continue; }
+                if (gl.width <= 0) { cx += gl.advance * glyph_scale; continue; }
 
                 float gx0 = cx;
-                float gy0 = cy;
-                float gx1 = cx + gl.width * scale;
-                float gy1 = cy + gl.height * scale;
+                float gy0 = atlas->is_sdf ? (cy + gl.top_blank * glyph_scale) : cy;
+                float gx1 = cx + gl.width * glyph_scale;
+                float gy1 = gy0 + gl.height * glyph_scale;
 
                 push_quad(text_verts, gx0, gy0, gx1, gy1,
                           gl.u0, gl.v0, gl.u1, gl.v1,
                           cr, cg, cb, ca);
-                cx += gl.advance * scale;
+                cx += gl.advance * glyph_scale;
             }
             break;
         }
 
         case UI_CMD_CLIP_PUSH:
             flush_verts(solid_verts, false);
-            flush_verts(text_verts, true);
+            flush_verts(text_verts, true, current_sdf);
+            restore_main_program();
             g_clip_stack.push_back({cmd.clip.x, cmd.clip.y,
                                     cmd.clip.w, cmd.clip.h});
             apply_scissor(win_w, win_h, off_x, off_y, scale);
@@ -301,7 +410,8 @@ void GL_UI_Render(int win_w, int win_h,
 
         case UI_CMD_CLIP_POP:
             flush_verts(solid_verts, false);
-            flush_verts(text_verts, true);
+            flush_verts(text_verts, true, current_sdf);
+            restore_main_program();
             if (!g_clip_stack.empty()) g_clip_stack.pop_back();
             apply_scissor(win_w, win_h, off_x, off_y, scale);
             break;
@@ -311,8 +421,9 @@ void GL_UI_Render(int win_w, int win_h,
         }
     }
 
+    flush_verts(text_verts, true, current_sdf);
+    restore_main_program();
     flush_verts(solid_verts, false);
-    flush_verts(text_verts, true);
 
     glDisableVertexAttribArray(0);
     glDisableVertexAttribArray(1);
@@ -333,6 +444,10 @@ void GL_UI_Shutdown()
     if (g_program) {
         glDeleteProgram(g_program);
         g_program = 0;
+    }
+    if (g_program_sdf) {
+        glDeleteProgram(g_program_sdf);
+        g_program_sdf = 0;
     }
     g_initialized = false;
 }

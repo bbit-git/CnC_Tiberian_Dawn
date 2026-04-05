@@ -40,6 +40,9 @@
 #include "gamedlg.h"
 #include "sounddlg.h"
 #include "visudlg.h"
+#ifdef USE_RENDER_BRIDGE
+#include "render_bridge.h"
+#endif
 
 
 /***********************************************************************************************
@@ -56,6 +59,75 @@
  *=============================================================================================*/
 void GameControlsClass::Process(void)
 {
+#ifdef USE_RENDER_BRIDGE
+	{
+		int screen_w = SeenBuff.Get_Width();
+		int screen_h = SeenBuff.Get_Height();
+		{ extern void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h);
+		  Render_Bridge_Get_Logical_Screen_Size(screen_w, screen_h); }
+
+		int max_speed = 7;
+		float speed = 1.0f - static_cast<float>(Options.GameSpeed) / max_speed;
+		float scroll = 1.0f - static_cast<float>(Options.ScrollRate) / max_speed;
+
+		bool process = true;
+		while (process) {
+			UIGameControlsLabels gc_labels = {
+				Text_String(TXT_GAME_CONTROLS),
+				Text_String(TXT_SPEED),
+				Text_String(TXT_SLOWER),
+				Text_String(TXT_FASTER),
+				Text_String(TXT_SCROLLRATE),
+				Text_String(TXT_VISUAL_CONTROLS),
+				Text_String(TXT_SOUND_CONTROLS),
+				Text_String(TXT_OPTIONS_MENU),
+			};
+			Render_Bridge_UI_Set_Game_Controls(speed, scroll, screen_w, screen_h, gc_labels);
+
+			while (Render_Bridge_UI_Get_Game_Controls_Result() == UI_GCTRL_NONE) {
+				// Live-apply speed each frame
+				float cur_speed = 0, cur_scroll = 0;
+				Render_Bridge_UI_Get_Game_Controls_State(cur_speed, cur_scroll);
+				int gamespeed = max_speed - static_cast<int>(cur_speed * max_speed);
+				if (gamespeed < 0) gamespeed = 0;
+				if (gamespeed > max_speed) gamespeed = max_speed;
+				Options.GameSpeed = gamespeed;
+
+				if (Main_Loop()) {
+					Render_Bridge_UI_Clear_Game_Controls();
+					return;
+				}
+			}
+
+			int result = Render_Bridge_UI_Get_Game_Controls_Result();
+			Render_Bridge_UI_Get_Game_Controls_State(speed, scroll);
+
+			int gamespeed = max_speed - static_cast<int>(speed * max_speed);
+			int scrollrate = max_speed - static_cast<int>(scroll * max_speed);
+			if (gamespeed < 0) gamespeed = 0;
+			if (gamespeed > max_speed) gamespeed = max_speed;
+			if (scrollrate < 0) scrollrate = 0;
+			if (scrollrate > max_speed) scrollrate = max_speed;
+
+			Options.GameSpeed = gamespeed;
+			Options.ScrollRate = scrollrate;
+
+			if (GameToPlay != GAME_NORMAL) {
+				OutList.Add(EventClass(EventClass::GAMESPEED, gamespeed));
+			}
+
+			if (result == UI_GCTRL_VISUAL) {
+				VisualControlsClass().Process();
+			} else if (result == UI_GCTRL_SOUND) {
+				SoundControlsClass().Process();
+			} else {
+				process = false;
+			}
+		}
+		Options.Save_Settings();
+		return;
+	}
+#else
 	int factor = (SeenBuff.Get_Width() == 320) ? 1 : 2;
 
 	/*
@@ -418,5 +490,6 @@ void GameControlsClass::Process(void)
 			pressed = false;
 		}
 	}
+#endif // USE_RENDER_BRIDGE
 }
 

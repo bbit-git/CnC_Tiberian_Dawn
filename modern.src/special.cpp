@@ -36,6 +36,9 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "function.h"
+#ifdef USE_RENDER_BRIDGE
+#include "render_bridge.h"
+#endif
 
 #define	OPTION_WIDTH	236
 #define	OPTION_HEIGHT	162
@@ -44,6 +47,62 @@
 
 void Special_Dialog(void)
 {
+#ifdef USE_RENDER_BRIDGE
+	{
+		SpecialClass oldspecial = Special;
+		int screen_w = SeenBuff.Get_Width();
+		int screen_h = SeenBuff.Get_Height();
+		{ extern void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h);
+		  Render_Bridge_Get_Logical_Screen_Size(screen_w, screen_h); }
+
+		bool opts[10];
+		const char* labels[10];
+		opts[0] = Special.IsSeparate;       labels[0] = Text_String(TXT_SEPARATE_HELIPAD);
+		opts[1] = Special.IsVisibleTarget;  labels[1] = Text_String(TXT_VISIBLE_TARGET);
+		opts[2] = Special.IsTreeTarget;     labels[2] = Text_String(TXT_TREE_TARGET);
+		opts[3] = Special.IsMCVDeploy;      labels[3] = Text_String(TXT_MCV_DEPLOY);
+		opts[4] = Special.IsSmartDefense;   labels[4] = Text_String(TXT_SMART_DEFENCE);
+		opts[5] = Special.IsThreePoint;     labels[5] = Text_String(TXT_THREE_POINT);
+		opts[6] = Special.IsTFast;          labels[6] = Text_String(TXT_TIBERIUM_FAST);
+		opts[7] = Special.IsRoad;           labels[7] = Text_String(TXT_ROAD_PIECES);
+		opts[8] = Special.IsScatter;        labels[8] = Text_String(TXT_SCATTER);
+		opts[9] = Special.IsNamed;          labels[9] = Text_String(TXT_SHOW_NAMES);
+
+		Render_Bridge_UI_Set_Special_Dialog(opts, labels, screen_w, screen_h,
+		                                    Text_String(TXT_SPECIAL_OPTIONS),
+		                                    Text_String(TXT_OK),
+		                                    Text_String(TXT_CANCEL));
+
+		while (Render_Bridge_UI_Get_Special_Dialog_Result() == 0) {
+			if (Main_Loop()) {
+				Render_Bridge_UI_Clear_Special_Dialog();
+				goto special_cleanup;
+			}
+		}
+
+		if (Render_Bridge_UI_Get_Special_Dialog_Result() == 1) {
+			bool result[10];
+			Render_Bridge_UI_Get_Special_Dialog_State(result);
+			oldspecial.IsSeparate       = result[0];
+			oldspecial.IsVisibleTarget  = result[1];
+			oldspecial.IsTreeTarget     = result[2];
+			oldspecial.IsMCVDeploy      = result[3];
+			oldspecial.IsSmartDefense   = result[4];
+			oldspecial.IsThreePoint     = result[5];
+			oldspecial.IsTFast          = result[6];
+			oldspecial.IsRoad           = result[7];
+			oldspecial.IsScatter        = result[8];
+			oldspecial.IsNamed          = result[9];
+			OutList.Add(EventClass(oldspecial));
+		}
+
+		special_cleanup:
+		HiddenPage.Clear();
+		Map.Flag_To_Redraw(true);
+		Map.Render();
+		return;
+	}
+#else
 	SpecialClass oldspecial = Special;
 	GadgetClass * buttons = NULL;
 	static struct {
@@ -267,9 +326,6 @@ void Special_Dialog(void)
 	HiddenPage.Clear();
 	Map.Flag_To_Redraw(true);
 	Map.Render();
+#endif // USE_RENDER_BRIDGE
 }
-
-
-
-
 

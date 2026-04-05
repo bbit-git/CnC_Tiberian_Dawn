@@ -38,6 +38,9 @@
 
 #include "function.h"
 #include "sounddlg.h"
+#ifdef USE_RENDER_BRIDGE
+#include "render_bridge.h"
+#endif
 
 class MusicListClass : public ListClass
 {
@@ -114,6 +117,97 @@ int SoundControlsClass::Init(void)
  *=============================================================================================*/
 void SoundControlsClass::Process(void)
 {
+#ifdef USE_RENDER_BRIDGE
+	{
+		int screen_w = SeenBuff.Get_Width();
+		int screen_h = SeenBuff.Get_Height();
+		{ extern void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h);
+		  Render_Bridge_Get_Logical_Screen_Size(screen_w, screen_h); }
+
+		// Build track list
+		const char* track_names[32];
+		int track_count = 0;
+		for (ThemeType t = THEME_FIRST; t < Theme.Max_Themes(); t++) {
+			if (Theme.Is_Allowed(t)) {
+				track_names[track_count] = Theme.Full_Name(t);
+				track_count++;
+				if (track_count >= 32) break;
+			}
+		}
+
+		float music_vol = static_cast<float>(Options.ScoreVolume) / 255.0f;
+		float sfx_vol = static_cast<float>(Options.Volume) / 255.0f;
+
+		UISoundControlsLabels sc_labels = {
+			Text_String(TXT_SOUND_CONTROLS),
+			Text_String(TXT_MUSIC_VOLUME),
+			Text_String(TXT_SOUND_VOLUME),
+			Text_String(TXT_SHUFFLE),
+			Text_String(TXT_REPEAT),
+			Text_String(TXT_ON),
+			Text_String(TXT_OFF),
+			Text_String(TXT_PLAY),
+			Text_String(TXT_STOP),
+			Text_String(TXT_OPTIONS_MENU),
+		};
+		Render_Bridge_UI_Set_Sound_Controls(music_vol, sfx_vol, track_names, track_count,
+		                                     0, Options.IsScoreShuffle, Options.IsScoreRepeat,
+		                                     Theme.Still_Playing(), screen_w, screen_h, sc_labels);
+
+		while (Render_Bridge_UI_Has_Active_Sound_Controls()) {
+			int result = Render_Bridge_UI_Get_Sound_Controls_Result();
+
+			if (result == UI_SND_PLAY) {
+				float mv, sv;
+				int sel;
+				float scroll;
+				bool shuf, rep;
+				Render_Bridge_UI_Get_Sound_Controls_State(mv, sv, sel, scroll, shuf, rep);
+				int idx = 0;
+				for (ThemeType t = THEME_FIRST; t < Theme.Max_Themes(); t++) {
+					if (Theme.Is_Allowed(t)) {
+						if (idx == sel) {
+							Theme.Queue_Song(t);
+							break;
+						}
+						idx++;
+					}
+				}
+			} else if (result == UI_SND_STOP) {
+				Theme.Stop();
+			} else if (result == UI_SND_OK) {
+				float mv, sv;
+				int sel;
+				float scroll;
+				bool shuf, rep;
+				Render_Bridge_UI_Get_Sound_Controls_State(mv, sv, sel, scroll, shuf, rep);
+				Options.Set_Score_Volume(static_cast<int>(mv * 255.0f));
+				Options.Set_Sound_Volume(static_cast<int>(sv * 255.0f), true);
+				Options.Set_Shuffle(shuf);
+				Options.Set_Repeat(rep);
+				Options.Save_Settings();
+				break;
+			}
+
+			// Live-apply volume
+			{
+				float mv, sv;
+				int sel;
+				float scroll;
+				bool shuf, rep;
+				Render_Bridge_UI_Get_Sound_Controls_State(mv, sv, sel, scroll, shuf, rep);
+				Options.Set_Score_Volume(static_cast<int>(mv * 255.0f));
+				Options.Set_Sound_Volume(static_cast<int>(sv * 255.0f), true);
+			}
+
+			if (Main_Loop()) {
+				Render_Bridge_UI_Clear_Sound_Controls();
+				return;
+			}
+		}
+		return;
+	}
+#else
 //	ThemeType theme;
 
 	int factor 		= (SeenBuff.Get_Width() == 320) ? 1 : 2;
@@ -409,6 +503,7 @@ void SoundControlsClass::Process(void)
 		listbox.Remove_Item(ptr);
 		delete [] (char*)ptr;
 	}
+#endif // USE_RENDER_BRIDGE
 }
 
 

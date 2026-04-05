@@ -137,6 +137,7 @@ void CreditClass::Graphic_Logic(bool forced)
  *=============================================================================================*/
 void CreditClass::AI(bool forced)
 {
+	if (!PlayerPtr) return;
 	Credits = PlayerPtr->Available_Money();
 
 	/*

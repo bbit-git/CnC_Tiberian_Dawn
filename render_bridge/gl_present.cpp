@@ -3,6 +3,9 @@
  */
 
 #include "gl_present_internal.h"
+#include "ui/ui_dialog.h"
+#include "ui/ui_input.h"
+#include "ui/ui_main_menu.h"
 #include "render_bridge.h"
 #include "function.h"
 #include "dbg.h"
@@ -278,6 +281,7 @@ bool GL_Present_Init(int w, int h)
 
 void GL_Present_Shutdown()
 {
+    UI_Main_Menu_Shutdown();
     if (g_indexed_tex) { glDeleteTextures(1, &g_indexed_tex); g_indexed_tex = 0; }
     if (g_palette_tex) { glDeleteTextures(1, &g_palette_tex); g_palette_tex = 0; }
     if (g_tac_tex) { glDeleteTextures(1, &g_tac_tex); g_tac_tex = 0; }
@@ -520,8 +524,15 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
     glDisable(GL_DEPTH_TEST);
     glEnableVertexAttribArray(0);
 
-    GL_Present_Bind_Palette_Program();
-    GL_Present_Draw_Regions(ctx, indexed_pixels, vga_palette);
+    // Skip SeenBuff (PCX) draw when the main menu has an HD background —
+    // the HD texture covers the full screen and the PCX would show through edges.
+    bool skip_legacy_bg = !ctx.in_main_loop &&
+                          Render_Bridge_UI_Has_Active_Main_Menu() &&
+                          UI_Main_Menu_Has_HD_Background();
+    if (!skip_legacy_bg) {
+        GL_Present_Bind_Palette_Program();
+        GL_Present_Draw_Regions(ctx, indexed_pixels, vga_palette);
+    }
 
     if (ctx.in_main_loop) {
         bool has_ui_overlay = GL_Present_Draw_UI_Overlay(ctx, vga_palette);
@@ -535,7 +546,17 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         extern void UI_Header_Emit();
         extern void UI_Help_Emit();
         extern void UI_Messages_Emit();
+        extern void UI_Dialog_Emit();
         extern void UI_Sidebar_Emit();
+        extern void UI_Game_Options_Emit();
+        extern void UI_Load_Dialog_Emit();
+        extern void UI_Game_Controls_Emit();
+        extern void UI_Visual_Controls_Emit();
+        extern void UI_Sound_Controls_Emit();
+        extern void UI_Special_Dialog_Emit();
+        extern void UI_Expansion_Dialog_Emit();
+        extern void UI_Com_Scenario_Emit();
+
         extern void UI_Tooltip_Emit(int, int, int, int);
         extern void GL_UI_Render(int, int, int, int, float);
         extern int g_mouse_x, g_mouse_y;
@@ -545,11 +566,64 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         UI_Help_Emit();
         UI_Messages_Emit();
         UI_Sidebar_Emit();
+        // Complex dialogs (only one active at a time)
+        UI_Game_Options_Emit();
+        UI_Load_Dialog_Emit();
+        UI_Game_Controls_Emit();
+        UI_Visual_Controls_Emit();
+        UI_Sound_Controls_Emit();
+        UI_Special_Dialog_Emit();
+        UI_Expansion_Dialog_Emit();
+        UI_Com_Scenario_Emit();
+        UI_Main_Menu_Emit();
+        // Simple confirm (covers CCMessageBox + Surrender)
+        UI_Dialog_Emit();
         UI_Tooltip_Emit(g_mouse_x, g_mouse_y,
                         layout_w, layout_h);
         Render_Bridge_UI_End_Frame();
         GL_UI_Render(ctx.win_w, ctx.win_h,
                      ctx.offset_x, ctx.offset_y, ctx.ui_scale);
+    }
+
+    // Outside the main loop, emit any active bridge-native dialogs so that this
+    // single swap shows both the background and the dialog — no second swap needed.
+    // Dialog emitters use Render_Bridge_Get_Logical_Screen_Size() for positioning
+    // (physical display coordinates), so GL_UI_Render must use the matching
+    // logical-screen-derived scale, NOT the legacy SeenBuff-based scale.
+    if (!ctx.in_main_loop && Render_Bridge_UI_Has_Any_Active_Dialog()) {
+        if (Render_Bridge_UI_Has_Active_Main_Menu()) {
+            UI_Main_Menu_Draw_HD_Background(ctx.win_w, ctx.win_h);
+        }
+
+        extern void Render_Bridge_UI_Begin_Frame();
+        extern void Render_Bridge_UI_End_Frame();
+        extern void UI_Game_Options_Emit();
+        extern void UI_Load_Dialog_Emit();
+        extern void UI_Game_Controls_Emit();
+        extern void UI_Visual_Controls_Emit();
+        extern void UI_Sound_Controls_Emit();
+        extern void UI_Special_Dialog_Emit();
+        extern void UI_Expansion_Dialog_Emit();
+        extern void UI_Com_Scenario_Emit();
+
+        extern void UI_Dialog_Emit();
+        extern void GL_UI_Render(int, int, int, int, float);
+
+        Render_Bridge_UI_Begin_Frame();
+        UI_Game_Options_Emit();
+        UI_Load_Dialog_Emit();
+        UI_Game_Controls_Emit();
+        UI_Visual_Controls_Emit();
+        UI_Sound_Controls_Emit();
+        UI_Special_Dialog_Emit();
+        UI_Expansion_Dialog_Emit();
+        UI_Com_Scenario_Emit();
+        UI_Main_Menu_Emit();
+        UI_Dialog_Emit();
+        Render_Bridge_UI_End_Frame();
+
+        GL_UI_Render(ctx.win_w, ctx.win_h,
+                     ctx.legacy_offset_x, ctx.legacy_offset_y, ctx.legacy_ui_scale);
     }
 
     GL_Present_Draw_Debug_Overlays(ctx);
@@ -558,4 +632,105 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
     glDisableVertexAttribArray(0);
     SDL_GL_SwapWindow(g_window);
     return true;
+}
+
+void Render_Bridge_Idle_Frame()
+{
+    if (!g_gl_ready) return;
+
+    SDL_GL_MakeCurrent(g_window, g_gl_ctx);
+
+    int buf_w = SeenBuff.Get_Width();
+    int buf_h = SeenBuff.Get_Height();
+    if (buf_w <= 0) buf_w = 640;
+    if (buf_h <= 0) buf_h = 400;
+
+    int win_w = 0, win_h = 0;
+    if (!resolve_window_size(win_w, win_h, buf_w, buf_h)) return;
+
+    float sx = static_cast<float>(win_w) / static_cast<float>(buf_w);
+    float sy = static_cast<float>(win_h) / static_cast<float>(buf_h);
+    float ui_scale = (sx < sy) ? sx : sy;
+    int offset_x = static_cast<int>((win_w - buf_w * ui_scale) * 0.5f);
+    int offset_y = static_cast<int>((win_h - buf_h * ui_scale) * 0.5f);
+
+    glViewport(0, 0, win_w, win_h);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_DEPTH_TEST);
+    glEnableVertexAttribArray(0);
+
+    // Upload current palette so the indexed SeenBuff renders if needed
+    const uint8_t* pal = static_cast<const uint8_t*>((void*)Get_Palette());
+    if (!pal) pal = GamePalette;
+    if (pal) {
+        upload_palette(pal);
+    }
+
+    // Draw the SeenBuff as background (shows the menu screen behind the dialog)
+    const uint8_t* pixels = static_cast<const uint8_t*>(SeenBuff.Get_Buffer());
+    if (pixels) {
+        int pitch = SeenBuff.Get_Full_Pitch();
+        upload_indexed_frame(pixels, pitch, buf_w, buf_h);
+        GL_Present_Bind_Palette_Program();
+        // Build a minimal context for legacy region draw
+        GLPresentFrameContext ctx;
+        ctx.win_w = win_w;
+        ctx.win_h = win_h;
+        ctx.buffer_w = buf_w;
+        ctx.buffer_h = buf_h;
+        ctx.legacy_ui_scale = ui_scale;
+        ctx.legacy_offset_x = offset_x;
+        ctx.legacy_offset_y = offset_y;
+        ctx.ui_scale = ui_scale;
+        ctx.offset_x = offset_x;
+        ctx.offset_y = offset_y;
+        ctx.in_main_loop = false;
+        ctx.tactical_game_x = 0;
+        ctx.tactical_game_y = 0;
+        ctx.tactical_game_w = buf_w;
+        ctx.tactical_game_h = buf_h;
+        ctx.side_game_x = buf_w;
+        ctx.side_game_w = 0;
+        GL_Present_Draw_Regions(ctx, pixels, pal);
+    }
+
+    // If the main menu is active with an HD background, draw it over the SeenBuff.
+    if (Render_Bridge_UI_Has_Active_Main_Menu()) {
+        UI_Main_Menu_Draw_HD_Background(win_w, win_h);
+    }
+
+    // Run only dialog emitters — no gameplay UI (header, sidebar, etc.)
+    {
+        extern void Render_Bridge_UI_Begin_Frame();
+        extern void Render_Bridge_UI_End_Frame();
+        extern void UI_Game_Options_Emit();
+        extern void UI_Load_Dialog_Emit();
+        extern void UI_Game_Controls_Emit();
+        extern void UI_Visual_Controls_Emit();
+        extern void UI_Sound_Controls_Emit();
+        extern void UI_Special_Dialog_Emit();
+        extern void UI_Expansion_Dialog_Emit();
+        extern void UI_Com_Scenario_Emit();
+
+        extern void UI_Dialog_Emit();
+        extern void GL_UI_Render(int, int, int, int, float);
+
+        Render_Bridge_UI_Begin_Frame();
+        UI_Game_Options_Emit();
+        UI_Load_Dialog_Emit();
+        UI_Game_Controls_Emit();
+        UI_Visual_Controls_Emit();
+        UI_Sound_Controls_Emit();
+        UI_Special_Dialog_Emit();
+        UI_Expansion_Dialog_Emit();
+        UI_Com_Scenario_Emit();
+        UI_Main_Menu_Emit();
+        UI_Dialog_Emit();
+        Render_Bridge_UI_End_Frame();
+        GL_UI_Render(win_w, win_h, offset_x, offset_y, ui_scale);
+    }
+
+    glDisableVertexAttribArray(0);
+    SDL_GL_SwapWindow(g_window);
 }

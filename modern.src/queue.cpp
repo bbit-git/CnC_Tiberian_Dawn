@@ -319,6 +319,8 @@ bool Queue_Exit(void)
  *=========================================================================*/
 void Queue_AI(void)
 {
+	if (!PlayerPtr) return;
+
 #ifdef DEMO
 	Queue_AI_Normal();
 #else	//DEMO

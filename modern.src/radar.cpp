@@ -344,6 +344,7 @@ void RadarClass::Draw_It(bool forced)
 	if (!forced && !IsToRedraw && !FullRedraw) return;
 
 	static HousesType _house = HOUSE_NONE;
+	if (!PlayerPtr) return;
 	if (PlayerPtr->ActLike != _house) {
 		char name[_MAX_NAME + _MAX_EXT];
 

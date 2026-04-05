@@ -17,6 +17,7 @@ enum UIDialogResult : int {
     UI_DIALOG_NONE   = 0,   // dialog still open
     UI_DIALOG_OK     = 1,   // confirmed
     UI_DIALOG_CANCEL = 2,   // cancelled / closed
+    UI_DIALOG_EXTRA  = 3,   // third button pressed
 };
 
 /// Dialog style.
@@ -53,7 +54,8 @@ UIDialogResult UI_Dialog_End(int dialog_x, int dialog_y,
                              int dialog_w, int dialog_h,
                              const char* ok_label,
                              const char* cancel_label,
-                             const UIDialogStyle& style);
+                             const UIDialogStyle& style,
+                             const char* extra_label = nullptr);
 
 /// Convenience: simple confirm dialog with message, OK, and Cancel.
 /// Returns result code.
@@ -65,5 +67,8 @@ UIDialogResult UI_Confirm_Dialog(int screen_w, int screen_h,
 /// Convenience: message box with OK only.
 UIDialogResult UI_Message_Box(int screen_w, int screen_h,
                                const char* title, const char* message);
+
+/// Emit the pending bridge-owned modal dialog into the current UI frame.
+void UI_Dialog_Emit();
 
 #endif // CNC_UI_DIALOG_H
