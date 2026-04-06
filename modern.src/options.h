@@ -92,6 +92,8 @@ class OptionsClass {
 		unsigned IsScoreShuffle:1;	// Score list should shuffle?
 		unsigned IsDeathAnnounce:1;// Announce enemy deaths?
 		unsigned IsFreeScroll:1;	// Allow free direction scrolling?
+		unsigned IsHDGraphics:1;	// Use remastered HD graphics?
+		unsigned HasHDGraphicsSetting:1; // Loaded/saved HDGraphics setting exists?
 
 	protected:
 
@@ -99,6 +101,8 @@ class OptionsClass {
 
 	private:
 };
+
+void Options_Set_HD_Graphics_Default(bool enabled);
 
 
 #endif

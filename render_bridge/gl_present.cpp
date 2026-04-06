@@ -18,6 +18,8 @@ extern bool InMainLoop;
 
 #ifdef USE_RENDER_BRIDGE_GL_SPRITES
 extern int GL_Sprites_Build_Atlas(const uint8_t* vga_palette);
+extern void GL_Sprites_Init();
+extern void Options_Set_HD_Graphics_Default(bool enabled);
 #endif
 
 // Shared GL objects used by every presentation pass.
@@ -271,6 +273,10 @@ bool GL_Present_Init(int w, int h)
     g_tex_w = w;
     g_tex_h = h;
     g_gl_ready = true;
+#ifdef USE_RENDER_BRIDGE_GL_SPRITES
+    GL_Sprites_Init();
+    Options_Set_HD_Graphics_Default(Render_Bridge_Get_HD_Graphics());
+#endif
 
     int sw = 0;
     int sh = 0;
@@ -527,7 +533,6 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
     // Skip SeenBuff (PCX) draw when the main menu has an HD background —
     // the HD texture covers the full screen and the PCX would show through edges.
     bool skip_legacy_bg = !ctx.in_main_loop &&
-                          Render_Bridge_UI_Has_Active_Main_Menu() &&
                           UI_Main_Menu_Has_HD_Background();
     if (!skip_legacy_bg) {
         GL_Present_Bind_Palette_Program();
@@ -591,7 +596,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
     // (physical display coordinates), so GL_UI_Render must use the matching
     // logical-screen-derived scale, NOT the legacy SeenBuff-based scale.
     if (!ctx.in_main_loop && Render_Bridge_UI_Has_Any_Active_Dialog()) {
-        if (Render_Bridge_UI_Has_Active_Main_Menu()) {
+        if (UI_Main_Menu_Has_HD_Background()) {
             UI_Main_Menu_Draw_HD_Background(ctx.win_w, ctx.win_h);
         }
 
@@ -696,7 +701,7 @@ void Render_Bridge_Idle_Frame()
     }
 
     // If the main menu is active with an HD background, draw it over the SeenBuff.
-    if (Render_Bridge_UI_Has_Active_Main_Menu()) {
+    if (!InMainLoop && UI_Main_Menu_Has_HD_Background()) {
         UI_Main_Menu_Draw_HD_Background(win_w, win_h);
     }
 

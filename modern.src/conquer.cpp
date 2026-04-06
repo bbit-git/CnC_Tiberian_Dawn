@@ -63,6 +63,7 @@
 
 #include	"function.h"
 #ifdef USE_RENDER_BRIDGE
+#include "render_bridge.h"
 extern void Render_Bridge_Debug_HUD_Toggle();
 extern void Render_Bridge_Debug_Bars_Toggle();
 extern void Render_Bridge_Debug_Sources_Toggle();
@@ -522,6 +523,16 @@ void Keyboard_Process(KeyNumType &input)
 		//DebugColour++;
 		//DebugColour &=7;
 	}
+
+#ifdef USE_RENDER_BRIDGE
+	if (input == (KN_F7 | KN_CTRL_BIT)) {
+		bool hd = !Render_Bridge_Get_HD_Graphics();
+		Render_Bridge_Set_HD_Graphics(hd);
+		Options.IsHDGraphics = hd;
+		Options.HasHDGraphicsSetting = true;
+		input = KN_NONE;
+	}
+#endif
 
 	/*
 	**	Process prerecorded team selection. This will be an addative select

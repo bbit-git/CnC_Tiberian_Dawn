@@ -1104,7 +1104,7 @@ bool Select_Game(bool fade)
 								break;
 							case 3: selection = SEL_LOAD_MISSION;   break;
 							case 4: selection = SEL_MULTIPLAYER_GAME; GameToPlay = GAME_NORMAL; break;
-							case 5: selection = SEL_NONE; break;  // Options placeholder
+							case 5: Options.Process(); display = true; fade = true; selection = SEL_NONE; break;  // Show options dialog
 							case 6: selection = SEL_EXIT; break;
 #ifdef NEWMENU
 							case 7: selection = SEL_NEW_SCENARIO; break;

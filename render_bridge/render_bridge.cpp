@@ -84,6 +84,7 @@ static struct {
 static struct {
     bool  active;
     float brightness, color, contrast, tint;
+    bool  hd_graphics;
     int   result;
     int   screen_w, screen_h;
     char  lbl_title[32];
@@ -91,9 +92,12 @@ static struct {
     char  lbl_color[32];
     char  lbl_contrast[32];
     char  lbl_tint[32];
+    char  lbl_hd_graphics[32];
     char  lbl_reset[32];
     char  lbl_ok[32];
 } g_visual_controls_state = {};
+
+static bool g_hd_graphics = true;
 
 // --- Sound Controls state (Phase 4) ---
 static struct {
@@ -742,6 +746,7 @@ void Render_Bridge_UI_Game_Controls_Set_Result(int r, float speed, float scroll)
 
 void Render_Bridge_UI_Set_Visual_Controls(float brightness, float color,
                                            float contrast, float tint,
+                                           bool hd_graphics,
                                            int screen_w, int screen_h,
                                            const UIVisualControlsLabels& labels)
 {
@@ -750,6 +755,7 @@ void Render_Bridge_UI_Set_Visual_Controls(float brightness, float color,
     g_visual_controls_state.color = color;
     g_visual_controls_state.contrast = contrast;
     g_visual_controls_state.tint = tint;
+    g_visual_controls_state.hd_graphics = hd_graphics;
     g_visual_controls_state.result = 0;
     g_visual_controls_state.screen_w = screen_w;
     g_visual_controls_state.screen_h = screen_h;
@@ -758,17 +764,20 @@ void Render_Bridge_UI_Set_Visual_Controls(float brightness, float color,
     copy_label(g_visual_controls_state.lbl_color, 32, labels.color);
     copy_label(g_visual_controls_state.lbl_contrast, 32, labels.contrast);
     copy_label(g_visual_controls_state.lbl_tint, 32, labels.tint);
+    copy_label(g_visual_controls_state.lbl_hd_graphics, 32, labels.hd_graphics);
     copy_label(g_visual_controls_state.lbl_reset, 32, labels.reset);
     copy_label(g_visual_controls_state.lbl_ok, 32, labels.ok);
 }
 
 void Render_Bridge_UI_Get_Visual_Controls_State(float& brightness, float& color,
-                                                 float& contrast, float& tint)
+                                                 float& contrast, float& tint,
+                                                 bool& hd_graphics)
 {
     brightness = g_visual_controls_state.brightness;
     color = g_visual_controls_state.color;
     contrast = g_visual_controls_state.contrast;
     tint = g_visual_controls_state.tint;
+    hd_graphics = g_visual_controls_state.hd_graphics;
 }
 
 int Render_Bridge_UI_Get_Visual_Controls_Result()
@@ -793,18 +802,21 @@ struct UIVisualControlsInternalLabels {
     const char* color;
     const char* contrast;
     const char* tint;
+    const char* hd_graphics;
     const char* reset;
     const char* ok;
 };
 
 bool Render_Bridge_UI_Visual_Controls_Get_Internal(
     float& brightness, float& color, float& contrast, float& tint,
+    bool& hd_graphics,
     int& screen_w, int& screen_h, UIVisualControlsInternalLabels& labels)
 {
     brightness = g_visual_controls_state.brightness;
     color = g_visual_controls_state.color;
     contrast = g_visual_controls_state.contrast;
     tint = g_visual_controls_state.tint;
+    hd_graphics = g_visual_controls_state.hd_graphics;
     screen_w = g_visual_controls_state.screen_w;
     screen_h = g_visual_controls_state.screen_h;
     labels.title = g_visual_controls_state.lbl_title;
@@ -812,22 +824,40 @@ bool Render_Bridge_UI_Visual_Controls_Get_Internal(
     labels.color = g_visual_controls_state.lbl_color;
     labels.contrast = g_visual_controls_state.lbl_contrast;
     labels.tint = g_visual_controls_state.lbl_tint;
+    labels.hd_graphics = g_visual_controls_state.lbl_hd_graphics;
     labels.reset = g_visual_controls_state.lbl_reset;
     labels.ok = g_visual_controls_state.lbl_ok;
     return g_visual_controls_state.active;
 }
 
 void Render_Bridge_UI_Visual_Controls_Set_Result(
-    int r, float brightness, float color, float contrast, float tint)
+    int r, float brightness, float color, float contrast, float tint,
+    bool hd_graphics)
 {
     g_visual_controls_state.brightness = brightness;
     g_visual_controls_state.color = color;
     g_visual_controls_state.contrast = contrast;
     g_visual_controls_state.tint = tint;
+    g_visual_controls_state.hd_graphics = hd_graphics;
+    Render_Bridge_Set_HD_Graphics(hd_graphics);
     if (r != 0) {
         g_visual_controls_state.result = r;
         g_visual_controls_state.active = false;
     }
+}
+
+void Render_Bridge_Set_HD_Graphics(bool enabled)
+{
+    if (g_hd_graphics == enabled) {
+        return;
+    }
+    g_hd_graphics = enabled;
+    Render_Bridge_Invalidate_HD_Sprite_Atlas();
+}
+
+bool Render_Bridge_Get_HD_Graphics()
+{
+    return g_hd_graphics;
 }
 
 // ========== Sound Controls (Phase 4) ==========

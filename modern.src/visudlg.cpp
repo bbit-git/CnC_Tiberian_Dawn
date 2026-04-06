@@ -87,6 +87,7 @@ void VisualControlsClass::Process(void)
 		float color = static_cast<float>(Options.Get_Color()) / 255.0f;
 		float contrast = static_cast<float>(Options.Get_Contrast()) / 255.0f;
 		float tint = static_cast<float>(Options.Get_Tint()) / 255.0f;
+		bool hd_graphics = Render_Bridge_Get_HD_Graphics();
 
 		UIVisualControlsLabels vc_labels = {
 			Text_String(TXT_VISUAL_CONTROLS),
@@ -94,19 +95,25 @@ void VisualControlsClass::Process(void)
 			Text_String(TXT_COLOR),
 			Text_String(TXT_CONTRAST),
 			Text_String(TXT_TINT),
+			"HD Graphics",
 			Text_String(TXT_RESET_MENU),
 			Text_String(TXT_GAME_CONTROLS),
 		};
 		Render_Bridge_UI_Set_Visual_Controls(brightness, color, contrast, tint,
+		                                      hd_graphics,
 		                                      screen_w, screen_h, vc_labels);
 
 		while (Render_Bridge_UI_Get_Visual_Controls_Result() == 0) {
 			float b, c2, cn, t;
-			Render_Bridge_UI_Get_Visual_Controls_State(b, c2, cn, t);
+			bool hd;
+			Render_Bridge_UI_Get_Visual_Controls_State(b, c2, cn, t, hd);
 			Options.Set_Brightness(static_cast<int>(b * 255.0f));
 			Options.Set_Color(static_cast<int>(c2 * 255.0f));
 			Options.Set_Contrast(static_cast<int>(cn * 255.0f));
 			Options.Set_Tint(static_cast<int>(t * 255.0f));
+			Render_Bridge_Set_HD_Graphics(hd);
+			Options.IsHDGraphics = hd;
+			Options.HasHDGraphicsSetting = true;
 
 			if (Main_Loop()) {
 				Render_Bridge_UI_Clear_Visual_Controls();
@@ -465,4 +472,3 @@ void VisualControlsClass::Process(void)
 	}
 #endif // USE_RENDER_BRIDGE
 }
-

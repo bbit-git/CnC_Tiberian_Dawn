@@ -19,11 +19,14 @@
 #include "render_bridge.h"
 #include "draw_list.h"
 #include "legacy_sprite_provider.h"
+#include "hd_sprite_provider.h"
 #include "texture_atlas.h"
 #include "gl/gl_house_color.h"
 #include "gl/gl_sprite_batch.h"
 #include "function.h"
 #include "dbg.h"
+#include <cstdio>
+#include <cstdlib>
 
 // td_platform.h defines min/max macros that conflict with GL headers
 #undef min
@@ -51,6 +54,8 @@ struct SpriteRenderStyle {
 };
 
 static LegacySpriteProvider g_provider;
+static HDSpriteProvider*    g_hd_provider = nullptr;
+static std::unordered_map<const void*, uint32_t> g_shape_identity;
 static TextureAtlas         g_atlas;
 static GLSpriteBatch        g_batch;
 static bool                 g_atlas_ready = false;
@@ -59,7 +64,7 @@ static int                  g_last_draw_calls = 0;
 static int                  g_last_fallback_sprites = 0;
 static int                  g_last_atlas_new_shapes = 0;
 
-// Cache: (shapefile_ptr << 16 | frame) → atlas frame ID
+// Cache: keyed by shapefile pointer, frame, and style hash.
 static std::unordered_map<uint64_t, AtlasFrameID> g_atlas_cache;
 
 // GL textures for atlas pages
@@ -241,6 +246,11 @@ static void invalidate_atlas()
     g_atlas_ready = false;
 }
 
+void Render_Bridge_Invalidate_HD_Sprite_Atlas()
+{
+    invalidate_atlas();
+}
+
 /// Ensure a shape frame is in the atlas. Returns atlas frame ID.
 static AtlasFrameID ensure_in_atlas(const ShapeCmd& cmd, const uint8_t* palette)
 {
@@ -253,47 +263,65 @@ static AtlasFrameID ensure_in_atlas(const ShapeCmd& cmd, const uint8_t* palette)
     auto it = g_atlas_cache.find(key);
     if (it != g_atlas_cache.end()) return it->second;
 
-    // Decode sprite
-    SpriteFrame frame;
-    if (!g_provider.Get_Frame(cmd.shapefile, cmd.shapenum, frame))
+    // Decode sprite. Prefer HD RGBA frames when a provider is registered and
+    // the shape identifier is an entity hash recognized by that provider.
+    SpriteFrame frame = {};
+    bool have_frame = false;
+    if (g_hd_provider && Render_Bridge_Get_HD_Graphics()) {
+        const void* shape_id = cmd.entity_hash
+                             ? reinterpret_cast<const void*>(static_cast<uintptr_t>(cmd.entity_hash))
+                             : cmd.shapefile;
+        have_frame = g_hd_provider->Get_Frame(shape_id, cmd.shapenum, frame);
+    }
+    if (!have_frame) {
+        have_frame = g_provider.Get_Frame(cmd.shapefile, cmd.shapenum, frame);
+    }
+    if (!have_frame)
         return static_cast<AtlasFrameID>(-1);
     if (!frame.pixels || frame.width <= 0 || frame.height <= 0)
         return static_cast<AtlasFrameID>(-1);
 
-    // Convert indexed pixels into RGBA atlas content. House color, ghost, and
-    // shadow are handled in the batch shader for supported cases.
+    // Convert indexed pixels into RGBA atlas content. HD frames are already
+    // RGBA; legacy frames are palette-converted here.
     int pixel_count = frame.width * frame.height;
     uint32_t* rgba = static_cast<uint32_t*>(malloc(pixel_count * 4));
     if (!rgba) return static_cast<AtlasFrameID>(-1);
 
-    const uint8_t* src = static_cast<const uint8_t*>(frame.pixels);
-    for (int y = 0; y < frame.height; y++) {
-        const uint8_t* row = src + y * frame.pitch;
-        for (int x = 0; x < frame.width; x++) {
-            int i = y * frame.width + x;
-            uint8_t idx = row[x];
-            if (idx == 0) {
-                rgba[i] = 0;
-                continue;
+    if (frame.pixel_format == SpritePixelFormat::RGBA_32BIT) {
+        memcpy(rgba, frame.pixels, pixel_count * 4);
+    } else {
+        const uint8_t* src = static_cast<const uint8_t*>(frame.pixels);
+        for (int y = 0; y < frame.height; y++) {
+            const uint8_t* row = src + y * frame.pitch;
+            for (int x = 0; x < frame.width; x++) {
+                int i = y * frame.width + x;
+                uint8_t idx = row[x];
+                if (idx == 0) {
+                    rgba[i] = 0;
+                    continue;
+                }
+
+                if (style.remap_table) {
+                    idx = style.remap_table[idx];
+                }
+
+                uint8_t r = palette[idx * 3 + 0] << 2;
+                uint8_t g = palette[idx * 3 + 1] << 2;
+                uint8_t b = palette[idx * 3 + 2] << 2;
+                uint8_t a = 255;
+
+                rgba[i] = (static_cast<uint32_t>(a) << 24) |
+                          (static_cast<uint32_t>(b) << 16) |
+                          (static_cast<uint32_t>(g) << 8) |
+                          r;
             }
-
-            if (style.remap_table) {
-                idx = style.remap_table[idx];
-            }
-
-            uint8_t r = palette[idx * 3 + 0] << 2;
-            uint8_t g = palette[idx * 3 + 1] << 2;
-            uint8_t b = palette[idx * 3 + 2] << 2;
-            uint8_t a = 255;
-
-            rgba[i] = (static_cast<uint32_t>(a) << 24) |
-                      (static_cast<uint32_t>(b) << 16) |
-                      (static_cast<uint32_t>(g) << 8) |
-                      r;
         }
     }
 
-    AtlasFrameID id = g_atlas.Add_Frame(rgba, frame.width, frame.height);
+    AtlasFrameID id = g_atlas.Add_Frame(rgba, frame.width, frame.height,
+                                        frame.origin_x, frame.origin_y,
+                                        frame.canvas_width, frame.canvas_height,
+                                        frame.native_scale);
     free(rgba);
 
     if (id != static_cast<AtlasFrameID>(-1)) {
@@ -306,6 +334,21 @@ static AtlasFrameID ensure_in_atlas(const ShapeCmd& cmd, const uint8_t* palette)
 void GL_Sprites_Init()
 {
     g_atlas.Init(2048);
+    static HDSpriteProvider g_hd_provider_storage;
+    const char* data_dir = std::getenv("CNC_REMASTERED_DATA");
+    if (data_dir && data_dir[0] != '\0') {
+        char textures_meg[1024];
+        char config_meg[1024];
+        std::snprintf(textures_meg, sizeof(textures_meg), "%s/TEXTURES_TD_SRGB.MEG", data_dir);
+        std::snprintf(config_meg, sizeof(config_meg), "%s/CONFIG.MEG", data_dir);
+        if (g_hd_provider_storage.Open(textures_meg) &&
+            g_hd_provider_storage.Load_Tileset_From_Meg(config_meg, "DATA\\XML\\TILESETS\\TD_UNITS.XML")) {
+            Render_Bridge_Register_HD_Sprite_Provider(&g_hd_provider_storage);
+        }
+    }
+    if (!Options.HasHDGraphicsSetting) {
+        Render_Bridge_Set_HD_Graphics(g_hd_provider != nullptr);
+    }
 }
 
 /// Build atlas from current draw list shapes.
@@ -391,6 +434,24 @@ int GL_Sprites_Last_Sprite_Count() { return g_last_rendered_sprites; }
 int GL_Sprites_Last_Draw_Calls()   { return g_last_draw_calls; }
 int GL_Sprites_Last_Fallback_Count() { return g_last_fallback_sprites; }
 
+void Render_Bridge_Register_HD_Sprite_Provider(void* provider)
+{
+    g_hd_provider = static_cast<HDSpriteProvider*>(provider);
+}
+
+void Render_Bridge_Register_Shape_Identity(const void* shapefile, uint32_t entity_hash)
+{
+    if (!shapefile || entity_hash == 0) return;
+    g_shape_identity[shapefile] = entity_hash;
+}
+
+uint32_t Render_Bridge_Get_Shape_Identity(const void* shapefile)
+{
+    if (!shapefile) return 0;
+    auto it = g_shape_identity.find(shapefile);
+    return it == g_shape_identity.end() ? 0u : it->second;
+}
+
 /// Render all CMD_SHAPE from draw list as GL textured quads.
 /// win_w/h: native window pixels. tac_*: tactical area in screen pixels.
 /// scale: zoom (screen pixels per game pixel). vp_x/y: viewport offset.
@@ -437,18 +498,26 @@ int GL_Sprites_Render(int win_w, int win_h,
         // Sprite position: game-buffer relative to tactical window
         float game_x = static_cast<float>(cmd.shape.x);
         float game_y = static_cast<float>(cmd.shape.y);
+        float sprite_w = static_cast<float>(region.w);
+        float sprite_h = static_cast<float>(region.h);
+        float canvas_w = static_cast<float>(region.canvas_w ? region.canvas_w : region.w);
+        float canvas_h = static_cast<float>(region.canvas_h ? region.canvas_h : region.h);
 
         // Apply SHAPE_CENTER
         if (cmd.shape.flags & SHAPE_CENTER) {
-            game_x -= region.w * 0.5f;
-            game_y -= region.h * 0.5f;
+            game_x -= canvas_w * 0.5f;
+            game_y -= canvas_h * 0.5f;
         }
+
+        game_x += static_cast<float>(region.origin_x);
+        game_y += static_cast<float>(region.origin_y);
 
         // Transform game position → screen position
         float screen_x = tac_screen_x + (game_x - vp_x) * scale;
         float screen_y = tac_screen_y + (game_y - vp_y) * scale;
-        float screen_w = region.w * scale;
-        float screen_h = region.h * scale;
+        float native_scale = region.native_scale > 0.0f ? region.native_scale : 1.0f;
+        float screen_w = sprite_w * scale / native_scale;
+        float screen_h = sprite_h * scale / native_scale;
 
         // Clip: skip if entirely outside tactical screen area
         if (!Render_Bridge_Debug_No_GL_Cull()) {
@@ -459,8 +528,8 @@ int GL_Sprites_Render(int win_w, int win_h,
         entry.region = region;
         entry.dst_x = screen_x;
         entry.dst_y = screen_y;
-        entry.scale_x = scale;
-        entry.scale_y = scale;
+        entry.scale_x = scale / native_scale;
+        entry.scale_y = scale / native_scale;
         entry.house_hue = style.house_hue;
         entry.flags = 0;
         if (cmd.shape.flags & SHAPE_HORZ_REV) entry.flags |= 0x01;

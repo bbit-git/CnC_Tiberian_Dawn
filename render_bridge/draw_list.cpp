@@ -14,12 +14,13 @@ void DrawList::Clear()
 
 void DrawList::Record_Shape(const void* shapefile, int shapenum, int x, int y,
                             int window, int flags, const void* fadingdata,
-                            const void* ghostdata, DrawLayer layer)
+                            const void* ghostdata, DrawLayer layer,
+                            uint32_t entity_hash)
 {
     DrawCommand cmd;
     cmd.type = CMD_SHAPE;
     cmd.layer = layer;
-    cmd.shape = {shapefile, shapenum, x, y, window, flags, fadingdata, ghostdata};
+    cmd.shape = {shapefile, entity_hash, shapenum, x, y, window, flags, fadingdata, ghostdata};
     commands_.push_back(cmd);
 }
 

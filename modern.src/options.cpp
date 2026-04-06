@@ -60,6 +60,9 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "function.h"
+#ifdef USE_RENDER_BRIDGE
+#include "render_bridge.h"
+#endif
 #include "options.h"
 
 
@@ -98,6 +101,8 @@ OptionsClass::OptionsClass(void)
 	IsScoreRepeat = false;
 	IsScoreShuffle = false;
 	IsFreeScroll = false;
+	IsHDGraphics = false;
+	HasHDGraphicsSetting = false;
 }
 
 
@@ -547,9 +552,13 @@ void OptionsClass::Load_Settings (void)
 	Set_Shuffle(WWGetPrivateProfileInt("Options", "IsScoreShuffle", 0, buffer));
 	IsDeathAnnounce = WWGetPrivateProfileInt("Options", "DeathAnnounce", 0, buffer);
 	IsFreeScroll = WWGetPrivateProfileInt("Options", "FreeScrolling", 0, buffer);
-	SlowPalette = WWGetPrivateProfileInt("Options", "SlowPalette", 1, buffer);
-
 	char workbuf[128];
+	WWGetPrivateProfileString("Options", "HDGraphics", "", workbuf, sizeof(workbuf), buffer);
+	if (workbuf[0] != '\0') {
+		IsHDGraphics = WWGetPrivateProfileInt("Options", "HDGraphics", 1, buffer);
+		HasHDGraphicsSetting = true;
+	}
+	SlowPalette = WWGetPrivateProfileInt("Options", "SlowPalette", 1, buffer);
 
 	/*
 	**	Check for and possible enable true object names.
@@ -708,11 +717,20 @@ void OptionsClass::Save_Settings (void)
 	WWWritePrivateProfileInt("Options", "IsScoreShuffle", IsScoreShuffle, buffer);
 	WWWritePrivateProfileInt("Options", "DeathAnnounce", IsDeathAnnounce, buffer);
 	WWWritePrivateProfileInt("Options", "FreeScrolling", IsFreeScroll, buffer);
+	WWWritePrivateProfileInt("Options", "HDGraphics", IsHDGraphics, buffer);
 
 	/*
 	**	Write the INI data out to a file.
 	*/
 	file.Write(buffer,strlen(buffer));
+}
+
+void Options_Set_HD_Graphics_Default(bool enabled)
+{
+	if (!Options.HasHDGraphicsSetting) {
+		Options.IsHDGraphics = enabled;
+		Options.HasHDGraphicsSetting = true;
+	}
 }
 
 
@@ -741,6 +759,9 @@ void OptionsClass::Set(void)
 	Set_Score_Volume(ScoreVolume);
 	Set_Repeat(IsScoreRepeat);
 	Set_Shuffle(IsScoreShuffle);
+#ifdef USE_RENDER_BRIDGE
+	Render_Bridge_Set_HD_Graphics(IsHDGraphics != 0);
+#endif
 }
 
 

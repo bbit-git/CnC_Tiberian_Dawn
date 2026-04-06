@@ -53,6 +53,19 @@
 #include	<errno.h>
 #include	"share.h"
 #include "mixfile.h"
+#ifdef USE_RENDER_BRIDGE
+#include "render_bridge.h"
+#endif
+
+static uint32_t fnv1a_hash(char const* str)
+{
+	uint32_t h = 0x811c9dc5u;
+	for (; *str; str++) {
+		h ^= static_cast<uint8_t>(toupper(static_cast<unsigned char>(*str)));
+		h *= 0x01000193u;
+	}
+	return h;
+}
 
 
 template<class T> int Compare(T const *obj1, T const *obj2) {
@@ -245,6 +258,22 @@ MixFileClass::MixFileClass(char const *filename)
 void const * MixFileClass::Retrieve(char const *filename) {
 	void *ptr = 0;
 	Offset(filename, &ptr);
+#ifdef USE_RENDER_BRIDGE
+	if (ptr && filename) {
+		const char* dot = strrchr(filename, '.');
+		uint32_t hash = fnv1a_hash(filename);
+		if (dot) {
+			char base[64];
+			size_t len = static_cast<size_t>(dot - filename);
+			if (len > 0 && len < sizeof(base)) {
+				memcpy(base, filename, len);
+				base[len] = '\0';
+				hash = fnv1a_hash(base);
+			}
+		}
+		Render_Bridge_Register_Shape_Identity(ptr, hash);
+	}
+#endif
 	return(ptr);
 };
 
@@ -558,4 +587,3 @@ MixFileClass::SubBlock* MixFileClass_GetEntries(MixFileClass* ptr) {
 void* MixFileClass_GetData(MixFileClass* ptr) {
 	return ptr ? ptr->Data : nullptr;
 }
-

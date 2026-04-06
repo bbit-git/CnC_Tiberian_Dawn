@@ -17,6 +17,8 @@
 #include "function.h"
 #include <cstdint>
 
+extern uint32_t Render_Bridge_Get_Shape_Identity(const void* shapefile);
+
 namespace {
 
 /// Return the legacy tactical record rect used while HidPage primitives are captured.
@@ -145,7 +147,8 @@ bool Draw_List_Maybe_Record_Shape(
     }
 
     g_draw_list.Record_Shape(shapefile, shapenum, x, y,
-                             window, flags, fadingdata, ghostdata, layer);
+                             window, flags, fadingdata, ghostdata, layer,
+                             Render_Bridge_Get_Shape_Identity(shapefile));
     return true;
 }
 

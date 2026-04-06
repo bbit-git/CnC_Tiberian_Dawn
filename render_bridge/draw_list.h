@@ -43,6 +43,7 @@ enum DrawLayer : uint8_t {
 /// A recorded CC_Draw_Shape call.
 struct ShapeCmd {
     const void* shapefile;
+    uint32_t    entity_hash;
     int         shapenum;
     int         x, y;
     int         window;
@@ -84,7 +85,8 @@ public:
 
     void Record_Shape(const void* shapefile, int shapenum, int x, int y,
                       int window, int flags, const void* fadingdata,
-                      const void* ghostdata, DrawLayer layer = LAYER_SPRITE);
+                      const void* ghostdata, DrawLayer layer = LAYER_SPRITE,
+                      uint32_t entity_hash = 0);
 
     void Record_Stamp(const void* icondata, int icon, int x, int y,
                       const void* remap, int window);

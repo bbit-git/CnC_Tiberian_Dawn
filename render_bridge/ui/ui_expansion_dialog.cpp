@@ -6,6 +6,7 @@
 #include "ui_dialog.h"
 #include "ui_controls.h"
 #include "render_bridge.h"
+#include "function.h"
 
 extern bool Render_Bridge_UI_Expansion_Dialog_Get_Internal(
     int& mode, const char*& title, const char**& items, int& count,
@@ -15,9 +16,7 @@ extern void Render_Bridge_UI_Expansion_Dialog_Set_Result(int r, int selected, fl
 
 void UI_Expansion_Dialog_Emit()
 {
-    if (!Render_Bridge_UI_Has_Active_Expansion_Dialog()) {
-        return;
-    }
+    if (!Render_Bridge_UI_Has_Active_Expansion_Dialog()) return;
 
     int mode = 0;
     const char* title = nullptr;
@@ -32,9 +31,17 @@ void UI_Expansion_Dialog_Emit()
                                                     screen_w, screen_h,
                                                     ok_label, cancel_label);
 
+    if (screen_w <= 0) screen_w = 640;
+    if (screen_h <= 0) screen_h = 400;
+
+    UIFontID fnt = UI_FONT_SDF_DEFAULT;
+    int lh = UI_Text_Line_Height(fnt);
+    if (lh < 6) lh = 6;
+    int btn_h = lh + 8;
+
     UIDialogStyle style = UI_Default_Dialog_Style();
-    int dialog_w = 220;
-    int dialog_h = 160;
+    int dialog_w = 280;
+    int dialog_h = 200;
 
     int cx, cy, cw, ch;
     UI_Dialog_Begin(screen_w, screen_h, dialog_w, dialog_h,
@@ -42,11 +49,12 @@ void UI_Expansion_Dialog_Emit()
 
     // List box
     UIListBoxStyle lbs = UI_Default_ListBox_Style();
-    int list_h = ch - style.button_h - style.padding;
+    int list_h = ch - btn_h - style.padding;
+    if (list_h < 40) list_h = 40;
     int new_sel = UI_ListBox(cx, cy, cw, list_h, items, count,
                               selected, scroll, lbs);
 
-    // Buttons
+    // OK / Cancel
     int dx = (screen_w - dialog_w) / 2;
     int dy = (screen_h - dialog_h) / 2;
     UIDialogResult result = UI_Dialog_End(dx, dy, dialog_w, dialog_h,

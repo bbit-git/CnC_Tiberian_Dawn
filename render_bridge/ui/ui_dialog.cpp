@@ -155,16 +155,26 @@ UIDialogResult UI_Confirm_Dialog(int screen_w, int screen_h,
                                   const char* ok_label,
                                   const char* cancel_label)
 {
+    if (screen_w <= 0) screen_w = 640;
+    if (screen_h <= 0) screen_h = 400;
+
+    UIFontID fnt = UI_FONT_SDF_DEFAULT;
+    int lh = UI_Text_Line_Height(fnt);
+    if (lh < 6) lh = 6;
+    int btn_h = lh + 8;
+
     UIDialogStyle style = UI_Default_Dialog_Style();
-    int dialog_w = 180;
-    int dialog_h = 80;
+    int dialog_w = 240;
+    int dialog_h = style.title_height + style.padding
+                   + (message && message[0] ? lh + 8 : 0)
+                   + btn_h + style.padding;
 
     int cx, cy, cw, ch;
     UI_Dialog_Begin(screen_w, screen_h, dialog_w, dialog_h,
                     title, style, cx, cy, cw, ch);
 
     if (message && message[0]) {
-        UI_Label(cx, cy, message, UI_FONT_6PT, 180, 180, 180, 255,
+        UI_Label(cx, cy, message, fnt, 180, 180, 180, 255,
                  UI_ALIGN_CENTER, cw);
     }
 
@@ -196,25 +206,28 @@ void UI_Dialog_Emit()
     Render_Bridge_UI_Get_Dialog(screen_w, screen_h, title, message,
                                 ok_label, cancel_label, extra_label);
 
+    // Fix coordinate space
+    if (screen_w <= 0) screen_w = 640;
+    if (screen_h <= 0) screen_h = 400;
+
+    UIFontID fnt = UI_FONT_SDF_DEFAULT;
+    int lh = UI_Text_Line_Height(fnt);
+    if (lh < 6) lh = 6;
+    int btn_h = lh + 8;
+
     UIDialogStyle style = UI_Default_Dialog_Style();
-    int dialog_w = 180;
-    int dialog_h = 80;
-    if (extra_label && extra_label[0]) {
-        dialog_w = 220;
-    }
-    if (cancel_label && cancel_label[0]) {
-        dialog_h = 96;
-    }
-    if (message && message[0]) {
-        dialog_h += 12;
-    }
+    int dialog_w = 260;
+    if (extra_label && extra_label[0]) dialog_w = 300;
+    int dialog_h = style.title_height + style.padding
+                   + (message && message[0] ? lh + 8 : 0)
+                   + btn_h + style.padding;
 
     int cx = 0, cy = 0, cw = 0, ch = 0;
     UI_Dialog_Begin(screen_w, screen_h, dialog_w, dialog_h,
                     title, style, cx, cy, cw, ch);
 
     if (message && message[0]) {
-        UI_Label(cx, cy, message, UI_FONT_6PT, 180, 180, 180, 255,
+        UI_Label(cx, cy, message, fnt, 180, 180, 180, 255,
                  UI_ALIGN_CENTER, cw);
     }
 

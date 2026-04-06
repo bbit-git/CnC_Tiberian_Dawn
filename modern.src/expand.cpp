@@ -136,7 +136,8 @@ bool Expansion_Dialog(void)
 				char fullname[128];
 				Set_Scenario_Name(fullname, index,
 					(side == 0) ? SCEN_PLAYER_GDI : SCEN_PLAYER_NOD,
-					SCEN_DIR_EAST);
+					SCEN_DIR_EAST, SCEN_VAR_A);
+				strcat(fullname, ".INI");
 				CCFileClass file(fullname);
 				if (file.Is_Available()) {
 					char* sbuffer = (char*)_ShapeBuffer;

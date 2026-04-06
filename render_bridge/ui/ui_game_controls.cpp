@@ -1,11 +1,16 @@
 /**
  * ui_game_controls.cpp — Bridge-native game controls dialog emitter.
+ *
+ * Game speed slider, scroll rate slider, Visual/Sound Controls buttons, OK.
  */
 
 #include "ui_game_controls.h"
 #include "ui_dialog.h"
 #include "ui_controls.h"
 #include "render_bridge.h"
+#include "function.h"
+#include <cstring>
+#include <cstdio>
 
 struct UIGameControlsInternalLabels {
     const char* title;
@@ -25,71 +30,101 @@ extern bool Render_Bridge_UI_Game_Controls_Get_Internal(
 
 void UI_Game_Controls_Emit()
 {
-    if (!Render_Bridge_UI_Has_Active_Game_Controls()) {
-        return;
-    }
+    if (!Render_Bridge_UI_Has_Active_Game_Controls()) return;
 
     float game_speed = 0, scroll_rate = 0;
     int screen_w = 0, screen_h = 0;
     UIGameControlsInternalLabels lbl;
     Render_Bridge_UI_Game_Controls_Get_Internal(game_speed, scroll_rate, screen_w, screen_h, lbl);
 
+    if (screen_w <= 0) screen_w = 640;
+    if (screen_h <= 0) screen_h = 400;
+
+    UIFontID fnt = UI_FONT_SDF_DEFAULT;
+    int lh = UI_Text_Line_Height(fnt);
+    if (lh < 6) lh = 6;
+    int row = lh + 4;
+    int btn_h = lh + 8;
+    int slider_h = lh;
+    int gap = 6;
+
     UIDialogStyle style = UI_Default_Dialog_Style();
-    int dialog_w = 200;
-    int dialog_h = 130;
+    int dialog_w = 260;
+    int dialog_h = style.title_height + style.padding
+                   + row * 2 + slider_h * 2 + gap * 4  // labels + sliders
+                   + btn_h + gap                         // visual/sound buttons
+                   + btn_h + style.padding;              // OK button
 
     int cx, cy, cw, ch;
     UI_Dialog_Begin(screen_w, screen_h, dialog_w, dialog_h,
                     lbl.title, style, cx, cy, cw, ch);
 
-    int label_h = 10;
-    int slider_h = 12;
-    int row_spacing = 4;
-
-    // Game Speed
-    UI_Label(cx, cy, lbl.speed, UI_FONT_6PT, 180, 180, 180, 255);
-    cy += label_h;
-    UI_Label(cx, cy + 1, lbl.slower, UI_FONT_6PT, 140, 140, 140, 255);
-    UI_Label(cx + cw - 30, cy + 1, lbl.faster, UI_FONT_6PT, 140, 140, 140, 255);
     UISliderStyle ss = UI_Default_Slider_Style();
     ss.thumb_r = 0; ss.thumb_g = 100; ss.thumb_b = 0;
     ss.hover_r = 0; ss.hover_g = 140; ss.hover_b = 0;
-    game_speed = UI_Slider(cx + 32, cy, cw - 64, slider_h, game_speed, ss);
-    cy += slider_h + row_spacing;
+
+    // Game Speed
+    {
+        int spd_val = static_cast<int>(game_speed * 6.0f + 0.5f);
+        if (spd_val > 6) spd_val = 6;
+        char spd_buf[48];
+        snprintf(spd_buf, sizeof(spd_buf), "%s: %d", lbl.speed, spd_val);
+        UI_Label(cx, cy, spd_buf, fnt, 180, 180, 180, 255);
+    }
+    cy += row;
+    int slider_x = cx;
+    int slider_w = cw;
+    UI_Label(cx, cy, lbl.slower, fnt, 100, 100, 100, 255);
+    {
+        int faster_w = UI_Text_Measure_Width(fnt, lbl.faster, static_cast<int>(strlen(lbl.faster)));
+        UI_Label(cx + cw - faster_w, cy, lbl.faster, fnt, 100, 100, 100, 255);
+    }
+    cy += row;
+    game_speed = UI_Slider(slider_x, cy, slider_w, slider_h, game_speed, ss);
+    cy += slider_h + gap;
 
     // Scroll Rate
-    UI_Label(cx, cy, lbl.scrollrate, UI_FONT_6PT, 180, 180, 180, 255);
-    cy += label_h;
-    UI_Label(cx, cy + 1, lbl.slower, UI_FONT_6PT, 140, 140, 140, 255);
-    UI_Label(cx + cw - 30, cy + 1, lbl.faster, UI_FONT_6PT, 140, 140, 140, 255);
-    scroll_rate = UI_Slider(cx + 32, cy, cw - 64, slider_h, scroll_rate, ss);
-    cy += slider_h + row_spacing * 2;
+    {
+        int scr_val = static_cast<int>(scroll_rate * 6.0f + 0.5f);
+        if (scr_val > 6) scr_val = 6;
+        char scr_buf[48];
+        snprintf(scr_buf, sizeof(scr_buf), "%s: %d", lbl.scrollrate, scr_val);
+        UI_Label(cx, cy, scr_buf, fnt, 180, 180, 180, 255);
+    }
+    cy += row;
+    UI_Label(cx, cy, lbl.slower, fnt, 100, 100, 100, 255);
+    {
+        int faster_w = UI_Text_Measure_Width(fnt, lbl.faster, static_cast<int>(strlen(lbl.faster)));
+        UI_Label(cx + cw - faster_w, cy, lbl.faster, fnt, 100, 100, 100, 255);
+    }
+    cy += row;
+    scroll_rate = UI_Slider(slider_x, cy, slider_w, slider_h, scroll_rate, ss);
+    cy += slider_h + gap;
 
     // Sub-dialog buttons
     UIButtonStyle bs = UI_Default_Button_Style();
-    bs.normal_r = 0;  bs.normal_g = 50; bs.normal_b = 0;
-    bs.hover_r = 0;   bs.hover_g = 80;  bs.hover_b = 0;
-    bs.press_r = 0;   bs.press_g = 30;  bs.press_b = 0;
-    bs.text_r = 200;  bs.text_g = 200;  bs.text_b = 200;
-    bs.border_r = 0;  bs.border_g = 100; bs.border_b = 0;
-    bs.font = UI_FONT_6PT;
+    bs.normal_r = 0;  bs.normal_g = 50;  bs.normal_b = 0;  bs.normal_a = 240;
+    bs.hover_r  = 0;  bs.hover_g  = 80;  bs.hover_b  = 0;  bs.hover_a  = 255;
+    bs.press_r  = 0;  bs.press_g  = 30;  bs.press_b  = 0;  bs.press_a  = 255;
+    bs.text_r   = 200; bs.text_g  = 200;  bs.text_b  = 200; bs.text_a  = 255;
+    bs.border_r = 0;  bs.border_g = 100; bs.border_b = 0;  bs.border_a = 200;
+    bs.font = fnt;
 
-    int sub_btn_w = (cw - 4) / 2;
-    UIButtonState vis_state = UI_Button(cx, cy, sub_btn_w, 14, lbl.visual, bs);
-    UIButtonState snd_state = UI_Button(cx + sub_btn_w + 4, cy, sub_btn_w, 14, lbl.sound, bs);
+    int sub_btn_w = (cw - 6) / 2;
+    UIButtonState vis_state = UI_Button(cx, cy, sub_btn_w, btn_h, lbl.visual, bs);
+    UIButtonState snd_state = UI_Button(cx + sub_btn_w + 6, cy, sub_btn_w, btn_h, lbl.sound, bs);
+    cy += btn_h + gap;
 
-    // Options menu button at bottom
-    int dx = (screen_w - dialog_w) / 2;
-    int dy = (screen_h - dialog_h) / 2;
-    int btn_y = dy + dialog_h - style.button_h - style.padding;
-    UIButtonState options_state = UI_Button(dx + (dialog_w - style.button_w) / 2, btn_y,
-                                             style.button_w, style.button_h, lbl.ok, bs);
+    // OK button (centered)
+    int ok_w = UI_Text_Measure_Width(fnt, lbl.ok, static_cast<int>(strlen(lbl.ok))) + 20;
+    if (ok_w < 80) ok_w = 80;
+    UIButtonState ok_state = UI_Button(cx + (cw - ok_w) / 2, cy, ok_w, btn_h, lbl.ok, bs);
 
     if (vis_state == UI_BTN_PRESSED) {
         Render_Bridge_UI_Game_Controls_Set_Result(UI_GCTRL_VISUAL, game_speed, scroll_rate);
     } else if (snd_state == UI_BTN_PRESSED) {
         Render_Bridge_UI_Game_Controls_Set_Result(UI_GCTRL_SOUND, game_speed, scroll_rate);
-    } else if (options_state == UI_BTN_PRESSED) {
+    } else if (ok_state == UI_BTN_PRESSED) {
         Render_Bridge_UI_Game_Controls_Set_Result(UI_GCTRL_OK, game_speed, scroll_rate);
     } else {
         Render_Bridge_UI_Game_Controls_Set_Result(UI_GCTRL_NONE, game_speed, scroll_rate);

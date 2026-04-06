@@ -103,6 +103,16 @@ void Render_Bridge_Debug_Bars_Toggle();
 /// Return whether the render-bridge debug overlay bars and boxes are visible.
 bool Render_Bridge_Debug_Bars_Enabled();
 
+/// Register an optional HD sprite provider for the tactical sprite batch.
+/// Pass `nullptr` to clear it and fall back to legacy indexed sprites only.
+void Render_Bridge_Register_HD_Sprite_Provider(void* provider);
+
+/// Register a stable entity hash for a shapefile pointer.
+void Render_Bridge_Register_Shape_Identity(const void* shapefile, uint32_t entity_hash);
+
+/// Look up a previously registered entity hash for a shapefile pointer.
+uint32_t Render_Bridge_Get_Shape_Identity(const void* shapefile);
+
 /// Toggle the render-source visualization overlay.
 void Render_Bridge_Debug_Sources_Toggle();
 
@@ -331,18 +341,30 @@ struct UIVisualControlsLabels {
     const char* color;
     const char* contrast;
     const char* tint;
+    const char* hd_graphics;
     const char* reset;
     const char* ok;
 };
 void Render_Bridge_UI_Set_Visual_Controls(float brightness, float color,
                                            float contrast, float tint,
+                                           bool hd_graphics,
                                            int screen_w, int screen_h,
                                            const UIVisualControlsLabels& labels);
 void Render_Bridge_UI_Get_Visual_Controls_State(float& brightness, float& color,
-                                                 float& contrast, float& tint);
+                                                 float& contrast, float& tint,
+                                                 bool& hd_graphics);
 int  Render_Bridge_UI_Get_Visual_Controls_Result();
 void Render_Bridge_UI_Clear_Visual_Controls();
 bool Render_Bridge_UI_Has_Active_Visual_Controls();
+
+/// Enable or disable HD graphics rendering at runtime.
+void Render_Bridge_Set_HD_Graphics(bool enabled);
+
+/// Return whether HD graphics rendering is currently enabled.
+bool Render_Bridge_Get_HD_Graphics();
+
+/// Invalidate cached HD/classic sprite atlas content.
+void Render_Bridge_Invalidate_HD_Sprite_Atlas();
 
 // --- Sound Controls dialog (Phase 4) ---
 
