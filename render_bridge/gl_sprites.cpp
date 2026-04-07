@@ -330,10 +330,12 @@ static SpriteRenderStyle classify_style(const DrawCommand& draw_cmd)
             return style;
         }
         if (!cmd.fadingdata) {
-            // Ghost-only UnitShadow draws are still used for real translucent
-            // silhouettes (for example rotor shadows and some overlays). Keep
-            // those on the CPU path until the bridge has a faithful HD match.
-            style.supported = false;
+            // Theater-backed overlays such as tiberium use ghost-only
+            // UnitShadow draws even though their HD remastered frames should be
+            // rendered as normal opaque RGBA art. Require a real HD frame and
+            // bypass the legacy shadow table instead of falling back to the CPU
+            // path. Non-HD shapes still stay on the legacy renderer above.
+            style.hd_only = true;
             return style;
         }
 
@@ -379,9 +381,6 @@ bool GL_Sprites_Should_Skip_CPU(const ShapeCmd& cmd)
     if (!style.supported) return false;
     if (cmd.shapefile == get_shadow_shapes()) {
         return true;
-    }
-    if (shape_overlaps_shroud(cmd)) {
-        return false;
     }
     if (style.hd_only) {
         return has_hd_frame_for_shape(cmd);
@@ -913,10 +912,6 @@ int GL_Sprites_Render(int win_w, int win_h,
 
         SpriteRenderStyle style = classify_style(cmd);
         if (!style.supported) {
-            g_last_fallback_sprites++;
-            continue;
-        }
-        if (shape_overlaps_shroud(cmd.shape)) {
             g_last_fallback_sprites++;
             continue;
         }

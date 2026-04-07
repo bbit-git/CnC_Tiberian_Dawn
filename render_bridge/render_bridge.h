@@ -196,8 +196,8 @@ void Render_Bridge_Get_Render_Tactical_Rect(int& x, int& y, int& w, int& h);
 void Render_Bridge_Get_Record_Tactical_Rect(int& x, int& y, int& w, int& h);
 
 /// Record a solid-black shroud fill rect with native-buffer-relative coordinates and
-/// LAYER_SHADOW, so the native buffer replay includes it (not the overlay pass which
-/// is skipped in GL mode). Returns true when recording; caller falls back to
+/// LAYER_SHADOW so the dedicated GL shroud pass can composite it after HD sprites.
+/// Returns true when recording in bridge mode; caller falls back to
 /// LogicPage->Fill_Rect only when false (CPU path).
 bool Render_Bridge_Record_Shroud_Fill_Rect(int x, int y, int w, int h);
 
