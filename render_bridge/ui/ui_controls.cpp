@@ -25,6 +25,7 @@ UIButtonStyle UI_Default_Button_Style()
     s.text_r   = 200; s.text_g   = 200; s.text_b   = 200; s.text_a   = 255;
     s.border_r = 100; s.border_g = 100; s.border_b = 100; s.border_a = 255;
     s.font = UI_FONT_SDF_DEFAULT;
+    s.text_scale = 1.0f;
     return s;
 }
 
@@ -102,14 +103,15 @@ UIButtonState UI_Button(int x, int y, int w, int h,
 
     // Draw label centered
     if (label && label[0]) {
-        int text_w = UI_Text_Measure_Width(style.font, label,
-                                            static_cast<int>(strlen(label)));
-        int text_h = UI_Text_Line_Height(style.font);
+        float ts = (style.text_scale > 0.0f) ? style.text_scale : 1.0f;
+        int text_w = static_cast<int>(UI_Text_Measure_Width(style.font, label,
+                                            static_cast<int>(strlen(label))) * ts);
+        int text_h = static_cast<int>(UI_Text_Line_Height(style.font) * ts);
         int tx = x + (w - text_w) / 2;
         int ty = y + (h - text_h) / 2;
         g_ui_draw_list.Draw_Text(tx, ty, label, style.font,
                                  style.text_r, style.text_g,
-                                 style.text_b, style.text_a);
+                                 style.text_b, style.text_a, ts);
     }
 
     return state;

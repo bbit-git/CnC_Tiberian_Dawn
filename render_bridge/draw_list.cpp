@@ -25,12 +25,12 @@ void DrawList::Record_Shape(const void* shapefile, int shapenum, int x, int y,
 }
 
 void DrawList::Record_Stamp(const void* icondata, int icon, int x, int y,
-                            const void* remap, int window)
+                            const void* remap, int window, uint32_t terrain_hash)
 {
     DrawCommand cmd;
     cmd.type = CMD_STAMP;
     cmd.layer = LAYER_TERRAIN;
-    cmd.stamp = {icondata, icon, x, y, remap, window};
+    cmd.stamp = {icondata, icon, x, y, remap, window, terrain_hash};
     commands_.push_back(cmd);
 }
 

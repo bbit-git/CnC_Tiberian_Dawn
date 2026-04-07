@@ -46,6 +46,7 @@ struct UIButtonStyle {
     uint8_t text_r,   text_g,   text_b,   text_a;
     uint8_t border_r, border_g, border_b, border_a;
     UIFontID font;
+    float text_scale;  // extra text scale multiplier (1.0 = default)
 };
 
 /// Default styles.

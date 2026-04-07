@@ -275,7 +275,8 @@ int GL_Primitives_Render(int win_w, int win_h,
 
     glUseProgram(g_state.program);
     glUniform2f(g_state.u_viewport, static_cast<float>(win_w), static_cast<float>(win_h));
-    glDisable(GL_BLEND);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     glEnableVertexAttribArray(g_state.a_pos);
     glEnableVertexAttribArray(g_state.a_color);
@@ -294,6 +295,9 @@ int GL_Primitives_Render(int win_w, int win_h,
             continue;
         }
 
+        if (cmd.layer == LAYER_SHADOW) {
+            continue;
+        }
         float r = 0.0f;
         float g = 0.0f;
         float b = 0.0f;
@@ -372,8 +376,69 @@ int GL_Primitives_Render(int win_w, int win_h,
     glDisable(GL_SCISSOR_TEST);
     glDisableVertexAttribArray(g_state.a_pos);
     glDisableVertexAttribArray(g_state.a_color);
+    glDisable(GL_BLEND);
     g_last_primitive_count = primitive_count;
     return primitive_count;
+}
+
+/// Render the shroud/fog overlay as a dedicated pass after HD sprites.
+int GL_Shroud_Render(int win_w, int win_h,
+                     int tac_screen_x, int tac_screen_y,
+                     int tac_screen_w, int tac_screen_h,
+                     float scale, float vp_x, float vp_y,
+                     const uint8_t* palette)
+{
+    (void)palette;
+    if (tac_screen_w <= 0 || tac_screen_h <= 0) {
+        return 0;
+    }
+    if (!init_gl()) {
+        return 0;
+    }
+
+    int shroud_count = 0;
+
+    glUseProgram(g_state.program);
+    glUniform2f(g_state.u_viewport, static_cast<float>(win_w), static_cast<float>(win_h));
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glEnableVertexAttribArray(g_state.a_pos);
+    glEnableVertexAttribArray(g_state.a_color);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(tac_screen_x, win_h - (tac_screen_y + tac_screen_h), tac_screen_w, tac_screen_h);
+
+    for (int i = 0; i < g_draw_list.Command_Count(); i++) {
+        const DrawCommand& cmd = g_draw_list.Get(i);
+        if (cmd.layer != LAYER_SHADOW) {
+            continue;
+        }
+        if (cmd.type != CMD_FILL_RECT) {
+            continue;
+        }
+
+        float r = 0.0f;
+        float g = 0.0f;
+        float b = 0.0f;
+        float a = 1.0f;
+        std::vector<PrimVertex> verts;
+        GLenum mode = GL_TRIANGLES;
+
+        float x0 = world_to_screen(static_cast<float>(tac_screen_x), static_cast<float>(cmd.prim.x1), vp_x, scale);
+        float y0 = world_to_screen(static_cast<float>(tac_screen_y), static_cast<float>(cmd.prim.y1), vp_y, scale);
+        float x1 = world_to_screen(static_cast<float>(tac_screen_x), static_cast<float>(cmd.prim.x2 + 1), vp_x, scale);
+        float y1 = world_to_screen(static_cast<float>(tac_screen_y), static_cast<float>(cmd.prim.y2 + 1), vp_y, scale);
+        verts.reserve(6);
+        push_rect(verts, x0, y0, x1, y1, r, g, b, a);
+        draw_vertices(mode, verts);
+        shroud_count++;
+    }
+
+    glDisable(GL_SCISSOR_TEST);
+    glDisableVertexAttribArray(g_state.a_pos);
+    glDisableVertexAttribArray(g_state.a_color);
+    glDisable(GL_BLEND);
+    return shroud_count;
 }
 
 /// Get the number of overlay primitives rendered in the last frame.

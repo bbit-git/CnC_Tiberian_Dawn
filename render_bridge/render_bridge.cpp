@@ -158,6 +158,9 @@ static UIComScenarioState g_com_scenario_state = {};
 // --- Main Menu state (Phase 8) ---
 static UIMainMenuState g_main_menu_state = {};
 
+// --- Main Menu Options state (Phase 9) ---
+static UIMainMenuOptionsState g_main_menu_options_state = {};
+
 // Palette LUT for 8-bit → RGBA conversion
 static uint32_t         g_pal_lut[256];
 static const uint8_t*   g_pal_lut_src = nullptr;
@@ -1182,7 +1185,8 @@ bool Render_Bridge_UI_Has_Any_Active_Dialog()
            Render_Bridge_UI_Has_Active_Special_Dialog() ||
            Render_Bridge_UI_Has_Active_Expansion_Dialog() ||
            Render_Bridge_UI_Has_Active_Com_Scenario() ||
-           Render_Bridge_UI_Has_Active_Main_Menu();
+           Render_Bridge_UI_Has_Active_Main_Menu() ||
+           Render_Bridge_UI_Has_Active_Main_Menu_Options();
 }
 
 bool Render_Bridge_UI_Has_Active_Com_Scenario()
@@ -1300,4 +1304,65 @@ bool Render_Bridge_UI_Main_Menu_Had_Input()
     bool v = g_main_menu_state.had_input;
     g_main_menu_state.had_input = false;
     return v;
+}
+
+// ========== Main Menu Options (Phase 9) ==========
+
+void Render_Bridge_UI_Set_Main_Menu_Options(const UIMainMenuOptionsState& state)
+{
+    g_main_menu_options_state = state;
+    g_main_menu_options_state.active = true;
+    g_main_menu_options_state.result = UI_MM_OPT_NONE;
+    // Sync HD graphics flag from live bridge setting so the toggle is accurate
+    g_main_menu_options_state.hd_graphics = Render_Bridge_Get_HD_Graphics();
+}
+
+int Render_Bridge_UI_Get_Main_Menu_Options_Result()
+{
+    return g_main_menu_options_state.result;
+}
+
+void Render_Bridge_UI_Clear_Main_Menu_Options()
+{
+    g_main_menu_options_state.active = false;
+    g_main_menu_options_state.result = UI_MM_OPT_NONE;
+}
+
+bool Render_Bridge_UI_Has_Active_Main_Menu_Options()
+{
+    return g_main_menu_options_state.active;
+}
+
+void Render_Bridge_UI_Main_Menu_Options_Get_Internal(
+    int& screen_w, int& screen_h,
+    bool& hd_graphics,
+    UIMainMenuOptionsInternalLabels& lbl)
+{
+    screen_w    = g_main_menu_options_state.screen_w;
+    screen_h    = g_main_menu_options_state.screen_h;
+    hd_graphics = g_main_menu_options_state.hd_graphics;
+    lbl.title        = g_main_menu_options_state.lbl_title;
+    lbl.audio        = g_main_menu_options_state.lbl_audio;
+    lbl.video        = g_main_menu_options_state.lbl_video;
+    lbl.back         = g_main_menu_options_state.lbl_back;
+    lbl.hd_label     = g_main_menu_options_state.lbl_hd;
+    lbl.legacy_label = g_main_menu_options_state.lbl_legacy;
+}
+
+void Render_Bridge_UI_Set_Main_Menu_Options_Result(int r)
+{
+    g_main_menu_options_state.result = r;
+    if (r != UI_MM_OPT_NONE)
+        g_main_menu_options_state.active = false;
+}
+
+void Render_Bridge_UI_Main_Menu_Options_Set_HD(bool hd)
+{
+    g_main_menu_options_state.hd_graphics = hd;
+    Render_Bridge_Set_HD_Graphics(hd);
+    // Persist the setting via GameOptionsClass (Options global from externs.h)
+    extern GameOptionsClass Options;
+    Options.IsHDGraphics = hd;
+    Options.HasHDGraphicsSetting = true;
+    Options.Save_Settings();
 }

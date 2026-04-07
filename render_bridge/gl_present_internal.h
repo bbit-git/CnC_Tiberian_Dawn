@@ -69,6 +69,11 @@ extern GLint g_u_indexed;
 extern GLint g_u_palette;
 extern GLint g_u_src_rect;
 extern GLint g_u_dst_rect;
+extern GLuint g_tac_program;
+extern GLint g_tac_u_indexed;
+extern GLint g_tac_u_palette;
+extern GLint g_tac_u_src_rect;
+extern GLint g_tac_u_dst_rect;
 extern GLuint g_ui_program;
 extern GLint g_ui_u_indexed;
 extern GLint g_ui_u_palette;
@@ -81,6 +86,13 @@ extern int g_rgba_tex_h;
 extern GLint g_rgba_u_tex;
 extern GLint g_rgba_u_src_rect;
 extern GLint g_rgba_u_dst_rect;
+
+/// Render the shroud overlay pass on top of the tactical world.
+int GL_Shroud_Render(int win_w, int win_h,
+                     int tac_screen_x, int tac_screen_y,
+                     int tac_screen_w, int tac_screen_h,
+                     float scale, float vp_x, float vp_y,
+                     const uint8_t* palette);
 
 /// Bind a client-side unit quad for a full-screen or region draw.
 void GL_Present_Bind_Client_Quad(const float* quad);

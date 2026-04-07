@@ -36,6 +36,7 @@ struct UITextCmd {
     int text_offset;      // offset into string pool
     int text_length;      // byte count
     int font_id;          // font identifier
+    float scale;          // extra text scale multiplier (1.0 = default)
 };
 
 /// Icon/sprite quad (palette-indexed).
@@ -73,7 +74,8 @@ public:
     void Draw_Rect(int x, int y, int w, int h,
                    uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255);
     void Draw_Text(int x, int y, const char* text, int font_id,
-                   uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255);
+                   uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255,
+                   float scale = 1.0f);
     void Draw_Icon(int x, int y, int w, int h,
                    const uint8_t* pixels, int src_w, int src_h);
     void Clip_Push(int x, int y, int w, int h);

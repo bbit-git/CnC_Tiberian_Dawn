@@ -79,6 +79,22 @@
 
 #define	FIXUP		0
 
+#ifdef USE_RENDER_BRIDGE
+extern void Render_Bridge_Set_Stamp_Terrain_Hash(unsigned hash);
+
+static unsigned stamp_fnv1a(const char* s)
+{
+    unsigned h = 0x811C9DC5u;
+    while (*s) {
+        unsigned char c = (unsigned char)*s++;
+        if (c >= 'a' && c <= 'z') c = (unsigned char)(c - 32);
+        h ^= c;
+        h *= 0x01000193u;
+    }
+    return h;
+}
+#endif
+
 
 /***********************************************************************************************
  * CellClass::Validate -- validates cell's number                                              *
@@ -898,6 +914,9 @@ void CellClass::Draw_It(int x, int y, int draw_type) const
 			**	This is the underlying terrain icon.
 			*/
 			if (ttype->Get_Image_Data()) {
+#ifdef USE_RENDER_BRIDGE
+				Render_Bridge_Set_Stamp_Terrain_Hash(stamp_fnv1a(ttype->IniName));
+#endif
 				LogicPage->Draw_Stamp(ttype->Get_Image_Data(), icon, x, y, NULL, WINDOW_TACTICAL);
 				if (remap) {
 					LogicPage->Remap(x+Map.TacPixelX, y+Map.TacPixelY, ICON_PIXEL_W, ICON_PIXEL_H, remap);

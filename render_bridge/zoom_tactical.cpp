@@ -33,6 +33,7 @@ extern bool Render_Bridge_Draw_Stamp_Scaled(const StampCmd& cmd, float zoom,
 extern bool GL_Present_Is_Active();
 extern void GL_Present_Upload_Tactical(const uint8_t* pixels, int w, int h);
 extern void Render_Bridge_Get_Screen_Size(int& w, int& h);
+extern bool GL_Sprites_Has_Terrain_Frame(uint32_t terrain_hash, int icon);
 
 // Saved tactical dimensions
 static int  g_saved_tac_lepton_w = 0;
@@ -133,6 +134,27 @@ static void replay_shapes(bool include_shadow)
             if (include_shadow) {
                 continue;
             }
+#ifdef USE_RENDER_BRIDGE_GL_SPRITES
+            // When GL has an HD terrain tile, fill this stamp's area with the
+            // terrain key index instead of drawing the legacy tile. The tactical
+            // shader discards the key index, making these pixels transparent so
+            // the HD terrain layer underneath shows through. This preserves
+            // correct compositing order: HD terrain → native buffer → GL sprites.
+            if (cmd.stamp.terrain_hash && GL_Present_Is_Active() &&
+                GL_Sprites_Has_Terrain_Frame(cmd.stamp.terrain_hash, cmd.stamp.icon)) {
+                int fx = cmd.stamp.x;
+                int fy = cmd.stamp.y;
+                // Draw_Stamp adds WINDOW offset internally; we use Fill_Rect
+                // which operates on raw buffer coords, so add window offset.
+                int wx = WindowList[cmd.stamp.window][WINDOWX] << 3;
+                int wy = WindowList[cmd.stamp.window][WINDOWY];
+                LogicPage->Fill_Rect(wx + fx, wy + fy,
+                                     wx + fx + ICON_PIXEL_W - 1,
+                                     wy + fy + ICON_PIXEL_W - 1,
+                                     static_cast<unsigned char>(TERRAIN_KEY_INDEX));
+                continue;
+            }
+#endif
             LogicPage->Draw_Stamp(cmd.stamp.icondata, cmd.stamp.icon,
                                    cmd.stamp.x, cmd.stamp.y, cmd.stamp.remap, cmd.stamp.window);
         } else if (cmd.type == CMD_SHAPE) {
@@ -141,9 +163,11 @@ static void replay_shapes(bool include_shadow)
             }
 #ifdef USE_RENDER_BRIDGE_GL_SPRITES
             extern bool GL_Present_Is_Active();
-            extern bool GL_Sprites_Should_Skip_CPU(const ShapeCmd& cmd);
-            if (!include_shadow && GL_Present_Is_Active() && GL_Sprites_Should_Skip_CPU(cmd.shape)) {
-                continue;
+            if (GL_Present_Is_Active()) {
+                extern bool GL_Sprites_Should_Skip_CPU(const ShapeCmd& cmd);
+                if (GL_Sprites_Should_Skip_CPU(cmd.shape)) {
+                    continue;
+                }
             }
 #endif
             CC_Draw_Shape(cmd.shape.shapefile, cmd.shape.shapenum, cmd.shape.x, cmd.shape.y,
@@ -285,10 +309,9 @@ void Render_Bridge_End_Draw_List(GraphicViewPortClass& page)
 
             // Replay to native buffer. In GL mode, overlays are rendered later
             // as GL primitives so the native texture contains only the world.
-            // Shroud fill rects (LAYER_SHADOW CMD_FILL_RECT) are replayed here
-            // because replay_overlays() is skipped in the GL path.
+            // Keep shroud fill rects out of this texture: they need alpha and
+            // must composite above HD sprite overlays instead of underneath.
             replay_world();
-            replay_shroud_fill_rects();
 
             // Restore
             Set_Logic_Page(*saved_logic);

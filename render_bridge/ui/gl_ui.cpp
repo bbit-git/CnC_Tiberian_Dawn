@@ -354,7 +354,7 @@ void GL_UI_Render(int win_w, int win_h,
                                 static_cast<float>(win_h));
                     glUniform1i(g_sdf_u_tex, 0);
 
-                    float font_scale = UI_Text_Get_Font_Scale();
+                    float font_scale = UI_Text_Get_Font_Scale() * cmd.text.scale;
                     float render_size = atlas->line_height * scale * font_scale;
                     float screen_px_range = atlas->sdf_pixel_range *
                         (render_size / atlas->sdf_font_size);
@@ -379,7 +379,7 @@ void GL_UI_Render(int win_w, int win_h,
             float cy = off_y + cmd.text.y * scale;
 
             float glyph_scale = scale;
-            if (atlas->is_sdf) glyph_scale *= UI_Text_Get_Font_Scale();
+            if (atlas->is_sdf) glyph_scale *= UI_Text_Get_Font_Scale() * cmd.text.scale;
 
             for (int c = 0; c < cmd.text.text_length; c++) {
                 uint8_t ch = static_cast<uint8_t>(str[c]);

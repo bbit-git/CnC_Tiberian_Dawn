@@ -18,12 +18,22 @@ extern void GL_Primitives_Render_Source_Overlay(int win_w, int win_h,
                                                 bool has_ui_overlay);
 extern bool Render_Bridge_Debug_Sources_Enabled();
 #ifdef USE_RENDER_BRIDGE_GL_SPRITES
+extern int GL_Sprites_Render_Terrain(int win_w, int win_h,
+                                      int tac_screen_x, int tac_screen_y,
+                                      int tac_screen_w, int tac_screen_h,
+                                      float scale, float vp_x, float vp_y);
 extern int GL_Sprites_Render(int win_w, int win_h,
                               int tac_screen_x, int tac_screen_y,
                               int tac_screen_w, int tac_screen_h,
                               int tac_game_x, int tac_game_y,
                               int tac_game_w, int tac_game_h,
                               float scale, float vp_x, float vp_y);
+extern int GL_Sprites_Render_Shadow(int win_w, int win_h,
+                                    int tac_screen_x, int tac_screen_y,
+                                    int tac_screen_w, int tac_screen_h,
+                                    int tac_game_x, int tac_game_y,
+                                    int tac_game_w, int tac_game_h,
+                                    float scale, float vp_x, float vp_y);
 #endif
 
 static constexpr bool k_enable_gl_sprite_overlay = true;
@@ -33,7 +43,10 @@ static bool frame_has_shroud_overlay()
 {
     for (int i = 0; i < g_draw_list.Command_Count(); i++) {
         const DrawCommand& cmd = g_draw_list.Get(i);
-        if (cmd.type == CMD_SHAPE && cmd.layer == LAYER_SHADOW) {
+        if (cmd.layer != LAYER_SHADOW) {
+            continue;
+        }
+        if (cmd.type == CMD_SHAPE || cmd.type == CMD_FILL_RECT) {
             return true;
         }
     }
@@ -159,24 +172,72 @@ bool GL_Present_Draw_Regions(const GLPresentFrameContext& ctx,
     float nx1 = static_cast<float>(dst_x + dst_w) / ctx.win_w * 2.0f - 1.0f;
     float ny1 = 1.0f - static_cast<float>(dst_y + dst_h) / ctx.win_h * 2.0f;
 
-    glUniform4f(g_u_src_rect, u0, v0, u1, v1);
-    glUniform4f(g_u_dst_rect, nx0, ny0, nx1, ny1);
+    // Render scale must match the native buffer UV→screen mapping exactly.
+    // Using fit_scale introduces sub-pixel drift because dst_w = round(vis_w * fit_scale)
+    // differs from vis_w * fit_scale. Use the actual dst/vis ratio instead.
+    float render_scale = (vis_w > 0.0f) ? static_cast<float>(dst_w) / vis_w : fit_scale;
 
+#ifdef USE_RENDER_BRIDGE_GL_SPRITES
+    // Layer 1: HD terrain tiles. Drawn first so they sit below everything.
+    if (k_enable_gl_sprite_overlay) {
+        GL_Sprites_Render_Terrain(ctx.win_w, ctx.win_h,
+                                   dst_x, dst_y, dst_w, dst_h,
+                                   render_scale, vp_x, vp_y);
+    }
+#endif
+
+    // Layer 2: Native tactical buffer. Uses the tactical shader that discards
+    // TERRAIN_KEY_INDEX pixels, making HD terrain holes transparent. Alpha
+    // blending lets the terrain layer underneath show through.
+    bool has_hd_terrain = (g_tac_program != 0);
+    if (has_hd_terrain) {
+        glUseProgram(g_tac_program);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, g_tac_tex);
+        glUniform1i(g_tac_u_indexed, 0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, g_palette_tex);
+        glUniform1i(g_tac_u_palette, 1);
+        glUniform4f(g_tac_u_src_rect, u0, v0, u1, v1);
+        glUniform4f(g_tac_u_dst_rect, nx0, ny0, nx1, ny1);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    } else {
+        glUniform4f(g_u_src_rect, u0, v0, u1, v1);
+        glUniform4f(g_u_dst_rect, nx0, ny0, nx1, ny1);
+    }
+
+    // Re-enable attrib 0 — the sprite batch Flush() in Render_Terrain
+    // disables vertex attrib arrays. Without this the tactical quad draws
+    // nothing and the native buffer (with trees, tiberium, shroud) is invisible.
+    glEnableVertexAttribArray(0);
     static const float quad[] = { 0,0, 1,0, 0,1, 1,1 };
     GL_Present_Bind_Client_Quad(quad);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-    // Render scale: screen pixels per native pixel (= fit_scale, not zoom).
-    float render_scale = fit_scale;
+    if (has_hd_terrain) {
+        glDisable(GL_BLEND);
+        // Restore the default palette program for subsequent draws.
+        GL_Present_Bind_Palette_Program();
+    }
 
 #ifdef USE_RENDER_BRIDGE_GL_SPRITES
-    if (k_enable_gl_sprite_overlay && !frame_has_shroud_overlay()) {
+    // Layer 3: HD sprite overlays (units, buildings).
+    if (k_enable_gl_sprite_overlay) {
         GL_Sprites_Render(ctx.win_w, ctx.win_h,
                           dst_x, dst_y, dst_w, dst_h,
                           0, 0, g_tac_tex_w, g_tac_tex_h,
                           render_scale, vp_x, vp_y);
+        GL_Sprites_Render_Shadow(ctx.win_w, ctx.win_h,
+                                 dst_x, dst_y, dst_w, dst_h,
+                                 0, 0, g_tac_tex_w, g_tac_tex_h,
+                                 render_scale, vp_x, vp_y);
     }
 #endif
+    GL_Shroud_Render(ctx.win_w, ctx.win_h,
+                     dst_x, dst_y, dst_w, dst_h,
+                     render_scale, vp_x, vp_y, vga_palette);
+
     GL_Primitives_Render(ctx.win_w, ctx.win_h,
                          dst_x, dst_y, dst_w, dst_h,
                          render_scale, vp_x, vp_y, vga_palette);

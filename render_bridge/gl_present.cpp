@@ -49,6 +49,11 @@ GLint g_u_indexed = -1;
 GLint g_u_palette = -1;
 GLint g_u_src_rect = -1;
 GLint g_u_dst_rect = -1;
+GLuint g_tac_program = 0;
+GLint g_tac_u_indexed = -1;
+GLint g_tac_u_palette = -1;
+GLint g_tac_u_src_rect = -1;
+GLint g_tac_u_dst_rect = -1;
 GLuint g_ui_program = 0;
 GLint g_ui_u_indexed = -1;
 GLint g_ui_u_palette = -1;
@@ -84,6 +89,22 @@ static const char* frag_src = R"(
     uniform sampler2D u_palette;
     void main() {
         float idx = texture2D(u_indexed, v_uv).r;
+        float pal_u = (idx * 255.0 + 0.5) / 256.0;
+        gl_FragColor = texture2D(u_palette, vec2(pal_u, 0.5));
+    }
+)";
+
+// Tactical shader: identical to frag_src but discards the HD terrain key index
+// (254) so that HD terrain drawn underneath shows through the holes.
+static const char* frag_tac_src = R"(
+    precision mediump float;
+    varying vec2 v_uv;
+    uniform sampler2D u_indexed;
+    uniform sampler2D u_palette;
+    void main() {
+        float idx = texture2D(u_indexed, v_uv).r;
+        float idx_i = floor(idx * 255.0 + 0.5);
+        if (idx_i > 253.5 && idx_i < 254.5) discard;
         float pal_u = (idx * 255.0 + 0.5) / 256.0;
         gl_FragColor = texture2D(u_palette, vec2(pal_u, 0.5));
     }
@@ -217,6 +238,22 @@ bool GL_Present_Init(int w, int h)
         return false;
     }
 
+    GLuint tac_vs = compile_shader(GL_VERTEX_SHADER, vert_src);
+    GLuint tac_fs = compile_shader(GL_FRAGMENT_SHADER, frag_tac_src);
+    if (tac_vs && tac_fs) {
+        g_tac_program = glCreateProgram();
+        glAttachShader(g_tac_program, tac_vs);
+        glAttachShader(g_tac_program, tac_fs);
+        glBindAttribLocation(g_tac_program, 0, "a_pos");
+        glLinkProgram(g_tac_program);
+        glDeleteShader(tac_vs);
+        glDeleteShader(tac_fs);
+        g_tac_u_indexed = glGetUniformLocation(g_tac_program, "u_indexed");
+        g_tac_u_palette = glGetUniformLocation(g_tac_program, "u_palette");
+        g_tac_u_src_rect = glGetUniformLocation(g_tac_program, "u_src_rect");
+        g_tac_u_dst_rect = glGetUniformLocation(g_tac_program, "u_dst_rect");
+    }
+
     GLuint ui_vs = compile_shader(GL_VERTEX_SHADER, vert_src);
     GLuint ui_fs = compile_shader(GL_FRAGMENT_SHADER, frag_ui_src);
     if (ui_vs && ui_fs) {
@@ -296,6 +333,7 @@ void GL_Present_Shutdown()
     if (g_rgba_tex) { glDeleteTextures(1, &g_rgba_tex); g_rgba_tex = 0; }
     if (g_cursor_overlay) { free(g_cursor_overlay); g_cursor_overlay = nullptr; g_cursor_overlay_alloc = 0; }
     if (g_rgba_upload) { free(g_rgba_upload); g_rgba_upload = nullptr; g_rgba_upload_alloc = 0; }
+    if (g_tac_program) { glDeleteProgram(g_tac_program); g_tac_program = 0; }
     if (g_rgba_program) { glDeleteProgram(g_rgba_program); g_rgba_program = 0; }
     if (g_ui_program) { glDeleteProgram(g_ui_program); g_ui_program = 0; }
     if (g_gl_program) { glDeleteProgram(g_gl_program); g_gl_program = 0; }
@@ -561,6 +599,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         extern void UI_Special_Dialog_Emit();
         extern void UI_Expansion_Dialog_Emit();
         extern void UI_Com_Scenario_Emit();
+        extern void UI_Main_Menu_Options_Emit();
 
         extern void UI_Tooltip_Emit(int, int, int, int);
         extern void GL_UI_Render(int, int, int, int, float);
@@ -580,6 +619,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         UI_Special_Dialog_Emit();
         UI_Expansion_Dialog_Emit();
         UI_Com_Scenario_Emit();
+        UI_Main_Menu_Options_Emit();
         UI_Main_Menu_Emit();
         // Simple confirm (covers CCMessageBox + Surrender)
         UI_Dialog_Emit();
@@ -610,6 +650,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         extern void UI_Special_Dialog_Emit();
         extern void UI_Expansion_Dialog_Emit();
         extern void UI_Com_Scenario_Emit();
+        extern void UI_Main_Menu_Options_Emit();
 
         extern void UI_Dialog_Emit();
         extern void GL_UI_Render(int, int, int, int, float);
@@ -623,6 +664,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         UI_Special_Dialog_Emit();
         UI_Expansion_Dialog_Emit();
         UI_Com_Scenario_Emit();
+        UI_Main_Menu_Options_Emit();
         UI_Main_Menu_Emit();
         UI_Dialog_Emit();
         Render_Bridge_UI_End_Frame();
@@ -717,6 +759,7 @@ void Render_Bridge_Idle_Frame()
         extern void UI_Special_Dialog_Emit();
         extern void UI_Expansion_Dialog_Emit();
         extern void UI_Com_Scenario_Emit();
+        extern void UI_Main_Menu_Options_Emit();
 
         extern void UI_Dialog_Emit();
         extern void GL_UI_Render(int, int, int, int, float);
@@ -730,6 +773,7 @@ void Render_Bridge_Idle_Frame()
         UI_Special_Dialog_Emit();
         UI_Expansion_Dialog_Emit();
         UI_Com_Scenario_Emit();
+        UI_Main_Menu_Options_Emit();
         UI_Main_Menu_Emit();
         UI_Dialog_Emit();
         Render_Bridge_UI_End_Frame();

@@ -51,6 +51,8 @@
 #ifdef USE_RENDER_BRIDGE
 #include  "render_bridge.h"
 #include  "ui/ui_main_menu.h"
+#include  "sounddlg.h"
+#include  "visudlg.h"
 #endif
 
 static HANDLE			hCCLibrary;
@@ -1103,8 +1105,57 @@ bool Select_Game(bool fade)
 								Theme.Fade_Out();
 								break;
 							case 3: selection = SEL_LOAD_MISSION;   break;
-							case 4: selection = SEL_MULTIPLAYER_GAME; GameToPlay = GAME_NORMAL; break;
-							case 5: Options.Process(); display = true; fade = true; selection = SEL_NONE; break;  // Show options dialog
+							case 4:
+								Keyboard::Clear();
+								if (Com_Scenario_Dialog()) {
+									selection = SEL_MULTIPLAYER_GAME;
+									GameToPlay = GAME_SKIRMISH;
+								} else {
+									display = true;
+									selection = SEL_NONE;
+								}
+								break;
+							case 5: {
+									// Standalone main-menu Options: Audio | Video | Back
+									// Loops until player chooses Back, then returns to main menu.
+									bool opts_done = false;
+									while (!opts_done) {
+										int sw = SeenBuff.Get_Width();
+										int sh = SeenBuff.Get_Height();
+										{ extern void Render_Bridge_Get_Logical_Screen_Size(int&, int&);
+										  Render_Bridge_Get_Logical_Screen_Size(sw, sh); }
+
+										UIMainMenuOptionsState mm_opts = {};
+										mm_opts.screen_w = sw;
+										mm_opts.screen_h = sh;
+										snprintf(mm_opts.lbl_title,  sizeof(mm_opts.lbl_title),  "Options");
+										snprintf(mm_opts.lbl_audio,  sizeof(mm_opts.lbl_audio),  "Audio");
+										snprintf(mm_opts.lbl_video,  sizeof(mm_opts.lbl_video),  "Video");
+										snprintf(mm_opts.lbl_back,   sizeof(mm_opts.lbl_back),   "Back");
+										snprintf(mm_opts.lbl_hd,     sizeof(mm_opts.lbl_hd),     "HD Textures");
+										snprintf(mm_opts.lbl_legacy, sizeof(mm_opts.lbl_legacy), "Classic");
+										Render_Bridge_UI_Set_Main_Menu_Options(mm_opts);
+
+										// Wait for a result
+										while (Render_Bridge_UI_Get_Main_Menu_Options_Result() == UI_MM_OPT_NONE) {
+											Call_Back();
+										}
+
+										int opt_result = Render_Bridge_UI_Get_Main_Menu_Options_Result();
+										Render_Bridge_UI_Clear_Main_Menu_Options();
+
+										if (opt_result == UI_MM_OPT_AUDIO) {
+											SoundControlsClass().Process();
+										} else if (opt_result == UI_MM_OPT_VIDEO) {
+											VisualControlsClass().Process();
+										} else {
+											// Back or ESC — exit options loop
+											opts_done = true;
+										}
+									}
+									display = true; selection = SEL_NONE;
+									break;
+								}
 							case 6: selection = SEL_EXIT; break;
 #ifdef NEWMENU
 							case 7: selection = SEL_NEW_SCENARIO; break;

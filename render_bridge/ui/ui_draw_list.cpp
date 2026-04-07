@@ -42,7 +42,8 @@ void UIDrawList::Draw_Rect(int x, int y, int w, int h,
 }
 
 void UIDrawList::Draw_Text(int x, int y, const char* text, int font_id,
-                           uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+                           uint8_t r, uint8_t g, uint8_t b, uint8_t a,
+                           float scale)
 {
     if (!text || !text[0]) return;
 
@@ -52,7 +53,7 @@ void UIDrawList::Draw_Text(int x, int y, const char* text, int font_id,
 
     UIDrawCmd cmd;
     cmd.type = UI_CMD_TEXT;
-    cmd.text = {x, y, r, g, b, a, offset, len, font_id};
+    cmd.text = {x, y, r, g, b, a, offset, len, font_id, scale};
     commands_.push_back(cmd);
 }
 

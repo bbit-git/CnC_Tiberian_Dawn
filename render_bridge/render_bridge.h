@@ -16,6 +16,12 @@
 #include "render_compositor.h"
 #include "render_layer.h"
 #include "ui/ui_dialog.h"
+#include "ui/ui_main_menu_options.h"
+
+/// Palette index used as transparency key for HD terrain holes in the native
+/// tactical buffer. The tactical shader discards this index so that HD terrain
+/// tiles drawn underneath show through.
+static constexpr int TERRAIN_KEY_INDEX = 254;
 
 /// Initialize the render bridge. Call once after game viewport is configured.
 bool Render_Bridge_Init(int output_width, int output_height);
@@ -106,6 +112,28 @@ bool Render_Bridge_Debug_Bars_Enabled();
 /// Register an optional HD sprite provider for the tactical sprite batch.
 /// Pass `nullptr` to clear it and fall back to legacy indexed sprites only.
 void Render_Bridge_Register_HD_Sprite_Provider(void* provider);
+
+/// Set the terrain type hash (FNV-1a of template IniName) for the next Draw_Stamp.
+/// Must be called immediately before the Draw_Stamp call from CellClass::Draw_It.
+/// The hook consumes and resets this value; stamps without a prior call get hash=0.
+void Render_Bridge_Set_Stamp_Terrain_Hash(uint32_t hash);
+
+/// Notify the bridge that the game theater has changed.
+/// Re-initializes the HD terrain tile provider and invalidates the terrain atlas.
+void Render_Bridge_Set_Theater(const char* theater_name);
+
+struct UIMainMenuOptionsState {
+    bool   active;
+    int    result;           // UIMainMenuOptionsResult
+    bool   hd_graphics;
+    int    screen_w, screen_h;
+    char   lbl_title[48];
+    char   lbl_audio[32];
+    char   lbl_video[32];
+    char   lbl_back[32];
+    char   lbl_hd[32];
+    char   lbl_legacy[32];
+};
 
 /// Register a stable entity hash for a shapefile pointer.
 void Render_Bridge_Register_Shape_Identity(const void* shapefile, uint32_t entity_hash);
@@ -505,5 +533,12 @@ bool Render_Bridge_UI_Has_Active_Main_Menu();
 
 // Returns true if any bridge-native dialog is currently open.
 bool Render_Bridge_UI_Has_Any_Active_Dialog();
+
+// --- Main Menu Options Dialog (standalone, from main menu "Options" button) ---
+
+void Render_Bridge_UI_Set_Main_Menu_Options(const UIMainMenuOptionsState& state);
+int  Render_Bridge_UI_Get_Main_Menu_Options_Result();
+void Render_Bridge_UI_Clear_Main_Menu_Options();
+bool Render_Bridge_UI_Has_Active_Main_Menu_Options();
 
 #endif // CNC_RENDER_BRIDGE_H

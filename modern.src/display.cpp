@@ -31,6 +31,7 @@ extern bool Render_Bridge_World_To_Tactical(int world_lepton_x, int world_lepton
 extern bool Render_Bridge_Tactical_To_World(int pixel_x, int pixel_y, int& world_lepton_x, int& world_lepton_y);
 extern bool Render_Bridge_Is_Cell_In_View(int cell_x, int cell_y);
 extern bool Render_Bridge_Record_Shroud_Fill_Rect(int x, int y, int w, int h);
+extern void Render_Bridge_Set_Theater(const char* theater_name);
 #endif
 /***********************************************************************************************
  ***             C O N F I D E N T I A L  ---  W E S T W O O D   S T U D I O S               ***
@@ -390,6 +391,12 @@ void DisplayClass::Init_Theater(TheaterType theater)
 	** Save the new theater value
 	*/
 	Theater = theater;
+
+#ifdef USE_RENDER_BRIDGE
+	// Notify the HD terrain provider that the theater has changed so it can
+	// reload its tile index and the atlas can be invalidated.
+	Render_Bridge_Set_Theater(Theaters[Theater].Name);
+#endif
 
 #ifndef DEMO
 	/*

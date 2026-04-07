@@ -40,6 +40,7 @@ set(CNC_RENDER_BRIDGE_SRCS
     ${RENDER_BRIDGE_DIR}/ui/ui_expansion_dialog.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_com_scenario.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_main_menu.cpp
+    ${RENDER_BRIDGE_DIR}/ui/ui_main_menu_options.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_tooltip.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_text.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_text_sdf.cpp

@@ -59,6 +59,7 @@ struct StampCmd {
     int         x, y;
     const void* remap;
     int         window;
+    uint32_t    terrain_hash; // FNV-1a hash of template name; 0 = no HD terrain available
 };
 
 /// A recorded primitive (rect, line, pixel).
@@ -89,7 +90,7 @@ public:
                       uint32_t entity_hash = 0);
 
     void Record_Stamp(const void* icondata, int icon, int x, int y,
-                      const void* remap, int window);
+                      const void* remap, int window, uint32_t terrain_hash = 0);
 
     void Record_Fill_Rect(int x1, int y1, int x2, int y2, uint8_t color,
                           DrawLayer layer = LAYER_OVERLAY);

@@ -19,6 +19,16 @@
 
 extern uint32_t Render_Bridge_Get_Shape_Identity(const void* shapefile);
 
+// Side channel: terrain type hash set by cell.cpp before Draw_Stamp(), consumed
+// (and reset to 0) by Draw_List_Maybe_Record_Stamp. This avoids modifying the
+// GraphicBufferClass::Draw_Stamp signature which is shared engine infrastructure.
+static uint32_t g_stamp_terrain_hash = 0;
+
+void Render_Bridge_Set_Stamp_Terrain_Hash(uint32_t hash)
+{
+    g_stamp_terrain_hash = hash;
+}
+
 namespace {
 
 /// Return the legacy tactical record rect used while HidPage primitives are captured.
@@ -158,9 +168,13 @@ bool Draw_List_Maybe_Record_Stamp(
     void const* icondata, int icon, int x, int y,
     void const* remap, int window)
 {
+    // Consume the side-channel terrain hash unconditionally so it never
+    // leaks into a subsequent stamp call.
+    uint32_t terrain_hash = g_stamp_terrain_hash;
+    g_stamp_terrain_hash = 0;
     if (!g_draw_list.IsRecording()) return false;
     if (window != WINDOW_TACTICAL) return false;
-    g_draw_list.Record_Stamp(icondata, icon, x, y, remap, window);
+    g_draw_list.Record_Stamp(icondata, icon, x, y, remap, window, terrain_hash);
     return true;
 }
 
@@ -213,14 +227,16 @@ bool Draw_List_Maybe_Record_Line(const void* buffer, int origin_x, int origin_y,
     return true;
 }
 
-/// Record a solid-black shroud fill rect with native-buffer-relative coordinates.
+/// Record a shroud fill rect with native-buffer-relative coordinates.
 /// Called directly from Redraw_Shadow_Rects in bridge mode, bypassing the generic
-/// hook to store LAYER_SHADOW (so the native buffer replay includes these, not the
-/// overlay pass which is skipped in GL mode). Returns true when recording; callers
-/// fall back to LogicPage->Fill_Rect only when false (CPU path).
+/// hook so GL mode can composite shroud later as a translucent overlay above the
+/// HD world. Returns true only in active GL mode; callers fall back to direct
+/// LogicPage->Fill_Rect otherwise.
 bool Render_Bridge_Record_Shroud_Fill_Rect(int x, int y, int w, int h)
 {
+    extern bool GL_Present_Is_Active();
     if (!g_draw_list.IsRecording()) return false;
+    if (!GL_Present_Is_Active()) return false;
     g_draw_list.Record_Fill_Rect(x, y, x + w - 1, y + h - 1, BLACK, LAYER_SHADOW);
     return true;
 }

@@ -27,6 +27,10 @@ extern int  GL_Sprites_Last_Atlas_New_Count();
 extern int  GL_Sprites_Last_Sprite_Count();
 extern int  GL_Sprites_Last_Draw_Calls();
 extern int  GL_Sprites_Last_Fallback_Count();
+extern int  GL_Sprites_Last_Terrain_Miss_Count();
+extern int  GL_Sprites_Terrain_Atlas_Count();
+extern uint32_t GL_Sprites_Hit_Test_Terrain(float native_x, float native_y, int& icon_out,
+                                             bool& has_hd_out);
 extern int  GL_Primitives_Last_Count();
 extern SDL_Window* g_window;
 extern void Render_Bridge_Get_Render_Tactical_Rect(int& x, int& y, int& w, int& h);
@@ -59,9 +63,9 @@ static int    g_hud_drag_off_y = 0;
 
 // HUD bitmap
 static constexpr int HUD_W = 160;
-static constexpr int HUD_H = 384;
+static constexpr int HUD_H = 408;
 static constexpr int HUD_SCREEN_W = 320;
-static constexpr int HUD_SCREEN_H = 640;
+static constexpr int HUD_SCREEN_H = 680;
 static uint32_t g_hud_pixels[HUD_W * HUD_H];
 static int      g_cb_row[4] = {HUD_H, HUD_H, HUD_H, HUD_H};
 
@@ -500,6 +504,12 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
     snprintf(line, sizeof(line), "GL P%d", gl_prims);
     hud_puts(2, y, line, green); y += 8;
 
+    // Terrain tile stats: HD hits vs misses
+    int terrain_miss = GL_Sprites_Last_Terrain_Miss_Count();
+    int terrain_cached = GL_Sprites_Terrain_Atlas_Count();
+    snprintf(line, sizeof(line), "TRN %dHD %dMIS", terrain_cached, terrain_miss);
+    hud_puts(2, y, line, terrain_miss > 0 ? orange : green); y += 8;
+
     // Mouse position: mapped (bridge-transformed) and raw (window-scaled)
     extern void TD_SDL_Get_Raw_Mouse_Position(int& x, int& y);
     int raw_mx = 0, raw_my = 0;
@@ -509,6 +519,29 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
 
     snprintf(line, sizeof(line), "RAW %d-%d", raw_mx, raw_my);
     hud_puts(2, y, line, orange); y += 8;
+
+    // Mouse-over terrain tile: convert mouse to native buffer coords and hit-test.
+    {
+        // Mouse is in game-buffer coords (g_mouse_x/y). Tactical window origin
+        // gives the buffer offset. Stamps are stored in window-local coords.
+        int tac_ox = WindowList[WINDOW_TACTICAL][WINDOWX] << 3;
+        int tac_oy = WindowList[WINDOW_TACTICAL][WINDOWY];
+        float native_mx = static_cast<float>(g_mouse_x - tac_ox) + vp_x;
+        float native_my = static_cast<float>(g_mouse_y - tac_oy) + vp_y;
+
+        int tile_icon = 0;
+        bool tile_has_hd = false;
+        uint32_t tile_hash = GL_Sprites_Hit_Test_Terrain(native_mx, native_my,
+                                                          tile_icon, tile_has_hd);
+        if (tile_hash) {
+            snprintf(line, sizeof(line), "TILE %08X I%d", tile_hash, tile_icon);
+            hud_puts(2, y, line, tile_has_hd ? green : red); y += 8;
+            snprintf(line, sizeof(line), "%s", tile_has_hd ? "HD" : "NO HD");
+            hud_puts(2, y, line, tile_has_hd ? green : red); y += 8;
+        } else {
+            hud_puts(2, y, "TILE NONE", white); y += 8;
+        }
+    }
 
     // Debug rect legend — matches gl_present_debug.cpp
     y += 2;

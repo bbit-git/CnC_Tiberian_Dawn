@@ -21,6 +21,7 @@ UIDialogStyle UI_Default_Dialog_Style()
     s.button_w = 80;
     s.button_h = 20;
     s.padding = 6;
+    s.text_scale = 1.0f;
     return s;
 }
 
@@ -55,11 +56,13 @@ void UI_Dialog_Begin(int screen_w, int screen_h,
                              style.title_bg_r, style.title_bg_g,
                              style.title_bg_b, style.title_bg_a);
     if (title && title[0]) {
-        int text_h = UI_Text_Line_Height(style.title_font);
+        float ts = (style.text_scale > 0.0f) ? style.text_scale : 1.0f;
+        int text_h = static_cast<int>(UI_Text_Line_Height(style.title_font) * ts);
         int ty = dy + (style.title_height - text_h) / 2;
-        UI_Label(dx + style.padding, ty, title, style.title_font,
-                 style.title_text_r, style.title_text_g,
-                 style.title_text_b, style.title_text_a);
+        g_ui_draw_list.Draw_Text(dx + style.padding, ty, title,
+                                 style.title_font,
+                                 style.title_text_r, style.title_text_g,
+                                 style.title_text_b, style.title_text_a, ts);
     }
 
     // Content area
@@ -93,6 +96,7 @@ UIDialogResult UI_Dialog_End(int dialog_x, int dialog_y,
     bs.text_r = 200;  bs.text_g = 200;  bs.text_b = 200;
     bs.border_r = 0;  bs.border_g = 100; bs.border_b = 0;
     bs.font = style.title_font;
+    bs.text_scale = (style.text_scale > 0.0f) ? style.text_scale : 1.0f;
 
     if (ok_label && cancel_label && extra_label) {
         // Three buttons: OK | Extra (centered) | Cancel

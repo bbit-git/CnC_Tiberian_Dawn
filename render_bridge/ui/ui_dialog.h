@@ -32,6 +32,7 @@ struct UIDialogStyle {
     int button_w;
     int button_h;
     int padding;
+    float text_scale;  // extra text scale for title and buttons (1.0 = default)
 };
 
 UIDialogStyle UI_Default_Dialog_Style();
