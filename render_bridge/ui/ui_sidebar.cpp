@@ -245,7 +245,7 @@ static void emit_pip(int pip_frame, int x, int y, int w, int h)
         ObjectTypeClass::PipShapes, pip_frame, nullptr, 255);
     if (pip && pip->rgba) {
         int pip_x = x + (w - pip->width) / 2;
-        int pip_y = y + h - pip->height - 2;
+        int pip_y = y + h - pip->height - 8;
         g_ui_draw_list.Draw_Icon(pip_x, pip_y, pip->width, pip->height,
                                  reinterpret_cast<const uint8_t*>(pip->rgba),
                                  pip->width, pip->height);
@@ -336,7 +336,7 @@ static void emit_slot(int x, int y, int w, int h, int slot_index,
 
     // Darken overlay for unavailable items (factory busy, no production started)
     if (darken) {
-        g_ui_draw_list.Fill_Rect(x, y, w, h, 0, 0, 0, DARKEN_ALPHA);
+        g_ui_draw_list.Fill_Rect(x + 1, y + 1, w - 2, h - 2, 0, 0, 0, DARKEN_ALPHA);
     }
 
     // Production indicators: clock sweep, pip ready/holding
@@ -344,6 +344,7 @@ static void emit_slot(int x, int y, int w, int h, int slot_index,
         if (completed) {
             emit_pip(PIP_READY, x, y, w, h);
         } else if (holding) {
+            emit_clock(stage, x, y, w, h);
             emit_pip(PIP_HOLDING, x, y, w, h);
         } else {
             emit_clock(stage, x, y, w, h);
