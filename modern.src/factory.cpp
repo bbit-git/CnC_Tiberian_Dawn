@@ -510,7 +510,10 @@ bool FactoryClass::Start(void)
 {
 	Validate();
 	if ((Object || SpecialItem) && IsSuspended && !Has_Completed()) {
-		if (House->Available_Money() >= Cost_Per_Tick()) {
+		int cost_per_tick = Cost_Per_Tick();
+		long money = House ? House->Available_Money() : 0;
+		int power_frac = House ? House->Power_Fraction() : 0;
+		if (money >= cost_per_tick) {
 			int time;
 
 			if (Object) {
@@ -528,8 +531,22 @@ bool FactoryClass::Start(void)
 
 			Set_Rate(rate);
 			IsSuspended = false;
+			fprintf(stderr,
+				"[ERR] Factory::Start: success fac=%d object=%p special=%d cost_per_tick=%d money=%ld power=%d rate=%d stage=%d\n",
+				Factories.ID(this), (void*)Object, SpecialItem, cost_per_tick, money, power_frac,
+				Fetch_Rate(), Fetch_Stage());
 			return(true);
 		}
+		fprintf(stderr,
+			"[ERR] Factory::Start: blocked fac=%d object=%p special=%d cost_per_tick=%d money=%ld power=%d completed=%d suspended=%d stage=%d\n",
+			Factories.ID(this), (void*)Object, SpecialItem, cost_per_tick, money, power_frac,
+			Has_Completed(), IsSuspended, Fetch_Stage());
+	}
+	else {
+		fprintf(stderr,
+			"[ERR] Factory::Start: skipped fac=%d object=%p special=%d suspended=%d completed=%d stage=%d rate=%d\n",
+			Factories.ID(this), (void*)Object, SpecialItem, IsSuspended, Has_Completed(),
+			Fetch_Stage(), Fetch_Rate());
 	}
 	return(false);
 }

@@ -2793,6 +2793,9 @@ ProdFailType HouseClass::Begin_Production(RTTIType type, int id)
 	FactoryClass * fptr;
 	TechnoTypeClass const * tech = Fetch_Techno_Type(type, id);
 
+	fprintf(stderr, "[ERR] Begin_Production: type=%d id=%d tech=%p house=%s\n",
+		(int)type, id, (const void*)tech, Class ? Class->IniName : "?");
+
 	switch (type) {
 		case RTTI_AIRCRAFT:
 		case RTTI_AIRCRAFTTYPE:
@@ -2822,7 +2825,10 @@ ProdFailType HouseClass::Begin_Production(RTTIType type, int id)
 	/*
 	**	Check for legality of the production object type suggested.
 	*/
-	if (!factory) return(PROD_ILLEGAL);
+	if (!factory) {
+		fprintf(stderr, "[ERR] Begin_Production: PROD_ILLEGAL — no factory ptr for type\n");
+		return(PROD_ILLEGAL);
+	}
 
 	/*
 	**	If the house is already busy producing the requested object, then
@@ -2830,18 +2836,26 @@ ProdFailType HouseClass::Begin_Production(RTTIType type, int id)
 	*/
 	if (*factory != -1) {
 		fptr = Factories.Raw_Ptr(*factory);
-		if (fptr->Is_Building())
+		if (fptr->Is_Building()) {
+			fprintf(stderr, "[ERR] Begin_Production: PROD_CANT — factory already building\n");
 			return(PROD_CANT);
+		}
 	} else {
 		fptr = new FactoryClass();
-		if (!fptr) return(PROD_CANT);
+		if (!fptr) {
+			fprintf(stderr, "[ERR] Begin_Production: PROD_CANT — alloc failed\n");
+			return(PROD_CANT);
+		}
 		*factory = Factories.ID(fptr);
 		result = (tech) ? fptr->Set(*tech, *this) : fptr->Set(id, *this);
+		fprintf(stderr, "[ERR] Begin_Production: Set() returned %d, factory_id=%d\n", result, *factory);
 		initial_start = true;
 	}
 
 	if (result) {
-		fptr->Start();
+		bool started = fptr->Start();
+		fprintf(stderr, "[ERR] Begin_Production: Start()=%d, linking factory %d\n",
+			started ? 1 : 0, *factory);
 
 		/*
 		**	Link this factory to the sidebar so that proper graphic feedback
@@ -2853,6 +2867,7 @@ ProdFailType HouseClass::Begin_Production(RTTIType type, int id)
 
 		return(PROD_OK);
 	}
+	fprintf(stderr, "[ERR] Begin_Production: PROD_CANT — Set() failed\n");
 	return(PROD_CANT);
 }
 
