@@ -41,6 +41,40 @@
 
 #include "function.h"
 
+#ifdef USE_RENDER_BRIDGE
+extern bool Render_Bridge_Use_Legacy_Sidebar_Mode();
+extern void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h);
+
+static void convert_legacy_ui_mouse_for_tab(int& x, int& y)
+{
+	if (!Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+		return;
+	}
+
+	int base_w = SeenBuff.Get_Width();
+	int base_h = SeenBuff.Get_Height();
+	int logical_w = 0;
+	int logical_h = 0;
+	Render_Bridge_Get_Logical_Screen_Size(logical_w, logical_h);
+	if (base_w <= 0 || base_h <= 0 || logical_w <= 0 || logical_h <= 0) {
+		return;
+	}
+
+	float scale_x = static_cast<float>(logical_w) / static_cast<float>(base_w);
+	float scale_y = static_cast<float>(logical_h) / static_cast<float>(base_h);
+	float scale = (scale_x < scale_y) ? scale_x : scale_y;
+	if (scale <= 0.0f) {
+		return;
+	}
+
+	int offset_x = static_cast<int>((logical_w - base_w * scale) * 0.5f);
+	int offset_y = static_cast<int>((logical_h - base_h * scale) * 0.5f);
+
+	x = static_cast<int>((static_cast<float>(x - offset_x)) / scale);
+	y = static_cast<int>((static_cast<float>(y - offset_y)) / scale);
+}
+#endif
+
 
 void const * TabClass::TabShape = NULL;
 
@@ -180,7 +214,13 @@ void TabClass::Hilite_Tab(int tab)
  *=============================================================================================*/
 void TabClass::AI(KeyNumType &input, int x, int y)
 {
-	if (y >= 0 && y < Tab_Height && x < (SeenBuff.Get_Width() - 1) && x > 0) {
+	int ui_x = x;
+	int ui_y = y;
+#ifdef USE_RENDER_BRIDGE
+	convert_legacy_ui_mouse_for_tab(ui_x, ui_y);
+#endif
+
+	if (ui_y >= 0 && ui_y < Tab_Height && ui_x < (SeenBuff.Get_Width() - 1) && ui_x > 0) {
 
 		bool ok = false;
 		int	width = SeenBuff.Get_Width();
@@ -190,15 +230,15 @@ void TabClass::AI(KeyNumType &input, int x, int y)
 		**	in certain areas. If the special scroll modification is not active, then
 		**	the tabs never work when the mouse is at the top of the screen.
 		*/
-		if (y > 0 || (Special.IsScrollMod && ((x > 3 && x < Eva_Width) || (x < width-3 && x > width-Eva_Width)))) {
+		if (ui_y > 0 || (Special.IsScrollMod && ((ui_x > 3 && ui_x < Eva_Width) || (ui_x < width-3 && ui_x > width-Eva_Width)))) {
 			ok = true;
 		}
 
 		if (ok) {
 			if (input == KN_LMOUSE) {
 				int sel = -1;
-				if (x < Eva_Width) sel = 0;
-				if (x > width-Eva_Width) sel = 1;
+				if (ui_x < Eva_Width) sel = 0;
+				if (ui_x > width-Eva_Width) sel = 1;
 				if (sel >= 0) {
 					Set_Active(sel);
 					input = KN_NONE;
@@ -212,7 +252,7 @@ void TabClass::AI(KeyNumType &input, int x, int y)
 	Credits.AI();
 
 	//DBG("TabClass::AI → SidebarClass::AI");
-	SidebarClass::AI(input, x, y);
+	SidebarClass::AI(input, ui_x, ui_y);
 }
 
 

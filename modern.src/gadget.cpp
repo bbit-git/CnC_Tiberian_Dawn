@@ -59,6 +59,65 @@
 #include "filepcx.h"
 #include "io.h"
 
+#ifdef USE_RENDER_BRIDGE
+extern bool Render_Bridge_Use_Legacy_Sidebar_Mode();
+extern void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h);
+
+static bool gadget_is_outside_legacy_tactical(int x, int y, int w, int h)
+{
+	int tac_x = Map.TacPixelX;
+	int tac_y = Map.TacPixelY;
+	int tac_w = WindowList[WINDOW_TACTICAL][WINDOWWIDTH] << 3;
+	int tac_h = WindowList[WINDOW_TACTICAL][WINDOWHEIGHT];
+
+	int gx2 = x + w;
+	int gy2 = y + h;
+	int tx2 = tac_x + tac_w;
+	int ty2 = tac_y + tac_h;
+
+	bool intersects =
+		(x < tx2) &&
+		(gx2 > tac_x) &&
+		(y < ty2) &&
+		(gy2 > tac_y);
+
+	return !intersects;
+}
+
+static void convert_legacy_ui_mouse_for_gadget(int gadget_x, int gadget_y, int gadget_w, int gadget_h,
+	int& mousex, int& mousey)
+{
+	if (!Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+		return;
+	}
+	if (!gadget_is_outside_legacy_tactical(gadget_x, gadget_y, gadget_w, gadget_h)) {
+		return;
+	}
+
+	int base_w = SeenBuff.Get_Width();
+	int base_h = SeenBuff.Get_Height();
+	int logical_w = 0;
+	int logical_h = 0;
+	Render_Bridge_Get_Logical_Screen_Size(logical_w, logical_h);
+	if (base_w <= 0 || base_h <= 0 || logical_w <= 0 || logical_h <= 0) {
+		return;
+	}
+
+	float scale_x = static_cast<float>(logical_w) / static_cast<float>(base_w);
+	float scale_y = static_cast<float>(logical_h) / static_cast<float>(base_h);
+	float scale = (scale_x < scale_y) ? scale_x : scale_y;
+	if (scale <= 0.0f) {
+		return;
+	}
+
+	int offset_x = static_cast<int>((logical_w - base_w * scale) * 0.5f);
+	int offset_y = static_cast<int>((logical_h - base_h * scale) * 0.5f);
+
+	mousex = static_cast<int>((static_cast<float>(mousex - offset_x)) / scale);
+	mousey = static_cast<int>((static_cast<float>(mousey - offset_y)) / scale);
+}
+#endif
+
 /*
 **	This records the current gadget the the gadget system is "stuck on". Such a
 **	gadget will be processed to the exclusion of all others until the mouse button
@@ -155,6 +214,10 @@ GadgetClass::~GadgetClass(void)
  *=========================================================================*/
 int GadgetClass::Clicked_On(KeyNumType & key, unsigned flags, int mousex, int mousey)
 {
+#ifdef USE_RENDER_BRIDGE
+	convert_legacy_ui_mouse_for_gadget(X, Y, Width, Height, mousex, mousey);
+#endif
+
 	/*
 	**	Set flags to match only those events that occur AND are being looked for. If
 	**	the result is NULL, then we know that this button should be ignored.
@@ -800,5 +863,4 @@ int GadgetClass::Is_List_To_Redraw(void)
 	}
 	return (false);
 }
-
 
