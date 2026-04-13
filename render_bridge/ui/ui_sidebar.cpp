@@ -387,7 +387,7 @@ static void emit_scroll_arrows(int x, int y, int strip_w,
 }
 
 /// Emit one sidebar column.
-static void emit_column(const SidebarClass::StripClass& strip, int factor)
+static void emit_column(const SidebarClass::StripClass& strip)
 {
     int col_x = strip.X;
     int col_y = strip.Y;
@@ -395,7 +395,7 @@ static void emit_column(const SidebarClass::StripClass& strip, int factor)
     int obj_h = strip.ObjectHeight;
     int visible = 4; // MAX_VISIBLE
 
-    // Column background — StripWidth is already scaled by sx, do not multiply by factor
+    // Column background — StripWidth is already scaled by sx in the caller
     int col_w = strip.StripWidth;
     int col_h = obj_h * visible + 14;
     g_ui_draw_list.Fill_Rect(col_x, col_y, col_w, col_h,
@@ -567,8 +567,6 @@ void UI_Sidebar_Emit()
     Render_Bridge_Get_Logical_Screen_Size(logical_w, logical_h);
     float sx = (base_w > 0) ? static_cast<float>(logical_w) / static_cast<float>(base_w) : 1.0f;
     float sy = (base_h > 0) ? static_cast<float>(logical_h) / static_cast<float>(base_h) : 1.0f;
-    int factor = (logical_w > 800) ? 2 : 1;
-
     // Sidebar background tint
     g_ui_draw_list.Fill_Rect(side_x, side_y, side_w, side_h,
                              24, 24, 24, 56);
@@ -578,12 +576,10 @@ void UI_Sidebar_Emit()
     // --- Power bar ---
     // Position: narrow vertical strip on the left edge of the sidebar,
     // below the radar area, above the buttons.
-    // Legacy gap uses bit-shift: (13 << legacy_factor) in SeenBuff pixel space.
-    int legacy_factor = (base_w == 320) ? 0 : 1;
-    int pow_w = 8 * factor;
+    int pow_w = scale_x_from_legacy(8, sx);
     int pow_x = side_x + 2;
-    int radar_bottom = scale_y_from_legacy(Map.RadY + Map.RadHeight + (13 << legacy_factor), sy);
-    int btn_h = (16 * factor);
+    int radar_bottom = scale_y_from_legacy(Map.RadY + Map.RadHeight, sy) + scale_y_from_legacy(13, sy);
+    int btn_h = scale_y_from_legacy(16, sy);
     int btn_y = side_y + side_h - btn_h - 2;
     int pow_y = radar_bottom;
     int pow_h = btn_y - pow_y - 2;
@@ -600,7 +596,7 @@ void UI_Sidebar_Emit()
         strip.ObjectHeight = scale_y_from_legacy(strip.ObjectHeight, sy);
         strip.StripWidth = scale_x_from_legacy(strip.StripWidth, sx);
         strip.LeftEdgeOffset = scale_x_from_legacy(strip.LeftEdgeOffset, sx);
-        emit_column(strip, factor);
+        emit_column(strip);
     }
 
     // --- Repair / Sell / Map buttons ---
