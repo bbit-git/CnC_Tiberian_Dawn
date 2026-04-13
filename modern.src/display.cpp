@@ -32,6 +32,7 @@ extern bool Render_Bridge_Tactical_To_World(int pixel_x, int pixel_y, int& world
 extern bool Render_Bridge_Is_Cell_In_View(int cell_x, int cell_y);
 extern bool Render_Bridge_Record_Shroud_Fill_Rect(int x, int y, int w, int h);
 extern void Render_Bridge_Set_Theater(const char* theater_name);
+extern void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h);
 #endif
 /***********************************************************************************************
  ***             C O N F I D E N T I A L  ---  W E S T W O O D   S T U D I O S               ***
@@ -3075,7 +3076,17 @@ int DisplayClass::TacticalClass::Action(unsigned flags, KeyNumType & key)
 		x = Get_Mouse_X();
 		y = Get_Mouse_Y();
 
+#ifdef USE_RENDER_BRIDGE
+		{
+			int edge_w = 0, edge_h = 0;
+			Render_Bridge_Get_Logical_Screen_Size(edge_w, edge_h);
+			if (edge_w > 0 && edge_h > 0) {
+				if (x == 0 || y >= edge_h - 1 || x >= edge_w - 1) edge = true;
+			}
+		}
+#else
 		if (x == 0 || y == 199 || x == 319) edge = true;
+#endif
 	}
 	COORDINATE coord = Map.Pixel_To_Coord(x, y);
 	CELL cell = Coord_Cell(coord);

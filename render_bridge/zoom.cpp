@@ -588,15 +588,8 @@ bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& mapped_x,
     }
 
     // Map from tactical screen space into the visible source rect inside the
-    // native replay texture. The returned point stays in game-buffer pixel space
-    // for legacy callers that still expect that intermediate representation.
-    float frac_x = static_cast<float>(screen_x - tac_x) / static_cast<float>(tac_w);
-    float frac_y = static_cast<float>(screen_y - tac_y) / static_cast<float>(tac_h);
-    if (frac_x < 0.0f) frac_x = 0.0f;
-    if (frac_x > 1.0f) frac_x = 1.0f;
-    if (frac_y < 0.0f) frac_y = 0.0f;
-    if (frac_y > 1.0f) frac_y = 1.0f;
-
+    // native replay texture, accounting for the uniform-fit centering offset
+    // that the GL presentation applies (gl_present_regions.cpp:154-161).
     float vis_w = 0.0f;
     float vis_h = 0.0f;
     Render_Bridge_Get_Visible_Size(vis_w, vis_h);
@@ -605,6 +598,30 @@ bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& mapped_x,
         mapped_y = screen_y;
         return false;
     }
+
+    // Use render tactical rect (sidebar-independent) for the uniform-fit.
+    int rtac_x, rtac_y, rtac_w, rtac_h;
+    Render_Bridge_Get_Render_Tactical_Rect(rtac_x, rtac_y, rtac_w, rtac_h);
+    if (rtac_w <= 0) rtac_w = tac_w;
+    if (rtac_h <= 0) rtac_h = tac_h;
+
+    float fit_sx = static_cast<float>(rtac_w) / vis_w;
+    float fit_sy = static_cast<float>(rtac_h) / vis_h;
+    float fit_scale = (fit_sx < fit_sy) ? fit_sx : fit_sy;
+    int dst_w = static_cast<int>(std::round(vis_w * fit_scale));
+    int dst_h = static_cast<int>(std::round(vis_h * fit_scale));
+    int dst_x_offset = (rtac_w - dst_w) / 2;
+    int dst_y_offset = (rtac_h - dst_h) / 2;
+
+    // Map within the fitted destination area.
+    int wx = (screen_x - tac_x) - dst_x_offset;
+    int wy = (screen_y - tac_y) - dst_y_offset;
+    float frac_x = (dst_w > 0) ? static_cast<float>(wx) / static_cast<float>(dst_w) : 0.0f;
+    float frac_y = (dst_h > 0) ? static_cast<float>(wy) / static_cast<float>(dst_h) : 0.0f;
+    if (frac_x < 0.0f) frac_x = 0.0f;
+    if (frac_x > 1.0f) frac_x = 1.0f;
+    if (frac_y < 0.0f) frac_y = 0.0f;
+    if (frac_y > 1.0f) frac_y = 1.0f;
 
     int transformed_x = tac_x + static_cast<int>(g_vp_x + frac_x * vis_w);
     int transformed_y = tac_y + static_cast<int>(g_vp_y + frac_y * vis_h);
@@ -831,48 +848,58 @@ bool Render_Bridge_World_To_Tactical(int world_lx, int world_ly,
 bool Render_Bridge_Tactical_To_World(int pixel_x, int pixel_y,
                                       int& world_lx, int& world_ly)
 {
-    // Convert tactical screen pixels back into absolute world leptons against the
-    // bridge-visible window. This is the canonical bridge input mapping.
+    // Convert tactical screen pixels back into absolute world leptons.
+    // Replicates the GL uniform-fit centering (gl_present_regions.cpp:154-161)
+    // so input mapping matches the presentation geometry exactly.
     int tac_x, tac_y, tac_w, tac_h;
     Render_Bridge_Get_Tactical_Rect(tac_x, tac_y, tac_w, tac_h);
 
     int sx = pixel_x - tac_x;
     int sy = pixel_y - tac_y;
 
-    int origin_x = 0;
-    int origin_y = 0;
-    int vis_w = 0;
-    int vis_h = 0;
-    Render_Bridge_Get_Visible_World_Rect(origin_x, origin_y, vis_w, vis_h);
+    if (tac_w <= 0 || tac_h <= 0) return false;
+    if ((unsigned)sx >= (unsigned)tac_w || (unsigned)sy >= (unsigned)tac_h) return false;
 
-    if (tac_w <= 0 || tac_h <= 0 || vis_w <= 0 || vis_h <= 0) {
-        return false;
-    }
-
-    if ((unsigned)sx >= (unsigned)tac_w || (unsigned)sy >= (unsigned)tac_h) {
-        return false;
-    }
-
-    // vis_w/h is computed from render_tac_w (full content width, sidebar-independent).
-    // Use render_tac_w/h as the denominator so the proportional mapping matches.
-    // Using tac_w (sidebar-narrowed) would over-scale by render_tac_w/tac_w (~1.33x
-    // with TD sidebar active).
+    // Use render tactical rect (sidebar-independent) for uniform-fit, matching GL.
     int rtac_x, rtac_y, rtac_w, rtac_h;
     Render_Bridge_Get_Render_Tactical_Rect(rtac_x, rtac_y, rtac_w, rtac_h);
     if (rtac_w <= 0) rtac_w = tac_w;
     if (rtac_h <= 0) rtac_h = tac_h;
 
-    // Convert promoted tactical screen pixels back into the visible-world window
-    // proportionally instead of assuming legacy 1:1 tactical pixels.
-    int lx = static_cast<int>((static_cast<int64_t>(sx) * vis_w) / rtac_w);
-    int ly = static_cast<int>((static_cast<int64_t>(sy) * vis_h) / rtac_h);
-    if (lx < 0) lx = 0;
-    if (ly < 0) ly = 0;
-    if (lx >= vis_w) lx = vis_w - 1;
-    if (ly >= vis_h) ly = vis_h - 1;
+    // Visible size in native pixels (no CELL_LEPTON_W padding).
+    float vis_w_px = 0.0f;
+    float vis_h_px = 0.0f;
+    Render_Bridge_Get_Visible_Size(vis_w_px, vis_h_px);
+    if (vis_w_px <= 0.0f || vis_h_px <= 0.0f) return false;
 
-    world_lx = origin_x + Cell_To_Lepton(Map.MapCellX) + lx;
-    world_ly = origin_y + Cell_To_Lepton(Map.MapCellY) + ly;
+    // Uniform-fit: the visible source is scaled to fill the render tactical area
+    // while preserving aspect ratio, centered with bars on the short axis.
+    float fit_sx = static_cast<float>(rtac_w) / vis_w_px;
+    float fit_sy = static_cast<float>(rtac_h) / vis_h_px;
+    float fit_scale = (fit_sx < fit_sy) ? fit_sx : fit_sy;
+    int dst_w = static_cast<int>(std::round(vis_w_px * fit_scale));
+    int dst_h = static_cast<int>(std::round(vis_h_px * fit_scale));
+    int dst_x_offset = (rtac_w - dst_w) / 2;
+    int dst_y_offset = (rtac_h - dst_h) / 2;
+
+    // Reject clicks in the centering bars (outside the fitted world area).
+    int wx = sx - dst_x_offset;
+    int wy = sy - dst_y_offset;
+    if (wx < 0 || wx >= dst_w || wy < 0 || wy >= dst_h) return false;
+
+    // Map screen pixel within the fitted destination back to native buffer pixel.
+    float native_px_x = static_cast<float>(wx) * vis_w_px / static_cast<float>(dst_w);
+    float native_px_y = static_cast<float>(wy) * vis_h_px / static_cast<float>(dst_h);
+
+    // Convert native pixel to lepton (no CELL_LEPTON_W padding).
+    int lx = Pixel_To_Lepton(static_cast<int>(native_px_x));
+    int ly = Pixel_To_Lepton(static_cast<int>(native_px_y));
+
+    // Add viewport offset and world origin.
+    float vp_x = Render_Bridge_Get_Viewport_X();
+    float vp_y = Render_Bridge_Get_Viewport_Y();
+    world_lx = Coord_X(Map.TacticalCoord) + Pixel_To_Lepton(static_cast<int>(std::round(vp_x))) + lx;
+    world_ly = Coord_Y(Map.TacticalCoord) + Pixel_To_Lepton(static_cast<int>(std::round(vp_y))) + ly;
     return true;
 }
 

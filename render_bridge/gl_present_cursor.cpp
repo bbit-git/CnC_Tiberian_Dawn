@@ -1,6 +1,5 @@
 #include "gl_present_internal.h"
 #include "render_bridge.h"
-#include "dbg.h"
 #include <cstring>
 #include <cstdlib>
 #include <cmath>
@@ -21,7 +20,6 @@ static int g_cursor_rgba_alloc = 0;
 
 void GL_Present_Draw_Cursor(const GLPresentFrameContext& ctx)
 {
-    static int dbg_count = 0;
     const uint8_t* cursor_pixels = nullptr;
     int cursor_w = 0;
     int cursor_h = 0;
@@ -112,6 +110,14 @@ void GL_Present_Draw_Cursor(const GLPresentFrameContext& ctx)
         int cursor_x = g_mouse_x - cursor_hotx;
         int cursor_y = g_mouse_y - cursor_hoty;
 
+        // Map game-buffer coordinates to window pixels via the same
+        // scale+offset used by the input path (legacy_ui_scale).
+        float s = ctx.legacy_ui_scale;
+        float wx0 = cursor_x * s + ctx.legacy_offset_x;
+        float wy0 = cursor_y * s + ctx.legacy_offset_y;
+        float wx1 = (cursor_x + cursor_w) * s + ctx.legacy_offset_x;
+        float wy1 = (cursor_y + cursor_h) * s + ctx.legacy_offset_y;
+
         glViewport(0, 0, ctx.win_w, ctx.win_h);
         glDisable(GL_SCISSOR_TEST);
         glUseProgram(g_rgba_program);
@@ -119,10 +125,10 @@ void GL_Present_Draw_Cursor(const GLPresentFrameContext& ctx)
         glBindTexture(GL_TEXTURE_2D, g_cursor_tex);
         glUniform1i(g_rgba_u_tex, 0);
 
-        float x0 = static_cast<float>(cursor_x) / ctx.win_w * 2.0f - 1.0f;
-        float y0 = 1.0f - static_cast<float>(cursor_y) / ctx.win_h * 2.0f;
-        float x1 = static_cast<float>(cursor_x + cursor_w) / ctx.win_w * 2.0f - 1.0f;
-        float y1 = 1.0f - static_cast<float>(cursor_y + cursor_h) / ctx.win_h * 2.0f;
+        float x0 = wx0 / ctx.win_w * 2.0f - 1.0f;
+        float y0 = 1.0f - wy0 / ctx.win_h * 2.0f;
+        float x1 = wx1 / ctx.win_w * 2.0f - 1.0f;
+        float y1 = 1.0f - wy1 / ctx.win_h * 2.0f;
         glUniform4f(g_rgba_u_src_rect, 0.0f, 0.0f, 1.0f, 1.0f);
         glUniform4f(g_rgba_u_dst_rect, x0, y0, x1, y1);
 
@@ -133,13 +139,6 @@ void GL_Present_Draw_Cursor(const GLPresentFrameContext& ctx)
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         glDisable(GL_BLEND);
 
-        // Temporary hotspot marker through raw scissor+clear so we can verify
-        // gameplay cursor coordinates independently of any shader/texture path.
-        glEnable(GL_SCISSOR_TEST);
-        glScissor(g_mouse_x - 6, ctx.win_h - (g_mouse_y + 7), 13, 13);
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        glDisable(GL_SCISSOR_TEST);
         GL_Present_Bind_Palette_Program();
         return;
     }
@@ -147,12 +146,8 @@ void GL_Present_Draw_Cursor(const GLPresentFrameContext& ctx)
     // Use the legacy buffer size elsewhere. Stamping the indexed cursor into a
     // full-screen overlay keeps menu/UI cursor behavior aligned with the
     // original small-buffer presentation path.
-    int overlay_w = 0;
-    int overlay_h = 0;
-    if (overlay_w <= 0 || overlay_h <= 0) {
-        overlay_w = ctx.buffer_w;
-        overlay_h = ctx.buffer_h;
-    }
+    int overlay_w = ctx.buffer_w;
+    int overlay_h = ctx.buffer_h;
     // Cursor pixels are stamped into a temporary full-frame overlay in
     // game-buffer space so nearest-neighbor scaling matches the rest of the UI.
     int overlay_size = overlay_w * overlay_h;
@@ -169,24 +164,6 @@ void GL_Present_Draw_Cursor(const GLPresentFrameContext& ctx)
 
     int cursor_x = g_mouse_x - cursor_hotx;
     int cursor_y = g_mouse_y - cursor_hoty;
-    if (ctx.in_main_loop && dbg_count < 120) {
-        int nonzero = 0;
-        int first_idx = -1;
-        if (cursor_pixels) {
-            for (int i = 0; i < cursor_w * cursor_h; ++i) {
-                if (cursor_pixels[i] != 0) {
-                    ++nonzero;
-                    if (first_idx < 0) first_idx = cursor_pixels[i];
-                }
-            }
-        }
-        DBG("gl_cursor: vis=%d have=%d size=%dx%d hot=%d,%d mouse=%d,%d overlay=%dx%d pos=%d,%d",
-            cursor_visible ? 1 : 0, have_cursor ? 1 : 0, cursor_w, cursor_h,
-            cursor_hotx, cursor_hoty, g_mouse_x, g_mouse_y, overlay_w, overlay_h,
-            cursor_x, cursor_y);
-        DBG("gl_cursor: nonzero=%d first_idx=%d", nonzero, first_idx);
-        ++dbg_count;
-    }
     for (int row = 0; row < cursor_h; row++) {
         int dy = cursor_y + row;
         if (dy < 0 || dy >= overlay_h) {
@@ -215,6 +192,7 @@ void GL_Present_Draw_Cursor(const GLPresentFrameContext& ctx)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, overlay_w, overlay_h, 0,
                      GL_LUMINANCE, GL_UNSIGNED_BYTE, g_cursor_overlay);
         g_cursor_tex_w = overlay_w;
@@ -223,6 +201,7 @@ void GL_Present_Draw_Cursor(const GLPresentFrameContext& ctx)
         glBindTexture(GL_TEXTURE_2D, g_cursor_tex);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, overlay_w, overlay_h,
                         GL_LUMINANCE, GL_UNSIGNED_BYTE, g_cursor_overlay);
     }
@@ -240,12 +219,6 @@ void GL_Present_Draw_Cursor(const GLPresentFrameContext& ctx)
     int dst_y = ctx.legacy_offset_y;
     int dst_w = static_cast<int>(overlay_w * ctx.legacy_ui_scale);
     int dst_h = static_cast<int>(overlay_h * ctx.legacy_ui_scale);
-    if (ctx.in_main_loop) {
-        dst_x = 0;
-        dst_y = 0;
-        dst_w = overlay_w;
-        dst_h = overlay_h;
-    }
     float nx0 = static_cast<float>(dst_x) / ctx.win_w * 2.0f - 1.0f;
     float ny0 = 1.0f - static_cast<float>(dst_y) / ctx.win_h * 2.0f;
     float nx1 = static_cast<float>(dst_x + dst_w) / ctx.win_w * 2.0f - 1.0f;
