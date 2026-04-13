@@ -46,6 +46,7 @@ set(CNC_RENDER_BRIDGE_SRCS
     ${RENDER_BRIDGE_DIR}/ui/ui_text_sdf.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_messages.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_sidebar.cpp
+    ${RENDER_BRIDGE_DIR}/ui/ui_radar.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_draw_list.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_header.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_help.cpp

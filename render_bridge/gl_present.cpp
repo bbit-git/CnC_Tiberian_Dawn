@@ -609,6 +609,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         extern void UI_Messages_Emit();
         extern void UI_Dialog_Emit();
         extern void UI_Sidebar_Emit();
+        extern void UI_Radar_Emit();
         extern void UI_Game_Options_Emit();
         extern void UI_Load_Dialog_Emit();
         extern void UI_Game_Controls_Emit();
@@ -628,6 +629,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         UI_Help_Emit();
         UI_Messages_Emit();
         UI_Sidebar_Emit();
+        UI_Radar_Emit();
         // Complex dialogs (only one active at a time)
         UI_Game_Options_Emit();
         UI_Load_Dialog_Emit();
