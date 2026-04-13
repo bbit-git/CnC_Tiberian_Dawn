@@ -48,6 +48,11 @@ bool   g_font_tex_ready[UI_FONT_COUNT] = {};
 struct ClipRect { int x, y, w, h; };
 std::vector<ClipRect> g_clip_stack;
 
+// Scratch texture for UI_CMD_ICON (RGBA uploads)
+GLuint g_icon_texture = 0;
+int    g_icon_tex_w   = 0;
+int    g_icon_tex_h   = 0;
+
 static const char* k_vert_src = R"(
     attribute vec2 a_pos;
     attribute vec2 a_uv;
@@ -71,7 +76,13 @@ static const char* k_frag_src = R"(
     uniform float u_use_tex;
     uniform sampler2D u_tex;
     void main() {
-        if (u_use_tex > 0.5) {
+        if (u_use_tex > 1.5) {
+            // RGBA texture mode (icons) — sample full color, modulate by vertex alpha
+            vec4 t = texture2D(u_tex, v_uv);
+            if (t.a < 0.01) discard;
+            gl_FragColor = vec4(t.rgb * v_color.rgb, t.a * v_color.a);
+        } else if (u_use_tex > 0.5) {
+            // Alpha-only texture mode (font glyphs)
             float a = texture2D(u_tex, v_uv).r;
             if (a < 0.01) discard;
             gl_FragColor = vec4(v_color.rgb, v_color.a * a);
@@ -399,6 +410,52 @@ void GL_UI_Render(int win_w, int win_h,
             break;
         }
 
+        case UI_CMD_ICON: {
+            // Flush pending geometry before switching to textured mode
+            flush_verts(text_verts, true, current_sdf);
+            restore_main_program();
+            flush_verts(solid_verts, false);
+
+            const UIIconCmd& ic = cmd.icon;
+            if (ic.pixels && ic.src_w > 0 && ic.src_h > 0) {
+                // Ensure scratch texture exists and is large enough
+                if (!g_icon_texture) {
+                    glGenTextures(1, &g_icon_texture);
+                }
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, g_icon_texture);
+                if (ic.src_w != g_icon_tex_w || ic.src_h != g_icon_tex_h) {
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+                                 ic.src_w, ic.src_h, 0,
+                                 GL_RGBA, GL_UNSIGNED_BYTE, ic.pixels);
+                    g_icon_tex_w = ic.src_w;
+                    g_icon_tex_h = ic.src_h;
+                } else {
+                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                                    ic.src_w, ic.src_h,
+                                    GL_RGBA, GL_UNSIGNED_BYTE, ic.pixels);
+                }
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+                // Emit a textured quad at the destination rect
+                float x0 = off_x + ic.x * scale;
+                float y0 = off_y + ic.y * scale;
+                float x1 = x0 + ic.w * scale;
+                float y1 = y0 + ic.h * scale;
+                std::vector<UIVertex> icon_verts;
+                push_quad(icon_verts, x0, y0, x1, y1,
+                          0.0f, 0.0f, 1.0f, 1.0f,
+                          1.0f, 1.0f, 1.0f, 1.0f);
+                glUniform1f(g_u_use_tex, 2.0f); // RGBA texture mode
+                flush_verts(icon_verts, true);
+                glUniform1f(g_u_use_tex, 0.0f);
+            }
+            break;
+        }
+
         case UI_CMD_CLIP_PUSH:
             flush_verts(solid_verts, false);
             flush_verts(text_verts, true, current_sdf);
@@ -440,6 +497,12 @@ void GL_UI_Shutdown()
             g_font_textures[i] = 0;
         }
         g_font_tex_ready[i] = false;
+    }
+    if (g_icon_texture) {
+        glDeleteTextures(1, &g_icon_texture);
+        g_icon_texture = 0;
+        g_icon_tex_w = 0;
+        g_icon_tex_h = 0;
     }
     if (g_program) {
         glDeleteProgram(g_program);

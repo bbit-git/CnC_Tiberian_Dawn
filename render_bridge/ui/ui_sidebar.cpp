@@ -1,11 +1,13 @@
 /**
- * ui_sidebar.cpp — Bridge-native sidebar chrome rendering.
+ * ui_sidebar.cpp — Bridge-native sidebar chrome + cameo icon rendering.
  *
  * Reads legacy SidebarClass/StripClass state and emits UI draw list
- * commands. This is the chrome layer: backgrounds, borders, slot
- * outlines, scroll arrows, and production labels. Cameo icons are
- * NOT yet rendered natively — the legacy SeenBuff quad still provides
- * those until a full icon atlas is built.
+ * commands for backgrounds, borders, slot outlines, scroll arrows,
+ * production labels, and cameo icon textures.
+ *
+ * Cameo icons are decoded from legacy SHP shapes via LegacySpriteProvider,
+ * palette-converted to RGBA, and cached per (shapefile, remap_table) pair.
+ * The cache is invalidated on palette change.
  */
 
 #include "ui_sidebar.h"
@@ -14,8 +16,16 @@
 #include "ui_layout.h"
 #include "ui_text.h"
 #include "render_bridge.h"
+#include "legacy_sprite_provider.h"
 #include "function.h"
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+// td_platform.h defines min/max macros that conflict with STL headers
+#undef min
+#undef max
+#include <unordered_map>
 
 /// Sidebar slot colors.
 static constexpr uint8_t SLOT_BG_R = 40, SLOT_BG_G = 44, SLOT_BG_B = 40;
@@ -23,6 +33,102 @@ static constexpr uint8_t SLOT_BORDER_R = 36, SLOT_BORDER_G = 120, SLOT_BORDER_B 
 static constexpr uint8_t READY_R = 0, READY_G = 255, READY_B = 0;
 static constexpr uint8_t BUILDING_R = 200, BUILDING_G = 200, BUILDING_B = 0;
 static constexpr uint8_t SCROLL_R = 120, SCROLL_G = 120, SCROLL_B = 120;
+static constexpr uint8_t DARKEN_ALPHA = 140; // overlay alpha for unavailable items
+
+// ---------------------------------------------------------------------------
+// Cameo RGBA cache
+// ---------------------------------------------------------------------------
+
+extern unsigned char* GamePalette;
+
+static LegacySpriteProvider g_cameo_provider;
+
+/// Cached RGBA cameo frame.
+struct CameoCacheEntry {
+    uint32_t* rgba;
+    int       width;
+    int       height;
+};
+
+/// Cache key: combines shapefile pointer with remap table pointer.
+static uint64_t cameo_cache_key(const void* shapefile, const uint8_t* remap)
+{
+    uint64_t key = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(shapefile));
+    key ^= static_cast<uint64_t>(reinterpret_cast<uintptr_t>(remap)) << 1;
+    return key;
+}
+
+static std::unordered_map<uint64_t, CameoCacheEntry> g_cameo_cache;
+
+/// Decode a cameo SHP shape to RGBA and cache the result.
+/// Returns pointer to cached RGBA data, or nullptr on failure.
+static const CameoCacheEntry* cameo_decode(const void* shapefile,
+                                           const uint8_t* remap)
+{
+    if (!shapefile) return nullptr;
+
+    uint64_t key = cameo_cache_key(shapefile, remap);
+    auto it = g_cameo_cache.find(key);
+    if (it != g_cameo_cache.end()) return &it->second;
+
+    // Get palette
+    const uint8_t* pal = static_cast<const uint8_t*>((void*)Get_Palette());
+    if (!pal) pal = GamePalette;
+    if (!pal) return nullptr;
+
+    // Decode SHP frame 0
+    SpriteFrame frame = {};
+    if (!g_cameo_provider.Get_Frame(shapefile, 0, frame))
+        return nullptr;
+    if (!frame.pixels || frame.width <= 0 || frame.height <= 0)
+        return nullptr;
+
+    int pixel_count = frame.width * frame.height;
+    uint32_t* rgba = static_cast<uint32_t*>(malloc(pixel_count * 4));
+    if (!rgba) return nullptr;
+
+    const uint8_t* src = static_cast<const uint8_t*>(frame.pixels);
+    for (int y = 0; y < frame.height; y++) {
+        const uint8_t* row = src + y * frame.pitch;
+        for (int x = 0; x < frame.width; x++) {
+            int i = y * frame.width + x;
+            uint8_t idx = row[x];
+            if (idx == 0) {
+                rgba[i] = 0; // transparent
+                continue;
+            }
+            if (remap) {
+                idx = remap[idx];
+            }
+            uint8_t r = pal[idx * 3 + 0] << 2;
+            uint8_t g = pal[idx * 3 + 1] << 2;
+            uint8_t b = pal[idx * 3 + 2] << 2;
+            rgba[i] = (uint32_t(255) << 24) |
+                      (uint32_t(b)   << 16) |
+                      (uint32_t(g)   << 8)  |
+                      uint32_t(r);
+        }
+    }
+
+    CameoCacheEntry entry = { rgba, frame.width, frame.height };
+    auto result = g_cameo_cache.emplace(key, entry);
+    return &result.first->second;
+}
+
+void UI_Sidebar_Cameo_Invalidate()
+{
+    for (auto& kv : g_cameo_cache) {
+        free(kv.second.rgba);
+    }
+    g_cameo_cache.clear();
+}
+
+void UI_Sidebar_Cameo_Shutdown()
+{
+    UI_Sidebar_Cameo_Invalidate();
+}
+
+// ---------------------------------------------------------------------------
 
 static int scale_x_from_legacy(int value, float sx)
 {
@@ -34,7 +140,71 @@ static int scale_y_from_legacy(int value, float sy)
     return static_cast<int>(value * sy);
 }
 
-/// Emit one production slot outline and label.
+/// Determine the remap table for a buildable item, matching legacy Draw_It logic.
+static const uint8_t* get_cameo_remap(const SidebarClass::StripClass& strip,
+                                      int index)
+{
+    if (strip.Buildables[index].BuildableType == RTTI_SPECIAL)
+        return nullptr;
+
+    switch (strip.Buildables[index].BuildableType) {
+        case RTTI_BUILDINGTYPE:
+            if (!BuildingTypeClass::As_Reference(
+                    (StructType)strip.Buildables[index].BuildableID).IsWall) {
+                return PlayerPtr->Remap_Table(false, false);
+            }
+            return nullptr;
+
+        case RTTI_UNITTYPE:
+            switch (strip.Buildables[index].BuildableID) {
+                case UNIT_MCV:
+                case UNIT_HARVESTER:
+                    return PlayerPtr->Remap_Table(false, false);
+                default:
+                    return PlayerPtr->Remap_Table(false, true);
+            }
+
+        case RTTI_AIRCRAFTTYPE:
+            return PlayerPtr->Remap_Table(false, true);
+
+        default:
+            return nullptr;
+    }
+}
+
+/// Fetch the cameo shapefile pointer for a buildable item.
+static const void* get_cameo_shape(const SidebarClass::StripClass& strip,
+                                   int index)
+{
+    if (strip.Buildables[index].BuildableType == RTTI_SPECIAL) {
+        int spc = strip.Buildables[index].BuildableID;
+        if (spc >= 1 && spc <= 3) {
+            return SidebarClass::StripClass::SpecialShapes[spc - 1];
+        }
+        return nullptr;
+    }
+
+    ObjectTypeClass const* obj = Fetch_Techno_Type(
+        strip.Buildables[index].BuildableType,
+        strip.Buildables[index].BuildableID);
+    return obj ? obj->Get_Cameo_Data() : nullptr;
+}
+
+/// Check if a buildable should be darkened (factory of matching type busy).
+static bool is_slot_darkened(const SidebarClass::StripClass& strip, int index)
+{
+    if (strip.Buildables[index].Factory != -1) return false;
+
+    switch (strip.Buildables[index].BuildableType) {
+        case RTTI_INFANTRYTYPE:  return PlayerPtr->InfantryFactory != -1;
+        case RTTI_BUILDINGTYPE:  return PlayerPtr->BuildingFactory != -1;
+        case RTTI_UNITTYPE:      return PlayerPtr->UnitFactory != -1;
+        case RTTI_AIRCRAFTTYPE:  return PlayerPtr->AircraftFactory != -1;
+        default:                 return false;
+    }
+}
+
+/// Emit one production slot outline, cameo icon, and label.
 static void emit_slot(int x, int y, int w, int h, int slot_index,
                       const SidebarClass::StripClass& strip)
 {
@@ -46,6 +216,22 @@ static void emit_slot(int x, int y, int w, int h, int slot_index,
     g_ui_draw_list.Draw_Rect(x, y, w, h, SLOT_BORDER_R, SLOT_BORDER_G, SLOT_BORDER_B, 255);
 
     if (!has_item) return;
+
+    // Cameo icon
+    const void* shapefile = get_cameo_shape(strip, actual_index);
+    const uint8_t* remap = get_cameo_remap(strip, actual_index);
+    const CameoCacheEntry* cameo = cameo_decode(shapefile, remap);
+    if (cameo && cameo->rgba) {
+        g_ui_draw_list.Draw_Icon(x + 1, y + 1, w - 2, h - 2,
+                                 reinterpret_cast<const uint8_t*>(cameo->rgba),
+                                 cameo->width, cameo->height);
+    }
+
+    // Darken overlay for unavailable items (factory busy, no production started)
+    bool darken = is_slot_darkened(strip, actual_index);
+    if (darken) {
+        g_ui_draw_list.Fill_Rect(x, y, w, h, 0, 0, 0, DARKEN_ALPHA);
+    }
 
     // Check production state
     int factory_id = strip.Buildables[actual_index].Factory;
