@@ -2363,6 +2363,11 @@ extern	BOOL	InMovie;
 extern bool	VQPaletteChange;
 extern void Suspend_Audio_Thread(void);
 extern void Resume_Audio_Thread(void);
+
+#if defined(__linux__) && !defined(__ANDROID__)
+#include "bink_player.h"
+#endif
+
 void Play_Movie(char const * name, ThemeType theme, bool clrscrn)
 {
 	/*
@@ -2378,6 +2383,13 @@ void Play_Movie(char const * name, ThemeType theme, bool clrscrn)
 	if (GameToPlay != GAME_NORMAL) {
 		return;
 	}
+
+#if defined(__linux__) && !defined(__ANDROID__)
+	if (name && Bink_Play_Movie(name)) {
+		Theme.Queue_Song(theme);
+		return;
+	}
+#endif
 
 	memset (&PaletteInterpolationTable[0][0],0,65536);
 
