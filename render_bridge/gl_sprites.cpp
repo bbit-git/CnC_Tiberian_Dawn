@@ -824,6 +824,11 @@ void Render_Bridge_Register_HD_Sprite_Provider(void* provider)
     g_hd_provider = static_cast<HDSpriteProvider*>(provider);
 }
 
+void* Render_Bridge_Get_HD_Sprite_Provider()
+{
+    return g_hd_provider;
+}
+
 void Render_Bridge_Register_Shape_Identity(const void* shapefile, uint32_t entity_hash)
 {
     if (!shapefile || entity_hash == 0) return;

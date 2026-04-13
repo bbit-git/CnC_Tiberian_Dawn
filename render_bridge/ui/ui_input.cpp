@@ -19,9 +19,11 @@ HitZone  g_zones[UI_MAX_HIT_ZONES];
 int      g_zone_count    = 0;
 UIHitZoneID g_hovered    = UI_HIT_NONE;
 UIHitZoneID g_pressed    = UI_HIT_NONE;
-UIHitZoneID g_clicked    = UI_HIT_NONE;  // zone that received mouse-down THIS frame
+UIHitZoneID g_clicked    = UI_HIT_NONE;  // zone that received left mouse-down THIS frame
+UIHitZoneID g_right_clicked = UI_HIT_NONE; // zone that received right mouse-down THIS frame
 bool     g_has_capture   = false;
 bool     g_was_left_down = false;
+bool     g_was_right_down = false;
 float    g_scroll_delta  = 0.0f;
 
 } // namespace
@@ -50,14 +52,16 @@ UIHitZoneID UI_Input_Get_Hovered()  { return g_hovered; }
 UIHitZoneID UI_Input_Get_Pressed()  { return g_pressed; }
 bool        UI_Input_Has_Capture()  { return g_has_capture; }
 bool        UI_Input_Was_Clicked(UIHitZoneID zone) { return zone != UI_HIT_NONE && zone == g_clicked; }
+bool        UI_Input_Was_Right_Clicked(UIHitZoneID zone) { return zone != UI_HIT_NONE && zone == g_right_clicked; }
 
 void UI_Input_Set_Scroll_Delta(float delta) { g_scroll_delta += delta; }
 float UI_Input_Consume_Scroll_Delta() { float d = g_scroll_delta; g_scroll_delta = 0.0f; return d; }
 
-void UI_Input_Update(int screen_x, int screen_y, bool left_down)
+void UI_Input_Update(int screen_x, int screen_y, bool left_down, bool right_down)
 {
     g_hovered = UI_Input_Hit_Test(screen_x, screen_y);
     g_clicked = UI_HIT_NONE;  // only valid for one frame
+    g_right_clicked = UI_HIT_NONE;
 
     if (left_down && !g_was_left_down) {
         // Mouse just pressed
@@ -72,7 +76,19 @@ void UI_Input_Update(int screen_x, int screen_y, bool left_down)
         g_has_capture = false;
     }
 
+    if (right_down && !g_was_right_down) {
+        if (g_hovered != UI_HIT_NONE) {
+            g_right_clicked = g_hovered;
+            g_has_capture = true;
+        }
+    } else if (!right_down && g_was_right_down) {
+        if (!left_down) {
+            g_has_capture = false;
+        }
+    }
+
     g_was_left_down = left_down;
+    g_was_right_down = right_down;
 }
 
 void UI_Input_Push_Key(unsigned short key)

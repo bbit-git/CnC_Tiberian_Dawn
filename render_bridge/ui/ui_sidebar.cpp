@@ -9,19 +9,26 @@
  * via LegacySpriteProvider, palette-converted to RGBA, and cached per
  * (shapefile, frame, remap_table, opacity) tuple.  The cache is
  * invalidated on palette change.
+ *
+ * When HD graphics are enabled, cameo icons are loaded from MEG archives
+ * via HDSpriteProvider and the sidebar uses a 3-column grid layout.
  */
 
 #include "ui_sidebar.h"
 #include "ui_draw_list.h"
 #include "ui_controls.h"
+#include "ui_input.h"
 #include "ui_layout.h"
 #include "ui_text.h"
 #include "render_bridge.h"
 #include "legacy_sprite_provider.h"
+#include "hd_sprite_provider.h"
 #include "function.h"
+#include "dbg.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cctype>
 
 // td_platform.h defines min/max macros that conflict with STL headers
 #undef min
@@ -32,13 +39,32 @@
 static constexpr uint8_t SLOT_BG_R = 40, SLOT_BG_G = 44, SLOT_BG_B = 40;
 static constexpr uint8_t SLOT_BORDER_R = 36, SLOT_BORDER_G = 120, SLOT_BORDER_B = 36;
 static constexpr uint8_t SCROLL_R = 120, SCROLL_G = 120, SCROLL_B = 120;
-static constexpr uint8_t DARKEN_ALPHA = 140; // overlay alpha for unavailable items
+static constexpr uint8_t DARKEN_ALPHA = 80; // overlay alpha for unavailable items (legacy uses ClockTranslucentTable)
 
 /// Power bar colors.
 static constexpr uint8_t POW_BG_R = 20, POW_BG_G = 20, POW_BG_B = 20;
 static constexpr uint8_t POW_GREEN_R = 0, POW_GREEN_G = 180, POW_GREEN_B = 0;
 static constexpr uint8_t POW_YELLOW_R = 200, POW_YELLOW_G = 200, POW_YELLOW_B = 0;
 static constexpr uint8_t POW_RED_R = 200, POW_RED_G = 40, POW_RED_B = 0;
+
+/// HD grid layout constants.
+static constexpr int HD_GRID_COLS = 3;
+static constexpr int HD_GRID_ICON_PAD = 2;
+static constexpr int HD_GRID_TEXT_H = 14; // text label area below icon
+
+// ---------------------------------------------------------------------------
+// FNV-1a hash for entity name lookups (matches mixfile.cpp implementation)
+// ---------------------------------------------------------------------------
+
+static uint32_t sidebar_fnv1a_hash(const char* str)
+{
+    uint32_t h = 0x811c9dc5u;
+    for (; *str; str++) {
+        h ^= static_cast<uint8_t>(toupper(static_cast<unsigned char>(*str)));
+        h *= 0x01000193u;
+    }
+    return h;
+}
 
 // ---------------------------------------------------------------------------
 // Cameo RGBA cache
@@ -166,6 +192,58 @@ void UI_Sidebar_Cameo_Shutdown()
 }
 
 // ---------------------------------------------------------------------------
+// HD cameo cache — separate from SHP cache, keyed by entity hash
+// ---------------------------------------------------------------------------
+
+static std::unordered_map<uint32_t, CameoCacheEntry> g_hd_cameo_cache;
+
+/// Try to get an HD cameo frame via HDSpriteProvider.
+/// Caches the decoded RGBA. Returns nullptr if HD provider unavailable or
+/// the entity has no HD frame.
+static const CameoCacheEntry* hd_cameo_decode(uint32_t entity_hash)
+{
+    if (entity_hash == 0) return nullptr;
+
+    auto it = g_hd_cameo_cache.find(entity_hash);
+    if (it != g_hd_cameo_cache.end()) return &it->second;
+
+    HDSpriteProvider* hd = static_cast<HDSpriteProvider*>(Render_Bridge_Get_HD_Sprite_Provider());
+    if (!hd) return nullptr;
+
+    const void* shape_id = reinterpret_cast<const void*>(static_cast<uintptr_t>(entity_hash));
+    SpriteFrame frame = {};
+    if (!hd->Get_Frame(shape_id, 0, frame)) return nullptr;
+    if (!frame.pixels || frame.width <= 0 || frame.height <= 0) return nullptr;
+
+    // HD frames are already RGBA — copy to owned buffer
+    int pixel_count = frame.width * frame.height;
+    uint32_t* rgba = static_cast<uint32_t*>(malloc(pixel_count * 4));
+    if (!rgba) return nullptr;
+
+    if (frame.pixel_format == SpritePixelFormat::RGBA_32BIT) {
+        const uint8_t* src = static_cast<const uint8_t*>(frame.pixels);
+        for (int y = 0; y < frame.height; y++) {
+            memcpy(rgba + y * frame.width, src + y * frame.pitch, frame.width * 4);
+        }
+    } else {
+        free(rgba);
+        return nullptr;
+    }
+
+    CameoCacheEntry entry = { rgba, frame.width, frame.height };
+    auto result = g_hd_cameo_cache.emplace(entity_hash, entry);
+    return &result.first->second;
+}
+
+void UI_Sidebar_HD_Cameo_Invalidate()
+{
+    for (auto& kv : g_hd_cameo_cache) {
+        free(kv.second.rgba);
+    }
+    g_hd_cameo_cache.clear();
+}
+
+// ---------------------------------------------------------------------------
 
 static int scale_x_from_legacy(int value, float sx)
 {
@@ -177,36 +255,14 @@ static int scale_y_from_legacy(int value, float sy)
     return static_cast<int>(value * sy);
 }
 
-/// Determine the remap table for a buildable item, matching legacy Draw_It logic.
-static const uint8_t* get_cameo_remap(const SidebarClass::StripClass& strip,
-                                      int index)
+/// Determine the remap table for a buildable item.
+/// Legacy Draw_It (sidebar.cpp:1943) zeroes the remapper before drawing, so
+/// cameo icons are always rendered with their natural palette colours — no
+/// player-colour remap is applied.
+static const uint8_t* get_cameo_remap(const SidebarClass::StripClass& /*strip*/,
+                                      int /*index*/)
 {
-    if (strip.Buildables[index].BuildableType == RTTI_SPECIAL)
-        return nullptr;
-
-    switch (strip.Buildables[index].BuildableType) {
-        case RTTI_BUILDINGTYPE:
-            if (!BuildingTypeClass::As_Reference(
-                    (StructType)strip.Buildables[index].BuildableID).IsWall) {
-                return PlayerPtr->Remap_Table(false, false);
-            }
-            return nullptr;
-
-        case RTTI_UNITTYPE:
-            switch (strip.Buildables[index].BuildableID) {
-                case UNIT_MCV:
-                case UNIT_HARVESTER:
-                    return PlayerPtr->Remap_Table(false, false);
-                default:
-                    return PlayerPtr->Remap_Table(false, true);
-            }
-
-        case RTTI_AIRCRAFTTYPE:
-            return PlayerPtr->Remap_Table(false, true);
-
-        default:
-            return nullptr;
-    }
+    return nullptr;
 }
 
 /// Fetch the cameo shapefile pointer for a buildable item.
@@ -230,6 +286,54 @@ static const void* get_cameo_shape(const SidebarClass::StripClass& strip,
     return obj ? obj->Get_Cameo_Data() : nullptr;
 }
 
+/// Get the entity name hash for a buildable item (for HD sprite lookup).
+static uint32_t get_entity_hash(const SidebarClass::StripClass& strip, int index)
+{
+    if (strip.Buildables[index].BuildableType == RTTI_SPECIAL) return 0;
+
+    ObjectTypeClass const* obj = Fetch_Techno_Type(
+        strip.Buildables[index].BuildableType,
+        strip.Buildables[index].BuildableID);
+    if (!obj) return 0;
+
+    return sidebar_fnv1a_hash(obj->IniName);
+}
+
+static const CameoCacheEntry* get_best_cameo(const SidebarClass::StripClass& strip,
+                                             int index, bool hd_mode)
+{
+    if (hd_mode) {
+        const CameoCacheEntry* hd_cameo = hd_cameo_decode(get_entity_hash(strip, index));
+        if (hd_cameo && hd_cameo->rgba) {
+            return hd_cameo;
+        }
+    }
+
+    const void* shapefile = get_cameo_shape(strip, index);
+    const uint8_t* remap = get_cameo_remap(strip, index);
+    return sprite_decode(shapefile, 0, remap, 255);
+}
+
+/// Get the display name for a buildable item.
+static const char* get_buildable_name(const SidebarClass::StripClass& strip, int index)
+{
+    if (strip.Buildables[index].BuildableType == RTTI_SPECIAL) {
+        int spc = strip.Buildables[index].BuildableID;
+        switch (spc) {
+            case SPC_ION_CANNON:  return Text_String(TXT_ION_CANNON);
+            case SPC_NUCLEAR_BOMB: return Text_String(TXT_NUKE_STRIKE);
+            case SPC_AIR_STRIKE:  return Text_String(TXT_AIR_STRIKE);
+            default: return "";
+        }
+    }
+
+    ObjectTypeClass const* obj = Fetch_Techno_Type(
+        strip.Buildables[index].BuildableType,
+        strip.Buildables[index].BuildableID);
+    if (!obj) return "";
+    return Text_String(obj->Full_Name());
+}
+
 /// Check if a buildable should be darkened (factory of matching type busy).
 static bool is_slot_darkened(const SidebarClass::StripClass& strip, int index)
 {
@@ -243,6 +347,162 @@ static bool is_slot_darkened(const SidebarClass::StripClass& strip, int index)
         default:                 return false;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Production click dispatch — mirrors SelectClass::Action() logic
+// ---------------------------------------------------------------------------
+
+/// Handle a left-click on a production slot.
+static void handle_slot_left_click(SidebarClass::StripClass& strip, int actual_index)
+{
+    if (actual_index >= strip.BuildableCount) return;
+    ERR("sidebar: left_click index=%d count=%d", actual_index, strip.BuildableCount);
+
+    RTTIType otype = strip.Buildables[actual_index].BuildableType;
+    int oid = strip.Buildables[actual_index].BuildableID;
+    int fnumber = strip.Buildables[actual_index].Factory;
+
+    // Determine generic factory for this type
+    int genfactory = -1;
+    switch (otype) {
+        case RTTI_INFANTRYTYPE:  genfactory = PlayerPtr->InfantryFactory; break;
+        case RTTI_UNITTYPE:      genfactory = PlayerPtr->UnitFactory; break;
+        case RTTI_AIRCRAFTTYPE:  genfactory = PlayerPtr->AircraftFactory; break;
+        case RTTI_BUILDINGTYPE:  genfactory = PlayerPtr->BuildingFactory; break;
+        default: break;
+    }
+
+    Map.Override_Mouse_Shape(MOUSE_NORMAL);
+
+    // Special weapons
+    if (otype == RTTI_SPECIAL) {
+        int spc = oid;
+        switch (spc) {
+            case SPC_ION_CANNON:
+                if (PlayerPtr->IonCannon.Is_Ready()) {
+                    Map.IsTargettingMode = spc;
+                    Unselect_All();
+                    Speak(VOX_SELECT_TARGET);
+                } else {
+                    PlayerPtr->IonCannon.Impatient_Click();
+                }
+                break;
+            case SPC_AIR_STRIKE:
+                if (PlayerPtr->AirStrike.Is_Ready()) {
+                    Map.IsTargettingMode = spc;
+                    Unselect_All();
+                    Speak(VOX_SELECT_TARGET);
+                } else {
+                    PlayerPtr->AirStrike.Impatient_Click();
+                }
+                break;
+            case SPC_NUCLEAR_BOMB:
+                if (PlayerPtr->NukeStrike.Is_Ready()) {
+                    Map.IsTargettingMode = spc;
+                    Unselect_All();
+                    Speak(VOX_SELECT_TARGET);
+                } else {
+                    PlayerPtr->NukeStrike.Impatient_Click();
+                }
+                break;
+        }
+        return;
+    }
+
+    // Normal production
+    ObjectTypeClass const* choice = Fetch_Techno_Type(otype, oid);
+    if (!choice) return;
+
+    FactoryClass* factory = nullptr;
+    if (fnumber != -1) {
+        factory = Factories.Raw_Ptr(fnumber);
+    }
+
+    // If this type's factory slot is busy with a different item, reject
+    if (fnumber == -1 && genfactory != -1) {
+        Speak(VOX_NO_FACTORY);
+        return;
+    }
+
+    ERR("sidebar: click type=%d id=%d factory=%d genfactory=%d", (int)otype, oid, fnumber, genfactory);
+
+    if (factory) {
+        if (factory->Is_Building()) {
+            ERR("sidebar: factory busy — VOX_NO_FACTORY");
+            Speak(VOX_NO_FACTORY);
+        } else if (factory->Has_Completed()) {
+            TechnoClass* pending = factory->Get_Object();
+            if (!pending && factory->Get_Special_Item()) {
+                ERR("sidebar: completed special — entering target mode");
+                Map.IsTargettingMode = true;
+            } else if (pending) {
+                BuildingClass* builder = pending->Who_Can_Build_Me(false, false);
+                if (!builder) {
+                    ERR("sidebar: completed but no builder — ABANDON");
+                    OutList.Add(EventClass(EventClass::ABANDON, otype, oid));
+                    Speak(VOX_NO_FACTORY);
+                } else if (pending->What_Am_I() == RTTI_BUILDING) {
+                    ERR("sidebar: completed building — Manual_Place");
+                    PlayerPtr->Manual_Place(builder, (BuildingClass*)pending);
+                } else {
+                    ERR("sidebar: completed unit — PLACE");
+                    OutList.Add(EventClass(EventClass::PLACE, otype, (CELL)-1));
+                }
+            }
+        } else {
+            // Suspended — resume
+            ERR("sidebar: resuming — PRODUCE event queued");
+            Speak(VOX_BUILDING);
+            OutList.Add(EventClass(EventClass::PRODUCE, otype, oid));
+        }
+    } else {
+        // No factory — start production
+        ERR("sidebar: new production — PRODUCE event queued");
+        Speak(VOX_BUILDING);
+        OutList.Add(EventClass(EventClass::PRODUCE, otype, oid));
+    }
+}
+
+/// Handle a right-click on a production slot (cancel/suspend).
+static void handle_slot_right_click(SidebarClass::StripClass& strip, int actual_index)
+{
+    if (actual_index >= strip.BuildableCount) return;
+
+    RTTIType otype = strip.Buildables[actual_index].BuildableType;
+    int oid = strip.Buildables[actual_index].BuildableID;
+    int fnumber = strip.Buildables[actual_index].Factory;
+
+    // Special weapons — cancel targeting mode
+    if (otype == RTTI_SPECIAL) {
+        Map.IsTargettingMode = false;
+        return;
+    }
+
+    if (fnumber == -1) return;
+
+    FactoryClass* factory = Factories.Raw_Ptr(fnumber);
+    if (!factory) return;
+
+    // Cancel placement mode if active
+    if (Map.PendingObjectPtr && Map.PendingObjectPtr->Is_Techno()) {
+        Map.PendingObjectPtr = 0;
+        Map.PendingObject = 0;
+        Map.PendingHouse = HOUSE_NONE;
+        Map.Set_Cursor_Shape(0);
+    }
+
+    if (!factory->Is_Building()) {
+        Speak(VOX_CANCELED);
+        OutList.Add(EventClass(EventClass::ABANDON, otype, oid));
+    } else {
+        Speak(VOX_SUSPENDED);
+        OutList.Add(EventClass(EventClass::SUSPEND, otype, oid));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Pip / Clock / Slot rendering
+// ---------------------------------------------------------------------------
 
 /// Draw a pip shape (PIP_READY or PIP_HOLDING) centered at the bottom of a slot.
 static void emit_pip(int pip_frame, int x, int y, int w, int h)
@@ -276,9 +536,129 @@ static void emit_clock(int stage, int x, int y, int w, int h)
     }
 }
 
-/// Emit one production slot outline, cameo icon, and production indicators.
+/// Determine production state for a buildable slot.
+struct SlotState {
+    bool production;
+    bool completed;
+    bool holding;
+    int  stage;
+    bool darken;
+};
+
+static SlotState get_slot_state(const SidebarClass::StripClass& strip, int actual_index)
+{
+    SlotState s = {};
+    bool is_special = (strip.Buildables[actual_index].BuildableType == RTTI_SPECIAL);
+
+    if (is_special) {
+        int spc = strip.Buildables[actual_index].BuildableID;
+        switch (spc) {
+            case SPC_ION_CANNON:
+                s.production = true;
+                s.completed = PlayerPtr->IonCannon.Is_Ready();
+                s.stage = PlayerPtr->IonCannon.Anim_Stage();
+                break;
+            case SPC_NUCLEAR_BOMB:
+                s.production = true;
+                s.completed = PlayerPtr->NukeStrike.Is_Ready();
+                s.stage = PlayerPtr->NukeStrike.Anim_Stage();
+                break;
+            case SPC_AIR_STRIKE:
+                s.production = true;
+                s.completed = PlayerPtr->AirStrike.Is_Ready();
+                s.stage = PlayerPtr->AirStrike.Anim_Stage();
+                break;
+        }
+    } else {
+        int factory_id = strip.Buildables[actual_index].Factory;
+        if (factory_id != -1) {
+            FactoryClass* factory = Factories.Raw_Ptr(factory_id);
+            if (factory) {
+                s.production = true;
+                s.completed = factory->Has_Completed();
+                s.stage = factory->Completion();
+                s.holding = !s.completed && !factory->Is_Building();
+                // Throttled diagnostic: log once per second (every ~15 frames)
+                static int diag_counter = 0;
+                if ((diag_counter++ % 15) == 0) {
+                    ERR("slot_state[%d]: fac=%d stage=%d completed=%d building=%d holding=%d",
+                        actual_index, factory_id, s.stage, s.completed,
+                        factory->Is_Building(), s.holding);
+                }
+            }
+        } else {
+            // Also check the real Map.Column to see if Factory was linked there
+            // but not in our copy
+            for (int c = 0; c < 2; c++) {
+                if (actual_index < Map.Column[c].BuildableCount &&
+                    Map.Column[c].Buildables[actual_index].BuildableType == strip.Buildables[actual_index].BuildableType &&
+                    Map.Column[c].Buildables[actual_index].BuildableID == strip.Buildables[actual_index].BuildableID &&
+                    Map.Column[c].Buildables[actual_index].Factory != -1) {
+                    static bool logged_mismatch = false;
+                    if (!logged_mismatch) {
+                        ERR("slot_state: MISMATCH — strip copy has Factory=-1 but Map.Column[%d] has Factory=%d",
+                            c, Map.Column[c].Buildables[actual_index].Factory);
+                        logged_mismatch = true;
+                    }
+                }
+            }
+        }
+        s.darken = is_slot_darkened(strip, actual_index);
+    }
+    return s;
+}
+
+/// Render production overlays (clock, pip, darken, flash) on a slot.
+/// @param show_progress_text  If true, draw a % text label for building items (HD grid).
+static void emit_production_overlays(int x, int y, int w, int h,
+                                     const SlotState& state,
+                                     const SidebarClass::StripClass& strip,
+                                     int actual_index,
+                                     bool show_progress_text = false)
+{
+    if (state.darken) {
+        g_ui_draw_list.Fill_Rect(x + 1, y + 1, w - 2, h - 2, 0, 0, 0, DARKEN_ALPHA);
+    }
+
+    if (state.production) {
+        if (state.completed) {
+            emit_pip(PIP_READY, x, y, w, h);
+            if (show_progress_text) {
+                g_ui_draw_list.Draw_Text(x + 2, y + h / 2 - 4, "READY", UI_FONT_6PT,
+                                         0, 255, 0, 255, 0.9f);
+            }
+        } else if (state.holding) {
+            emit_clock(state.stage, x, y, w, h);
+            emit_pip(PIP_HOLDING, x, y, w, h);
+            if (show_progress_text) {
+                g_ui_draw_list.Draw_Text(x + 2, y + h / 2 - 4, "HOLD", UI_FONT_6PT,
+                                         255, 200, 0, 255, 0.9f);
+            }
+        } else {
+            emit_clock(state.stage, x, y, w, h);
+            if (show_progress_text && state.stage > 0) {
+                char pct[8];
+                // stage is 0-54 for normal production (Completion() returns percentage)
+                int pct_val = state.stage;
+                if (pct_val > 100) pct_val = 100;
+                snprintf(pct, sizeof(pct), "%d%%", pct_val);
+                g_ui_draw_list.Draw_Text(x + 2, y + h / 2 - 4, pct, UI_FONT_6PT,
+                                         200, 200, 200, 240, 0.9f);
+            }
+        }
+        // Active production border highlight
+        g_ui_draw_list.Draw_Rect(x, y, w, h, 0, 200, 0, 120);
+    }
+
+    if (strip.Flasher == actual_index && (strip.Fetch_Stage() & 1)) {
+        g_ui_draw_list.Draw_Rect(x + 1, y + 1, w - 2, h - 2, 255, 255, 0, 180);
+    }
+}
+
+/// Emit one production slot outline, cameo icon, production indicators, and hit zone.
+/// Returns the hit zone ID for click handling in the caller (for non-HD legacy path).
 static void emit_slot(int x, int y, int w, int h, int slot_index,
-                      const SidebarClass::StripClass& strip)
+                      SidebarClass::StripClass& strip, bool hd_mode)
 {
     int actual_index = strip.TopIndex + slot_index;
     bool has_item = actual_index < strip.BuildableCount;
@@ -287,107 +667,71 @@ static void emit_slot(int x, int y, int w, int h, int slot_index,
     g_ui_draw_list.Fill_Rect(x, y, w, h, SLOT_BG_R, SLOT_BG_G, SLOT_BG_B, 120);
     g_ui_draw_list.Draw_Rect(x, y, w, h, SLOT_BORDER_R, SLOT_BORDER_G, SLOT_BORDER_B, 255);
 
+    // Register hit zone for the slot (even if empty, so clicks are captured)
+    UIHitZoneID zone = UI_Input_Register_Zone(x, y, w, h);
+
     if (!has_item) return;
 
-    // Cameo icon
-    const void* shapefile = get_cameo_shape(strip, actual_index);
-    const uint8_t* remap = get_cameo_remap(strip, actual_index);
-    const CameoCacheEntry* cameo = sprite_decode(shapefile, 0, remap, 255);
-    if (cameo && cameo->rgba) {
-        g_ui_draw_list.Draw_Icon(x + 1, y + 1, w - 2, h - 2,
-                                 reinterpret_cast<const uint8_t*>(cameo->rgba),
-                                 cameo->width, cameo->height);
-    }
-
-    // Determine production state — regular buildables vs special weapons
-    bool production = false;
-    bool completed  = false;
-    bool holding    = false;
-    int  stage      = 0;
-    bool darken     = false;
-    bool is_special = (strip.Buildables[actual_index].BuildableType == RTTI_SPECIAL);
-
-    if (is_special) {
-        int spc = strip.Buildables[actual_index].BuildableID;
-        switch (spc) {
-            case SPC_ION_CANNON:
-                production = true;
-                completed = PlayerPtr->IonCannon.Is_Ready();
-                stage = PlayerPtr->IonCannon.Anim_Stage();
-                break;
-            case SPC_NUCLEAR_BOMB:
-                production = true;
-                completed = PlayerPtr->NukeStrike.Is_Ready();
-                stage = PlayerPtr->NukeStrike.Anim_Stage();
-                break;
-            case SPC_AIR_STRIKE:
-                production = true;
-                completed = PlayerPtr->AirStrike.Is_Ready();
-                stage = PlayerPtr->AirStrike.Anim_Stage();
-                break;
-        }
-    } else {
-        int factory_id = strip.Buildables[actual_index].Factory;
-        if (factory_id != -1) {
-            FactoryClass* factory = Factories.Raw_Ptr(factory_id);
-            if (factory) {
-                production = true;
-                completed = factory->Has_Completed();
-                stage = factory->Completion();
-                holding = !completed && !factory->Is_Building();
-            }
-        }
-        darken = is_slot_darkened(strip, actual_index);
-    }
-
-    // Darken overlay for unavailable items (factory busy, no production started)
-    if (darken) {
-        g_ui_draw_list.Fill_Rect(x + 1, y + 1, w - 2, h - 2, 0, 0, 0, DARKEN_ALPHA);
-    }
-
-    // Production indicators: clock sweep, pip ready/holding
-    if (production) {
-        if (completed) {
-            emit_pip(PIP_READY, x, y, w, h);
-        } else if (holding) {
-            emit_clock(stage, x, y, w, h);
-            emit_pip(PIP_HOLDING, x, y, w, h);
-        } else {
-            emit_clock(stage, x, y, w, h);
+    // Prefer HD DDS sidebar art when available; fall back to legacy cameo SHPs.
+    {
+        const CameoCacheEntry* cameo = get_best_cameo(strip, actual_index, hd_mode);
+        if (cameo && cameo->rgba) {
+            g_ui_draw_list.Draw_Icon(x + 1, y + 1, w - 2, h - 2,
+                                     reinterpret_cast<const uint8_t*>(cameo->rgba),
+                                     cameo->width, cameo->height);
         }
     }
 
-    // Flash indicator — pulse on/off matching legacy Fetch_Stage() & 1 toggle
-    if (strip.Flasher == actual_index && (strip.Fetch_Stage() & 1)) {
-        g_ui_draw_list.Draw_Rect(x + 1, y + 1, w - 2, h - 2,
-                                 255, 255, 0, 180);
+    // Production overlays
+    SlotState state = get_slot_state(strip, actual_index);
+    emit_production_overlays(x, y, w, h, state, strip, actual_index);
+
+    // Click handling
+    if (UI_Input_Was_Clicked(zone)) {
+        handle_slot_left_click(strip, actual_index);
+    }
+    if (UI_Input_Was_Right_Clicked(zone)) {
+        handle_slot_right_click(strip, actual_index);
     }
 }
 
-/// Emit scroll arrows for a strip column.
+/// Emit scroll arrows for a strip column, with click handling.
+/// @param col_index  Index into Map.Column[] (0 or 1) — needed to scroll the original, not a copy.
 static void emit_scroll_arrows(int x, int y, int strip_w,
-                                const SidebarClass::StripClass& strip)
+                                const SidebarClass::StripClass& strip,
+                                int col_index)
 {
     bool can_up   = strip.TopIndex > 0;
     bool can_down = strip.TopIndex + 4 < strip.BuildableCount;
 
     // Up arrow indicator
     uint8_t up_a = can_up ? (uint8_t)255 : (uint8_t)80;
-    g_ui_draw_list.Fill_Rect(x + 2, y, 12, 8,
+    int up_w = 16, up_h = 10;
+    g_ui_draw_list.Fill_Rect(x + 2, y, up_w, up_h,
                              SCROLL_R, SCROLL_R, SCROLL_R, up_a);
-    g_ui_draw_list.Draw_Text(x + 4, y, "UP", UI_FONT_6PT,
+    g_ui_draw_list.Draw_Text(x + 4, y + 1, "UP", UI_FONT_6PT,
                              200, 200, 200, up_a);
+    UIHitZoneID up_zone = UI_Input_Register_Zone(x + 2, y, up_w, up_h);
+    if (UI_Input_Was_Clicked(up_zone) && can_up) {
+        Map.Column[col_index].Scroll(true);
+    }
 
     // Down arrow indicator
     uint8_t dn_a = can_down ? (uint8_t)255 : (uint8_t)80;
-    g_ui_draw_list.Fill_Rect(x + strip_w - 14, y, 12, 8,
+    int dn_x = x + strip_w - up_w - 2;
+    g_ui_draw_list.Fill_Rect(dn_x, y, up_w, up_h,
                              SCROLL_R, SCROLL_R, SCROLL_R, dn_a);
-    g_ui_draw_list.Draw_Text(x + strip_w - 12, y, "DN", UI_FONT_6PT,
+    g_ui_draw_list.Draw_Text(dn_x + 2, y + 1, "DN", UI_FONT_6PT,
                              200, 200, 200, dn_a);
+    UIHitZoneID dn_zone = UI_Input_Register_Zone(dn_x, y, up_w, up_h);
+    if (UI_Input_Was_Clicked(dn_zone) && can_down) {
+        Map.Column[col_index].Scroll(false);
+    }
 }
 
-/// Emit one sidebar column.
-static void emit_column(const SidebarClass::StripClass& strip)
+/// Emit one sidebar column (legacy 2-column layout).
+/// @param col_index  Index into Map.Column[] (0 or 1) — scroll ops use the original.
+static void emit_column(SidebarClass::StripClass& strip, bool hd_mode, int col_index)
 {
     int col_x = strip.X;
     int col_y = strip.Y;
@@ -395,7 +739,6 @@ static void emit_column(const SidebarClass::StripClass& strip)
     int obj_h = strip.ObjectHeight;
     int visible = 4; // MAX_VISIBLE
 
-    // Column background — StripWidth is already scaled by sx in the caller
     int col_w = strip.StripWidth;
     int col_h = obj_h * visible + 14;
     g_ui_draw_list.Fill_Rect(col_x, col_y, col_w, col_h,
@@ -408,11 +751,174 @@ static void emit_column(const SidebarClass::StripClass& strip)
     for (int i = 0; i < visible; i++) {
         int sx, sy;
         layout.Next(obj_w, obj_h, sx, sy);
-        emit_slot(sx, sy, obj_w, obj_h, i, strip);
+        emit_slot(sx, sy, obj_w, obj_h, i, strip, hd_mode);
     }
 
     // Scroll arrows below slots
-    emit_scroll_arrows(col_x, col_y + obj_h * visible + 1, col_w, strip);
+    emit_scroll_arrows(col_x, col_y + obj_h * visible + 1, col_w, strip, col_index);
+
+    // Mouse wheel scrolling — use Map.Column directly to persist scroll
+    float scroll_delta = UI_Input_Consume_Scroll_Delta();
+    if (scroll_delta > 0.0f && strip.TopIndex > 0) {
+        Map.Column[col_index].Scroll(true);
+    } else if (scroll_delta < 0.0f && strip.TopIndex + 4 < strip.BuildableCount) {
+        Map.Column[col_index].Scroll(false);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HD 3-column grid layout
+// ---------------------------------------------------------------------------
+
+/// HD grid scroll state (shared for the unified grid).
+static int g_hd_grid_top_index = 0;
+
+/// Emit the HD 3-column grid sidebar layout, merging both strip columns.
+static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
+                          float sx, float sy)
+{
+    bool hd_mode = Render_Bridge_Get_HD_Graphics();
+
+    // Compute cell dimensions
+    int cell_w = (grid_w - HD_GRID_ICON_PAD * (HD_GRID_COLS + 1)) / HD_GRID_COLS;
+    int icon_h = cell_w * 3 / 4; // 4:3 aspect for icon
+    int cell_h = icon_h + HD_GRID_TEXT_H + HD_GRID_ICON_PAD;
+    if (cell_w < 20 || cell_h < 20) return;
+
+    int visible_rows = (grid_h - HD_GRID_ICON_PAD) / (cell_h + HD_GRID_ICON_PAD);
+    if (visible_rows < 1) visible_rows = 1;
+    int visible_slots = visible_rows * HD_GRID_COLS;
+
+    // Build a merged list of all buildable items from both strip columns.
+    // Column 0 = structures, Column 1 = units (preserve ordering).
+    struct MergedItem {
+        int strip_col;
+        int strip_index; // index into strip.Buildables[]
+    };
+    MergedItem merged[60]; // MAX_BUILDABLES * 2
+    int merged_count = 0;
+
+    for (int c = 0; c < 2; c++) {
+        SidebarClass::StripClass& strip = Map.Column[c];
+        for (int i = 0; i < strip.BuildableCount && merged_count < 60; i++) {
+            merged[merged_count].strip_col = c;
+            merged[merged_count].strip_index = i;
+            merged_count++;
+        }
+    }
+
+    // Clamp scroll position
+    int max_top = merged_count - visible_slots;
+    if (max_top < 0) max_top = 0;
+    if (g_hd_grid_top_index > max_top) g_hd_grid_top_index = max_top;
+    if (g_hd_grid_top_index < 0) g_hd_grid_top_index = 0;
+
+    // Register a hit zone for the whole grid (for mouse wheel)
+    UIHitZoneID grid_zone = UI_Input_Register_Zone(grid_x, grid_y, grid_w, grid_h);
+
+    // Render visible items
+    for (int slot = 0; slot < visible_slots; slot++) {
+        int item_idx = g_hd_grid_top_index + slot;
+        int row = slot / HD_GRID_COLS;
+        int col = slot % HD_GRID_COLS;
+
+        int cx = grid_x + HD_GRID_ICON_PAD + col * (cell_w + HD_GRID_ICON_PAD);
+        int cy = grid_y + HD_GRID_ICON_PAD + row * (cell_h + HD_GRID_ICON_PAD);
+
+        if (item_idx >= merged_count) {
+            // Empty slot — just draw faint outline
+            g_ui_draw_list.Draw_Rect(cx, cy, cell_w, icon_h,
+                                     SLOT_BORDER_R, SLOT_BORDER_G, SLOT_BORDER_B, 60);
+            continue;
+        }
+
+        SidebarClass::StripClass& strip = Map.Column[merged[item_idx].strip_col];
+        int si = merged[item_idx].strip_index;
+
+        // Slot background — opaque so icons are clearly visible
+        g_ui_draw_list.Fill_Rect(cx, cy, cell_w, icon_h,
+                                 SLOT_BG_R, SLOT_BG_G, SLOT_BG_B, 200);
+        g_ui_draw_list.Draw_Rect(cx, cy, cell_w, icon_h,
+                                 SLOT_BORDER_R, SLOT_BORDER_G, SLOT_BORDER_B, 255);
+
+        // Hit zone for this cell
+        UIHitZoneID cell_zone = UI_Input_Register_Zone(cx, cy, cell_w, cell_h);
+
+        // Prefer HD DDS art in HD mode, falling back to legacy SHP cameos.
+        bool drew_icon = false;
+        {
+            const CameoCacheEntry* cameo = get_best_cameo(strip, si, hd_mode);
+            if (cameo && cameo->rgba) {
+                g_ui_draw_list.Draw_Icon(cx + 1, cy + 1, cell_w - 2, icon_h - 2,
+                                         reinterpret_cast<const uint8_t*>(cameo->rgba),
+                                         cameo->width, cameo->height);
+                drew_icon = true;
+            }
+        }
+
+        // Production overlays — with progress text for HD grid
+        SlotState state = get_slot_state(strip, si);
+        emit_production_overlays(cx, cy, cell_w, icon_h, state, strip, si, true);
+
+        // Text label below icon — always show name, even if icon failed
+        const char* name = get_buildable_name(strip, si);
+        if (name && name[0]) {
+            // Use brighter text for items with no icon so they're still identifiable
+            uint8_t text_a = drew_icon ? (uint8_t)220 : (uint8_t)255;
+            float text_scale = drew_icon ? 0.7f : 0.85f;
+            g_ui_draw_list.Draw_Text(cx + 2, cy + icon_h + 1, name, UI_FONT_6PT,
+                                     180, 220, 180, text_a, text_scale);
+        }
+
+        // Click handling
+        if (UI_Input_Was_Clicked(cell_zone)) {
+            handle_slot_left_click(strip, si);
+        }
+        if (UI_Input_Was_Right_Clicked(cell_zone)) {
+            handle_slot_right_click(strip, si);
+        }
+    }
+
+    // Scroll arrows at bottom of grid
+    bool can_up = g_hd_grid_top_index > 0;
+    bool can_down = g_hd_grid_top_index + visible_slots < merged_count;
+
+    if (can_up || can_down) {
+        int arrow_y = grid_y + grid_h - 14;
+        int arrow_w = grid_w / 3;
+
+        if (can_up) {
+            g_ui_draw_list.Fill_Rect(grid_x + 4, arrow_y, arrow_w, 12,
+                                     SCROLL_R, SCROLL_R, SCROLL_R, 200);
+            g_ui_draw_list.Draw_Text(grid_x + 8, arrow_y + 1, "UP", UI_FONT_6PT,
+                                     200, 200, 200, 255);
+            UIHitZoneID up_zone = UI_Input_Register_Zone(grid_x + 4, arrow_y, arrow_w, 12);
+            if (UI_Input_Was_Clicked(up_zone)) {
+                g_hd_grid_top_index -= HD_GRID_COLS;
+                if (g_hd_grid_top_index < 0) g_hd_grid_top_index = 0;
+            }
+        }
+        if (can_down) {
+            int dn_x = grid_x + grid_w - arrow_w - 4;
+            g_ui_draw_list.Fill_Rect(dn_x, arrow_y, arrow_w, 12,
+                                     SCROLL_R, SCROLL_R, SCROLL_R, 200);
+            g_ui_draw_list.Draw_Text(dn_x + 4, arrow_y + 1, "DN", UI_FONT_6PT,
+                                     200, 200, 200, 255);
+            UIHitZoneID dn_zone = UI_Input_Register_Zone(dn_x, arrow_y, arrow_w, 12);
+            if (UI_Input_Was_Clicked(dn_zone)) {
+                g_hd_grid_top_index += HD_GRID_COLS;
+            }
+        }
+    }
+
+    // Mouse wheel scrolling
+    float scroll_delta = UI_Input_Consume_Scroll_Delta();
+    if (scroll_delta > 0.0f && can_up) {
+        g_hd_grid_top_index -= HD_GRID_COLS;
+        if (g_hd_grid_top_index < 0) g_hd_grid_top_index = 0;
+    } else if (scroll_delta < 0.0f && can_down) {
+        g_hd_grid_top_index += HD_GRID_COLS;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -420,8 +926,7 @@ static void emit_column(const SidebarClass::StripClass& strip)
 // ---------------------------------------------------------------------------
 
 /// Emit a vertical power bar gauge on the left edge of the sidebar.
-/// Shows power output as a filled bar and drain level as an indicator line.
-static void emit_power_bar(int x, int y, int w, int h, float sx, float sy)
+static void emit_power_bar(int x, int y, int w, int h)
 {
     if (!PlayerPtr) return;
 
@@ -440,14 +945,13 @@ static void emit_power_bar(int x, int y, int w, int h, float sx, float sy)
     int inner_y = y + 1;
     int bottom  = inner_y + inner_h;
 
-    // Compute bar heights using the same logarithmic scale as legacy Power_Height
-    // (power.h: POWER_STEP_LEVEL=100, POWER_STEP_FACTOR=6).
+    // Logarithmic scale matching legacy Power_Height
     auto compute_height = [inner_h](int value) -> int {
         int retval = 0;
-        int num = value / 100;         // POWER_STEP_LEVEL
+        int num = value / 100;
         int remainder = value - num * 100;
         for (int i = 0; i < num; i++) {
-            retval = retval + ((inner_h - retval) / 6);  // POWER_STEP_FACTOR
+            retval = retval + ((inner_h - retval) / 6);
         }
         if (remainder) {
             retval = retval + ((((inner_h - retval) / 6) * remainder) / 100);
@@ -460,7 +964,7 @@ static void emit_power_bar(int x, int y, int w, int h, float sx, float sy)
     int power_h = compute_height(power);
     int drain_h = compute_height(drain);
 
-    // Choose bar color based on power/drain ratio
+    // Bar color
     uint8_t bar_r, bar_g, bar_b;
     if (drain == 0 || power >= drain) {
         bar_r = POW_GREEN_R; bar_g = POW_GREEN_G; bar_b = POW_GREEN_B;
@@ -470,23 +974,19 @@ static void emit_power_bar(int x, int y, int w, int h, float sx, float sy)
         bar_r = POW_RED_R; bar_g = POW_RED_G; bar_b = POW_RED_B;
     }
 
-    // Draw power output bar (fills from bottom upward)
     if (power_h > 0) {
         g_ui_draw_list.Fill_Rect(inner_x, bottom - power_h, inner_w, power_h,
                                  bar_r, bar_g, bar_b, 220);
     }
 
-    // Draw drain indicator line
     if (drain_h > 0 && drain > 0) {
         int drain_y = bottom - drain_h;
         g_ui_draw_list.Fill_Rect(inner_x, drain_y, inner_w, 1,
                                  255, 255, 255, 200);
-        // Small arrow marker on left edge
         g_ui_draw_list.Fill_Rect(x, drain_y - 1, 2, 3,
                                  255, 255, 255, 240);
     }
 
-    // Power/Drain text labels at top
     if (power > 0 || drain > 0) {
         char buf[16];
         snprintf(buf, sizeof(buf), "%d", power);
@@ -499,11 +999,15 @@ static void emit_power_bar(int x, int y, int w, int h, float sx, float sy)
 // Button shape loading + rendering
 // ---------------------------------------------------------------------------
 
-/// Cached button shape pointers (loaded once from mix files).
 static const void* s_repair_shape = nullptr;
 static const void* s_sell_shape   = nullptr;
 static const void* s_map_shape    = nullptr;
 static bool s_btn_shapes_loaded   = false;
+
+/// Cached sidebar frame shape pointers.
+static const void* s_sidebar_shape1 = nullptr;
+static const void* s_sidebar_shape2 = nullptr;
+static bool s_frame_shapes_loaded   = false;
 
 static void load_button_shapes()
 {
@@ -514,25 +1018,29 @@ static void load_button_shapes()
     s_map_shape    = Hires_Retrieve((char*)"MAP.SHP");
 }
 
+static void load_frame_shapes()
+{
+    if (s_frame_shapes_loaded) return;
+    s_frame_shapes_loaded = true;
+    s_sidebar_shape1 = SidebarClass::SidebarShape1;
+    s_sidebar_shape2 = SidebarClass::SidebarShape2;
+}
+
 /// Emit a sidebar button with SHP art if available, falling back to text.
-/// Returns true if clicked this frame.
 static bool emit_sidebar_button(int x, int y, int w, int h,
                                 const void* shapefile, int frame,
                                 const char* fallback_label,
                                 bool is_active,
                                 const UIButtonStyle& style)
 {
-    // Draw button background based on active state
     UIButtonState state = UI_Button(x, y, w, h, nullptr, style);
 
-    // Overlay SHP art if available
     const CameoCacheEntry* icon = sprite_decode(shapefile, frame, nullptr, 255);
     if (icon && icon->rgba) {
         g_ui_draw_list.Draw_Icon(x + 1, y + 1, w - 2, h - 2,
                                  reinterpret_cast<const uint8_t*>(icon->rgba),
                                  icon->width, icon->height);
     } else {
-        // Text fallback
         int tx = x + 2;
         int ty = y + (h > 8 ? 2 : 1);
         g_ui_draw_list.Draw_Text(tx, ty, fallback_label, style.font,
@@ -540,7 +1048,6 @@ static bool emit_sidebar_button(int x, int y, int w, int h,
                                  style.text_a, style.text_scale);
     }
 
-    // Active mode highlight (repair/sell toggled on)
     if (is_active) {
         g_ui_draw_list.Draw_Rect(x, y, w, h, 255, 255, 0, 180);
     }
@@ -548,6 +1055,71 @@ static bool emit_sidebar_button(int x, int y, int w, int h,
     return state == UI_BTN_PRESSED;
 }
 
+// ---------------------------------------------------------------------------
+// Credits display
+// ---------------------------------------------------------------------------
+
+static void emit_credits(int x, int y, int w)
+{
+    if (!PlayerPtr) return;
+
+    // Use the tweened display value from CreditClass for smooth countdown
+    // animation.  CreditClass::AI() (called from TabClass::AI()) advances
+    // the tween each tick and CreditClass::Graphic_Logic() (called from
+    // TabClass::Draw_It()) plays VOC_UP / VOC_DOWN sounds automatically.
+    long display_credits = Map.Credits.Current;
+    long tiberium = PlayerPtr->Tiberium;
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "$%ld", display_credits);
+    g_ui_draw_list.Draw_Text(x + 4, y + 2, buf, UI_FONT_6PT,
+                             0, 220, 0, 240, 0.9f);
+
+    // Tiberium indicator
+    if (tiberium > 0) {
+        char tbuf[32];
+        snprintf(tbuf, sizeof(tbuf), "T:%ld", tiberium);
+        g_ui_draw_list.Draw_Text(x + w / 2 + 4, y + 2, tbuf, UI_FONT_6PT,
+                                 180, 200, 0, 200, 0.8f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Sidebar frame rendering
+// ---------------------------------------------------------------------------
+
+static void emit_sidebar_frame(int x, int y, int w, int h, float sx, float sy)
+{
+    load_frame_shapes();
+
+    // Try to render legacy sidebar frame shapes as background
+    bool drew_frame = false;
+    if (s_sidebar_shape1) {
+        const CameoCacheEntry* frame1 = sprite_decode(s_sidebar_shape1, 0, nullptr, 255);
+        if (frame1 && frame1->rgba) {
+            // Tile the frame shape vertically across the sidebar
+            int tile_h = scale_y_from_legacy(frame1->height, sy);
+            for (int ty = y; ty < y + h; ty += tile_h) {
+                int draw_h = (ty + tile_h > y + h) ? (y + h - ty) : tile_h;
+                g_ui_draw_list.Draw_Icon(x, ty, w, draw_h,
+                                         reinterpret_cast<const uint8_t*>(frame1->rgba),
+                                         frame1->width, frame1->height);
+            }
+            drew_frame = true;
+        }
+    }
+
+    if (!drew_frame) {
+        // Fallback: dark background with subtle gradient feel
+        g_ui_draw_list.Fill_Rect(x, y, w, h, 24, 24, 24, 56);
+    }
+
+    // Left edge highlight
+    g_ui_draw_list.Fill_Rect(x, y, 1, h, 84, 84, 84, 220);
+}
+
+// ---------------------------------------------------------------------------
+// Main entry point
 // ---------------------------------------------------------------------------
 
 void UI_Sidebar_Emit()
@@ -567,36 +1139,55 @@ void UI_Sidebar_Emit()
     Render_Bridge_Get_Logical_Screen_Size(logical_w, logical_h);
     float sx = (base_w > 0) ? static_cast<float>(logical_w) / static_cast<float>(base_w) : 1.0f;
     float sy = (base_h > 0) ? static_cast<float>(logical_h) / static_cast<float>(base_h) : 1.0f;
-    // Sidebar background tint
-    g_ui_draw_list.Fill_Rect(side_x, side_y, side_w, side_h,
-                             24, 24, 24, 56);
-    g_ui_draw_list.Fill_Rect(side_x, side_y, 1, side_h,
-                             84, 84, 84, 220);
+
+    bool hd_mode = Render_Bridge_Get_HD_Graphics();
+
+    // Sidebar background frame
+    emit_sidebar_frame(side_x, side_y, side_w, side_h, sx, sy);
 
     // --- Power bar ---
-    // Position: narrow vertical strip on the left edge of the sidebar,
-    // below the radar area, above the buttons.
+    // Use legacy radar bottom as reference point (Map.RadY + Map.RadHeight in SeenBuff space,
+    // scaled to HD logical screen — both use the same SeenBuff-relative coordinate origin).
     int pow_w = scale_x_from_legacy(8, sx);
     int pow_x = side_x + 2;
-    int radar_bottom = scale_y_from_legacy(Map.RadY + Map.RadHeight, sy) + scale_y_from_legacy(13, sy);
+    int radar_bottom = scale_y_from_legacy(Map.RadY + Map.RadHeight, sy)
+                     + scale_y_from_legacy(13, sy);
     int btn_h = scale_y_from_legacy(16, sy);
     int btn_y = side_y + side_h - btn_h - 2;
-    int pow_y = radar_bottom;
+
+    // Credits display — below the radar, above the power bar / production area
+    int credits_h = scale_y_from_legacy(10, sy);
+    emit_credits(side_x, radar_bottom, side_w);
+
+    int pow_y = radar_bottom + credits_h;
     int pow_h = btn_y - pow_y - 2;
     if (pow_h > 10) {
-        emit_power_bar(pow_x, pow_y, pow_w, pow_h, sx, sy);
+        emit_power_bar(pow_x, pow_y, pow_w, pow_h);
     }
 
-    // --- Production columns ---
-    for (int c = 0; c < 2; c++) {
-        SidebarClass::StripClass strip = Map.Column[c];
-        strip.X = scale_x_from_legacy(strip.X, sx);
-        strip.Y = scale_y_from_legacy(strip.Y, sy);
-        strip.ObjectWidth = scale_x_from_legacy(strip.ObjectWidth, sx);
-        strip.ObjectHeight = scale_y_from_legacy(strip.ObjectHeight, sy);
-        strip.StripWidth = scale_x_from_legacy(strip.StripWidth, sx);
-        strip.LeftEdgeOffset = scale_x_from_legacy(strip.LeftEdgeOffset, sx);
-        emit_column(strip);
+    // --- Production area ---
+    if (hd_mode) {
+        // HD 3-column grid layout — fills production area next to power bar
+        int prod_x = side_x + pow_w + 6;
+        int prod_y = pow_y;
+        int prod_w = side_w - pow_w - 8;
+        int prod_h = btn_y - prod_y - 4;
+
+        if (prod_w > 60 && prod_h > 40) {
+            emit_hd_grid(prod_x, prod_y, prod_w, prod_h, sx, sy);
+        }
+    } else {
+        // Legacy 2-column layout — use scaled strip positions
+        for (int c = 0; c < 2; c++) {
+            SidebarClass::StripClass strip = Map.Column[c];
+            strip.X = scale_x_from_legacy(strip.X, sx);
+            strip.Y = scale_y_from_legacy(strip.Y, sy);
+            strip.ObjectWidth = scale_x_from_legacy(strip.ObjectWidth, sx);
+            strip.ObjectHeight = scale_y_from_legacy(strip.ObjectHeight, sy);
+            strip.StripWidth = scale_x_from_legacy(strip.StripWidth, sx);
+            strip.LeftEdgeOffset = scale_x_from_legacy(strip.LeftEdgeOffset, sx);
+            emit_column(strip, hd_mode, c);
+        }
     }
 
     // --- Repair / Sell / Map buttons ---
@@ -611,7 +1202,6 @@ void UI_Sidebar_Emit()
     bs.text_r = 0; bs.text_g = 200; bs.text_b = 0;
     bs.font = UI_FONT_6PT;
 
-    // Repair button — frame 0 = normal, frame 1 = pressed (in typical SHP layout)
     bool repair_active = Map.IsRepairMode != 0;
     if (emit_sidebar_button(side_x + 2, btn_y, btn_w - 2, btn_h,
                             s_repair_shape, repair_active ? 1 : 0,
@@ -619,7 +1209,6 @@ void UI_Sidebar_Emit()
         Map.Repair_Mode_Control(-1);
     }
 
-    // Sell button
     bool sell_active = Map.IsSellMode != 0;
     if (emit_sidebar_button(side_x + btn_w + 1, btn_y, btn_w - 2, btn_h,
                             s_sell_shape, sell_active ? 1 : 0,
@@ -627,7 +1216,6 @@ void UI_Sidebar_Emit()
         Map.Sell_Mode_Control(-1);
     }
 
-    // Map/Zoom button
     if (emit_sidebar_button(side_x + btn_w * 2, btn_y, btn_w - 2, btn_h,
                             s_map_shape, 0,
                             "MAP", false, bs)) {

@@ -113,6 +113,9 @@ bool Render_Bridge_Debug_Bars_Enabled();
 /// Pass `nullptr` to clear it and fall back to legacy indexed sprites only.
 void Render_Bridge_Register_HD_Sprite_Provider(void* provider);
 
+/// Get the registered HD sprite provider, or nullptr if none.
+void* Render_Bridge_Get_HD_Sprite_Provider();
+
 /// Set the terrain type hash (FNV-1a of template IniName) for the next Draw_Stamp.
 /// Must be called immediately before the Draw_Stamp call from CellClass::Draw_It.
 /// The hook consumes and resets this value; stamps without a prior call get hash=0.

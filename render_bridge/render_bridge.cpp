@@ -389,7 +389,7 @@ void Render_Bridge_UI_End_Frame()
     // UI hit zones are registered during emission, so pointer state must be
     // refreshed after the draw list is built for the current frame.
     extern int g_mouse_x, g_mouse_y;
-    UI_Input_Update(g_mouse_x, g_mouse_y, Key_Down(KN_LMOUSE) != 0);
+    UI_Input_Update(g_mouse_x, g_mouse_y, Key_Down(KN_LMOUSE) != 0, Key_Down(KN_RMOUSE) != 0);
     UI_Input_End_Frame();
 }
 

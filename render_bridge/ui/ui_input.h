@@ -39,9 +39,13 @@ bool UI_Input_Has_Capture();
 /// released to pressed while hovering over the given zone.
 bool UI_Input_Was_Clicked(UIHitZoneID zone);
 
+/// Returns true on the single frame the right button transitioned from
+/// released to pressed while hovering over the given zone.
+bool UI_Input_Was_Right_Clicked(UIHitZoneID zone);
+
 /// Update input state. Call once per frame with current mouse state.
-/// left_down: left mouse button is currently held.
-void UI_Input_Update(int screen_x, int screen_y, bool left_down);
+/// left_down / right_down: mouse buttons currently held.
+void UI_Input_Update(int screen_x, int screen_y, bool left_down, bool right_down = false);
 
 /// Feed mouse wheel delta into the UI input system.
 /// Called from the event pump before UI_Input_Update.

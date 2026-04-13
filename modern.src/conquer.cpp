@@ -2364,7 +2364,7 @@ extern bool	VQPaletteChange;
 extern void Suspend_Audio_Thread(void);
 extern void Resume_Audio_Thread(void);
 
-#if defined(__linux__) && !defined(__ANDROID__)
+#ifdef USE_RENDER_BRIDGE
 #include "bink_player.h"
 #endif
 
@@ -2384,7 +2384,7 @@ void Play_Movie(char const * name, ThemeType theme, bool clrscrn)
 		return;
 	}
 
-#if defined(__linux__) && !defined(__ANDROID__)
+#ifdef USE_RENDER_BRIDGE
 	if (name && Bink_Play_Movie(name)) {
 		Theme.Queue_Song(theme);
 		return;
