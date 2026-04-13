@@ -440,14 +440,14 @@ static void emit_power_bar(int x, int y, int w, int h, float sx, float sy)
     int inner_y = y + 1;
     int bottom  = inner_y + inner_h;
 
-    // Compute bar heights using the same logarithmic scale as legacy Power_Height.
-    // Each POWER_STEP_LEVEL (100) unit produces diminishing returns.
+    // Compute bar heights using the same logarithmic scale as legacy Power_Height
+    // (power.h: POWER_STEP_LEVEL=100, POWER_STEP_FACTOR=6).
     auto compute_height = [inner_h](int value) -> int {
         int retval = 0;
-        int num = value / 100;
+        int num = value / 100;         // POWER_STEP_LEVEL
         int remainder = value - num * 100;
         for (int i = 0; i < num; i++) {
-            retval = retval + ((inner_h - retval) / 6);
+            retval = retval + ((inner_h - retval) / 6);  // POWER_STEP_FACTOR
         }
         if (remainder) {
             retval = retval + ((((inner_h - retval) / 6) * remainder) / 100);
@@ -578,9 +578,11 @@ void UI_Sidebar_Emit()
     // --- Power bar ---
     // Position: narrow vertical strip on the left edge of the sidebar,
     // below the radar area, above the buttons.
+    // Legacy gap uses bit-shift: (13 << legacy_factor) in SeenBuff pixel space.
+    int legacy_factor = (base_w == 320) ? 0 : 1;
     int pow_w = 8 * factor;
     int pow_x = side_x + 2;
-    int radar_bottom = scale_y_from_legacy(Map.RadY + Map.RadHeight, sy) + (13 * factor);
+    int radar_bottom = scale_y_from_legacy(Map.RadY + Map.RadHeight + (13 << legacy_factor), sy);
     int btn_h = (16 * factor);
     int btn_y = side_y + side_h - btn_h - 2;
     int pow_y = radar_bottom;
