@@ -34,6 +34,12 @@ static constexpr uint8_t SLOT_BORDER_R = 36, SLOT_BORDER_G = 120, SLOT_BORDER_B 
 static constexpr uint8_t SCROLL_R = 120, SCROLL_G = 120, SCROLL_B = 120;
 static constexpr uint8_t DARKEN_ALPHA = 140; // overlay alpha for unavailable items
 
+/// Power bar colors.
+static constexpr uint8_t POW_BG_R = 20, POW_BG_G = 20, POW_BG_B = 20;
+static constexpr uint8_t POW_GREEN_R = 0, POW_GREEN_G = 180, POW_GREEN_B = 0;
+static constexpr uint8_t POW_YELLOW_R = 200, POW_YELLOW_G = 200, POW_YELLOW_B = 0;
+static constexpr uint8_t POW_RED_R = 200, POW_RED_G = 40, POW_RED_B = 0;
+
 // ---------------------------------------------------------------------------
 // Cameo RGBA cache
 // ---------------------------------------------------------------------------
@@ -409,6 +415,141 @@ static void emit_column(const SidebarClass::StripClass& strip, int factor)
     emit_scroll_arrows(col_x, col_y + obj_h * visible + 1, col_w, strip);
 }
 
+// ---------------------------------------------------------------------------
+// Power bar rendering
+// ---------------------------------------------------------------------------
+
+/// Emit a vertical power bar gauge on the left edge of the sidebar.
+/// Shows power output as a filled bar and drain level as an indicator line.
+static void emit_power_bar(int x, int y, int w, int h, float sx, float sy)
+{
+    if (!PlayerPtr) return;
+
+    int power = PlayerPtr->Power;
+    int drain = PlayerPtr->Drain;
+
+    // Bar background
+    g_ui_draw_list.Fill_Rect(x, y, w, h, POW_BG_R, POW_BG_G, POW_BG_B, 200);
+    g_ui_draw_list.Draw_Rect(x, y, w, h, 60, 60, 60, 200);
+
+    if (h < 4) return;
+
+    int inner_x = x + 1;
+    int inner_w = w - 2;
+    int inner_h = h - 2;
+    int inner_y = y + 1;
+    int bottom  = inner_y + inner_h;
+
+    // Compute bar heights using the same logarithmic scale as legacy Power_Height.
+    // Each POWER_STEP_LEVEL (100) unit produces diminishing returns.
+    auto compute_height = [inner_h](int value) -> int {
+        int retval = 0;
+        int num = value / 100;
+        int remainder = value - num * 100;
+        for (int i = 0; i < num; i++) {
+            retval = retval + ((inner_h - retval) / 6);
+        }
+        if (remainder) {
+            retval = retval + ((((inner_h - retval) / 6) * remainder) / 100);
+        }
+        if (retval < 0) retval = 0;
+        if (retval > inner_h) retval = inner_h;
+        return retval;
+    };
+
+    int power_h = compute_height(power);
+    int drain_h = compute_height(drain);
+
+    // Choose bar color based on power/drain ratio
+    uint8_t bar_r, bar_g, bar_b;
+    if (drain == 0 || power >= drain) {
+        bar_r = POW_GREEN_R; bar_g = POW_GREEN_G; bar_b = POW_GREEN_B;
+    } else if (power * 2 >= drain) {
+        bar_r = POW_YELLOW_R; bar_g = POW_YELLOW_G; bar_b = POW_YELLOW_B;
+    } else {
+        bar_r = POW_RED_R; bar_g = POW_RED_G; bar_b = POW_RED_B;
+    }
+
+    // Draw power output bar (fills from bottom upward)
+    if (power_h > 0) {
+        g_ui_draw_list.Fill_Rect(inner_x, bottom - power_h, inner_w, power_h,
+                                 bar_r, bar_g, bar_b, 220);
+    }
+
+    // Draw drain indicator line
+    if (drain_h > 0 && drain > 0) {
+        int drain_y = bottom - drain_h;
+        g_ui_draw_list.Fill_Rect(inner_x, drain_y, inner_w, 1,
+                                 255, 255, 255, 200);
+        // Small arrow marker on left edge
+        g_ui_draw_list.Fill_Rect(x, drain_y - 1, 2, 3,
+                                 255, 255, 255, 240);
+    }
+
+    // Power/Drain text labels at top
+    if (power > 0 || drain > 0) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d", power);
+        g_ui_draw_list.Draw_Text(x + 1, y + 2, buf, UI_FONT_6PT,
+                                 bar_r, bar_g, bar_b, 200, 0.8f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Button shape loading + rendering
+// ---------------------------------------------------------------------------
+
+/// Cached button shape pointers (loaded once from mix files).
+static const void* s_repair_shape = nullptr;
+static const void* s_sell_shape   = nullptr;
+static const void* s_map_shape    = nullptr;
+static bool s_btn_shapes_loaded   = false;
+
+static void load_button_shapes()
+{
+    if (s_btn_shapes_loaded) return;
+    s_btn_shapes_loaded = true;
+    s_repair_shape = Hires_Retrieve((char*)"REPAIR.SHP");
+    s_sell_shape   = Hires_Retrieve((char*)"SELL.SHP");
+    s_map_shape    = Hires_Retrieve((char*)"MAP.SHP");
+}
+
+/// Emit a sidebar button with SHP art if available, falling back to text.
+/// Returns true if clicked this frame.
+static bool emit_sidebar_button(int x, int y, int w, int h,
+                                const void* shapefile, int frame,
+                                const char* fallback_label,
+                                bool is_active,
+                                const UIButtonStyle& style)
+{
+    // Draw button background based on active state
+    UIButtonState state = UI_Button(x, y, w, h, nullptr, style);
+
+    // Overlay SHP art if available
+    const CameoCacheEntry* icon = sprite_decode(shapefile, frame, nullptr, 255);
+    if (icon && icon->rgba) {
+        g_ui_draw_list.Draw_Icon(x + 1, y + 1, w - 2, h - 2,
+                                 reinterpret_cast<const uint8_t*>(icon->rgba),
+                                 icon->width, icon->height);
+    } else {
+        // Text fallback
+        int tx = x + 2;
+        int ty = y + (h > 8 ? 2 : 1);
+        g_ui_draw_list.Draw_Text(tx, ty, fallback_label, style.font,
+                                 style.text_r, style.text_g, style.text_b,
+                                 style.text_a, style.text_scale);
+    }
+
+    // Active mode highlight (repair/sell toggled on)
+    if (is_active) {
+        g_ui_draw_list.Draw_Rect(x, y, w, h, 255, 255, 0, 180);
+    }
+
+    return state == UI_BTN_PRESSED;
+}
+
+// ---------------------------------------------------------------------------
+
 void UI_Sidebar_Emit()
 {
     extern bool InMainLoop;
@@ -428,14 +569,27 @@ void UI_Sidebar_Emit()
     float sy = (base_h > 0) ? static_cast<float>(logical_h) / static_cast<float>(base_h) : 1.0f;
     int factor = (logical_w > 800) ? 2 : 1;
 
-    // Keep the legacy sidebar chrome visible and only tint it lightly until
-    // cameo art, radar chrome, and button art are fully native.
+    // Sidebar background tint
     g_ui_draw_list.Fill_Rect(side_x, side_y, side_w, side_h,
                              24, 24, 24, 56);
     g_ui_draw_list.Fill_Rect(side_x, side_y, 1, side_h,
                              84, 84, 84, 220);
 
-    // Emit each production column
+    // --- Power bar ---
+    // Position: narrow vertical strip on the left edge of the sidebar,
+    // below the radar area, above the buttons.
+    int pow_w = 8 * factor;
+    int pow_x = side_x + 2;
+    int radar_bottom = scale_y_from_legacy(Map.RadY + Map.RadHeight, sy) + (13 * factor);
+    int btn_h = (16 * factor);
+    int btn_y = side_y + side_h - btn_h - 2;
+    int pow_y = radar_bottom;
+    int pow_h = btn_y - pow_y - 2;
+    if (pow_h > 10) {
+        emit_power_bar(pow_x, pow_y, pow_w, pow_h, sx, sy);
+    }
+
+    // --- Production columns ---
     for (int c = 0; c < 2; c++) {
         SidebarClass::StripClass strip = Map.Column[c];
         strip.X = scale_x_from_legacy(strip.X, sx);
@@ -447,10 +601,10 @@ void UI_Sidebar_Emit()
         emit_column(strip, factor);
     }
 
-    // Repair/Sell/Map buttons area — anchored to sidebar bottom
+    // --- Repair / Sell / Map buttons ---
+    load_button_shapes();
+
     int btn_w = side_w / 3;
-    int btn_h = 10 * factor;
-    int btn_y = side_y + side_h - btn_h - 2;
 
     UIButtonStyle bs = UI_Default_Button_Style();
     bs.normal_r = 54; bs.normal_g = 70; bs.normal_b = 54;
@@ -459,7 +613,41 @@ void UI_Sidebar_Emit()
     bs.text_r = 0; bs.text_g = 200; bs.text_b = 0;
     bs.font = UI_FONT_6PT;
 
-    UI_Button(side_x + 2, btn_y, btn_w - 2, btn_h, "RPR", bs);
-    UI_Button(side_x + btn_w + 1, btn_y, btn_w - 2, btn_h, "SEL", bs);
-    UI_Button(side_x + btn_w * 2, btn_y, btn_w - 2, btn_h, "MAP", bs);
+    // Repair button — frame 0 = normal, frame 1 = pressed (in typical SHP layout)
+    bool repair_active = Map.IsRepairMode != 0;
+    if (emit_sidebar_button(side_x + 2, btn_y, btn_w - 2, btn_h,
+                            s_repair_shape, repair_active ? 1 : 0,
+                            "RPR", repair_active, bs)) {
+        Map.Repair_Mode_Control(-1);
+    }
+
+    // Sell button
+    bool sell_active = Map.IsSellMode != 0;
+    if (emit_sidebar_button(side_x + btn_w + 1, btn_y, btn_w - 2, btn_h,
+                            s_sell_shape, sell_active ? 1 : 0,
+                            "SEL", sell_active, bs)) {
+        Map.Sell_Mode_Control(-1);
+    }
+
+    // Map/Zoom button
+    if (emit_sidebar_button(side_x + btn_w * 2, btn_y, btn_w - 2, btn_h,
+                            s_map_shape, 0,
+                            "MAP", false, bs)) {
+        if (Map.Is_Radar_Active()) {
+            if (Map.Is_Zoomed() || GameToPlay == GAME_NORMAL) {
+                Map.Zoom_Mode(Coord_Cell(Map.TacticalCoord));
+            } else {
+                if (!Map.Is_Player_Names()) {
+                    Map.Player_Names(1);
+                } else {
+                    Map.Player_Names(0);
+                    Map.Zoom_Mode(Coord_Cell(Map.TacticalCoord));
+                }
+            }
+        } else {
+            if (GameToPlay != GAME_NORMAL) {
+                Map.Player_Names(Map.Is_Player_Names() == 0);
+            }
+        }
+    }
 }
