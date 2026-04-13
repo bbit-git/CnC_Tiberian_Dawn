@@ -522,12 +522,13 @@ void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
 
     // Mouse-over terrain tile: convert mouse to native buffer coords and hit-test.
     {
-        // Mouse is in game-buffer coords (g_mouse_x/y). Tactical window origin
-        // gives the buffer offset. Stamps are stored in window-local coords.
-        int tac_ox = WindowList[WINDOW_TACTICAL][WINDOWX] << 3;
-        int tac_oy = WindowList[WINDOW_TACTICAL][WINDOWY];
-        float native_mx = static_cast<float>(g_mouse_x - tac_ox) + vp_x;
-        float native_my = static_cast<float>(g_mouse_y - tac_oy) + vp_y;
+        // Mouse is in logical-screen coords (g_mouse_x/y). Map through the
+        // render tactical rect (screen-space) into the visible portion of the
+        // native buffer, the same way Render_Bridge_Map_Tactical_Point does.
+        float frac_x = (rtac_w2 > 0) ? static_cast<float>(g_mouse_x - rtac_x2) / static_cast<float>(rtac_w2) : 0.0f;
+        float frac_y = (rtac_h2 > 0) ? static_cast<float>(g_mouse_y - rtac_y2) / static_cast<float>(rtac_h2) : 0.0f;
+        float native_mx = vp_x + frac_x * vis_w;
+        float native_my = vp_y + frac_y * vis_h;
 
         int tile_icon = 0;
         bool tile_has_hd = false;
