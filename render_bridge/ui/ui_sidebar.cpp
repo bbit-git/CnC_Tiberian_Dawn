@@ -54,11 +54,30 @@ struct CameoCacheEntry {
 static uint64_t cameo_cache_key(const void* shapefile, const uint8_t* remap)
 {
     uint64_t key = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(shapefile));
-    key ^= static_cast<uint64_t>(reinterpret_cast<uintptr_t>(remap)) << 1;
+    key = key * UINT64_C(0x9e3779b97f4a7c15) +
+          static_cast<uint64_t>(reinterpret_cast<uintptr_t>(remap));
     return key;
 }
 
 static std::unordered_map<uint64_t, CameoCacheEntry> g_cameo_cache;
+static uint8_t g_cameo_pal_snapshot[768]; // palette snapshot for cache invalidation
+
+/// Check if the current palette differs from the cached snapshot.
+static bool cameo_palette_changed()
+{
+    const uint8_t* pal = static_cast<const uint8_t*>((void*)Get_Palette());
+    if (!pal) pal = GamePalette;
+    if (!pal) return false;
+    return memcmp(pal, g_cameo_pal_snapshot, 768) != 0;
+}
+
+/// Snapshot the current palette for future change detection.
+static void cameo_palette_snapshot()
+{
+    const uint8_t* pal = static_cast<const uint8_t*>((void*)Get_Palette());
+    if (!pal) pal = GamePalette;
+    if (pal) memcpy(g_cameo_pal_snapshot, pal, 768);
+}
 
 /// Decode a cameo SHP shape to RGBA and cache the result.
 /// Returns pointer to cached RGBA data, or nullptr on failure.
@@ -66,6 +85,11 @@ static const CameoCacheEntry* cameo_decode(const void* shapefile,
                                            const uint8_t* remap)
 {
     if (!shapefile) return nullptr;
+
+    // Auto-invalidate on palette change
+    if (!g_cameo_cache.empty() && cameo_palette_changed()) {
+        UI_Sidebar_Cameo_Invalidate();
+    }
 
     uint64_t key = cameo_cache_key(shapefile, remap);
     auto it = g_cameo_cache.find(key);
@@ -112,6 +136,7 @@ static const CameoCacheEntry* cameo_decode(const void* shapefile,
 
     CameoCacheEntry entry = { rgba, frame.width, frame.height };
     auto result = g_cameo_cache.emplace(key, entry);
+    cameo_palette_snapshot();
     return &result.first->second;
 }
 
@@ -178,7 +203,10 @@ static const void* get_cameo_shape(const SidebarClass::StripClass& strip,
 {
     if (strip.Buildables[index].BuildableType == RTTI_SPECIAL) {
         int spc = strip.Buildables[index].BuildableID;
-        if (spc >= 1 && spc <= 3) {
+        constexpr int max_specials = static_cast<int>(
+            sizeof(SidebarClass::StripClass::SpecialShapes) /
+            sizeof(SidebarClass::StripClass::SpecialShapes[0]));
+        if (spc >= 1 && spc <= max_specials) {
             return SidebarClass::StripClass::SpecialShapes[spc - 1];
         }
         return nullptr;
@@ -291,8 +319,8 @@ static void emit_column(const SidebarClass::StripClass& strip, int factor)
     int obj_h = strip.ObjectHeight;
     int visible = 4; // MAX_VISIBLE
 
-    // Column background
-    int col_w = strip.StripWidth * factor;
+    // Column background — StripWidth is already scaled by sx, do not multiply by factor
+    int col_w = strip.StripWidth;
     int col_h = obj_h * visible + 14;
     g_ui_draw_list.Fill_Rect(col_x, col_y, col_w, col_h,
                              34, 36, 34, 96);
@@ -346,16 +374,13 @@ void UI_Sidebar_Emit()
         strip.ObjectHeight = scale_y_from_legacy(strip.ObjectHeight, sy);
         strip.StripWidth = scale_x_from_legacy(strip.StripWidth, sx);
         strip.LeftEdgeOffset = scale_x_from_legacy(strip.LeftEdgeOffset, sx);
-        if (strip.BuildableCount > 0 || true) {
-            emit_column(strip, factor);
-        }
+        emit_column(strip, factor);
     }
 
-    // Repair/Sell/Map buttons area (below radar, above columns)
-    // These are drawn as simple labeled boxes for now
-    int btn_y = scale_y_from_legacy(Map.RadY + Map.RadHeight + 2, sy);
+    // Repair/Sell/Map buttons area — anchored to sidebar bottom
     int btn_w = side_w / 3;
     int btn_h = 10 * factor;
+    int btn_y = side_y + side_h - btn_h - 2;
 
     UIButtonStyle bs = UI_Default_Button_Style();
     bs.normal_r = 54; bs.normal_g = 70; bs.normal_b = 54;
