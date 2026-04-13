@@ -1249,7 +1249,8 @@ void InfantryClass::AI(void)
 				*/
 				if (Path[0] != FACING_NONE) {
 					//DBG("InfantryClass::AI Can_Enter_Cell check");
-					if (Can_Enter_Cell(Adjacent_Cell(Coord_Cell(Center_Coord()), Path[0])) != MOVE_OK) {
+					MoveType next_move = Can_Enter_Cell(Adjacent_Cell(Coord_Cell(Center_Coord()), Path[0]));
+					if (next_move > MOVE_MOVING_BLOCK) {
 						Path[0] = FACING_NONE;
 					}
 				}
@@ -2168,8 +2169,11 @@ bool InfantryClass::Start_Driver(COORDINATE & headto)
 	**	Convert the head to coordinate to a legal sub-position location.
 	*/
 	headto = Map[Coord_Cell(headto)].Closest_Free_Spot(Coord_Move(headto, Direction(headto)+DIR_S, 0x007C));
-	if (!headto && Can_Enter_Cell(Coord_Cell(old)) == MOVE_OK) {
-		headto = Map[Coord_Cell(old)].Closest_Free_Spot(Coord_Move(old, Direction(headto)+DIR_S, 0x0080), true);
+	if (!headto) {
+		MoveType enter = Can_Enter_Cell(Coord_Cell(old));
+		if (enter == MOVE_OK || enter == MOVE_MOVING_BLOCK) {
+			headto = Map[Coord_Cell(old)].Closest_Free_Spot(Coord_Move(old, Direction(headto)+DIR_S, 0x0080), true);
+		}
 	}
 
 	/*

@@ -196,6 +196,16 @@ static bool Infantry_Path_Can_Share_Cell(FootClass const *foot, CELL cell)
 	return(true);
 }
 
+static bool Prefer_Straight_Path(FootClass const *foot)
+{
+	if (!foot || foot->What_Am_I() != RTTI_UNIT) {
+		return(false);
+	}
+
+	UnitClass const *unit = (UnitClass const *)foot;
+	return(*unit == UNIT_GUNBOAT);
+}
+
 
 //static CELL MoveMask = 0;
 static CELL DestLocation;
@@ -571,6 +581,68 @@ PathType * FootClass::Find_Path(CELL dest, FacingType *final_moves, int maxlen, 
 	path.LastFixup   = -1;
 
 	if (source == dest) return(&path);
+
+	/*
+	**	Gunboats travel long open-water lanes where many zig-zag routes are equal-cost.
+	**	Try the direct line first so naval movement stays visually straight when unobstructed.
+	*/
+	if (Prefer_Straight_Path(this)) {
+		CELL cur = source;
+		int dir_count = 0;
+		int total_cost = 0;
+		bool straight_ok = true;
+
+		while (cur != dest && dir_count < maxlen - 1) {
+			int dx = Cell_X(dest) - Cell_X(cur);
+			int dy = Cell_Y(dest) - Cell_Y(cur);
+			FacingType face = FACING_NONE;
+
+		#ifdef DIAGONAL
+			if (dx > 0) {
+				face = (dy > 0) ? FACING_SE : ((dy < 0) ? FACING_NE : FACING_E);
+			} else if (dx < 0) {
+				face = (dy > 0) ? FACING_SW : ((dy < 0) ? FACING_NW : FACING_W);
+			} else if (dy > 0) {
+				face = FACING_S;
+			} else if (dy < 0) {
+				face = FACING_N;
+			}
+		#else
+			if (ABS(dx) >= ABS(dy)) {
+				if (dx > 0) face = FACING_E;
+				if (dx < 0) face = FACING_W;
+			}
+			if (face == FACING_NONE) {
+				if (dy > 0) face = FACING_S;
+				if (dy < 0) face = FACING_N;
+			}
+		#endif
+
+			if (face == FACING_NONE) {
+				break;
+			}
+
+			CELL next = Adjacent_Cell(cur, face);
+			int step_cost = Passable_Cell(next, face, -1, threshhold);
+			if (!step_cost) {
+				straight_ok = false;
+				break;
+			}
+
+			final_moves[dir_count++] = face;
+			total_cost += step_cost;
+			cur = next;
+		}
+
+		if (straight_ok && cur == dest) {
+			path.Length = dir_count;
+			path.Cost = total_cost;
+			if (path.Length < maxlen) {
+				final_moves[path.Length++] = END;
+			}
+			return(&path);
+		}
+	}
 
 	/*
 	**	A* data structures.  Static because only one pathfind runs at a time
