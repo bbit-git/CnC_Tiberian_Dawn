@@ -22,9 +22,9 @@ extern void GL_Sprites_Init();
 extern void Options_Set_HD_Graphics_Default(bool enabled);
 #endif
 
-// Runtime chrome toggle — default true (legacy SeenBuff sidebar).
-// Set to false by NATIVE_SIDEBAR=1 env var to use bridge-native sidebar.
-bool k_enable_seenbuff_chrome = true;
+// Runtime chrome toggle — default false (bridge-native sidebar).
+// Set to true by NATIVE_SIDEBAR=0 env var to fall back to legacy SeenBuff sidebar.
+bool k_enable_seenbuff_chrome = false;
 
 void Render_Bridge_Chrome_Toggle()
 {
@@ -214,12 +214,12 @@ bool GL_Present_Init(int w, int h)
     if (g_gl_failed) return false;
     if (g_gl_ready) return true;
 
-    // NATIVE_SIDEBAR=1 disables the SeenBuff sidebar/header chrome so the
-    // bridge-native sidebar path is used instead.
+    // Bridge-native sidebar is the default. NATIVE_SIDEBAR=0 re-enables
+    // the legacy SeenBuff sidebar/header chrome as a fallback.
     const char* ns_env = std::getenv("NATIVE_SIDEBAR");
-    if (ns_env && ns_env[0] == '1') {
-        k_enable_seenbuff_chrome = false;
-        DBG("NATIVE_SIDEBAR=1: SeenBuff chrome disabled");
+    if (ns_env && ns_env[0] == '0') {
+        k_enable_seenbuff_chrome = true;
+        DBG("NATIVE_SIDEBAR=0: SeenBuff chrome enabled (legacy fallback)");
     }
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
