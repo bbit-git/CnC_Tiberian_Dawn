@@ -174,8 +174,15 @@ void Render_Bridge_Get_Visible_Size(float& w, float& h)
     int cap_w = (ntw < map_px_w) ? ntw : map_px_w;
     int cap_h = (nth < map_px_h) ? nth : map_px_h;
 
-    float screen_vis_w = static_cast<float>(g_layout.render_tac_w) / g_zoom;
-    float screen_vis_h = static_cast<float>(g_layout.render_tac_h) / g_zoom;
+    int present_w = g_layout.render_tac_w;
+    int present_h = g_layout.render_tac_h;
+    if (Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+        present_w = g_layout.tactical_w;
+        present_h = g_layout.tactical_h;
+    }
+
+    float screen_vis_w = static_cast<float>(present_w) / g_zoom;
+    float screen_vis_h = static_cast<float>(present_h) / g_zoom;
 
     w = (screen_vis_w < cap_w) ? screen_vis_w : static_cast<float>(cap_w);
     h = (screen_vis_h < cap_h) ? screen_vis_h : static_cast<float>(cap_h);
