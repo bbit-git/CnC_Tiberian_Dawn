@@ -875,11 +875,20 @@ bool Render_Bridge_Tactical_To_World(int pixel_x, int pixel_y,
     if (tac_w <= 0 || tac_h <= 0) return false;
     if ((unsigned)sx >= (unsigned)tac_w || (unsigned)sy >= (unsigned)tac_h) return false;
 
-    // Use render tactical rect (sidebar-independent) for uniform-fit, matching GL.
+    // Use the same fitted destination area that presentation uses.
+    // Legacy mode presents into the actual tactical viewport; HD mode uses the
+    // sidebar-independent render rect.
     int rtac_x, rtac_y, rtac_w, rtac_h;
-    Render_Bridge_Get_Render_Tactical_Rect(rtac_x, rtac_y, rtac_w, rtac_h);
-    if (rtac_w <= 0) rtac_w = tac_w;
-    if (rtac_h <= 0) rtac_h = tac_h;
+    if (Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+        rtac_x = tac_x;
+        rtac_y = tac_y;
+        rtac_w = tac_w;
+        rtac_h = tac_h;
+    } else {
+        Render_Bridge_Get_Render_Tactical_Rect(rtac_x, rtac_y, rtac_w, rtac_h);
+        if (rtac_w <= 0) rtac_w = tac_w;
+        if (rtac_h <= 0) rtac_h = tac_h;
+    }
 
     // Visible size in native pixels (no CELL_LEPTON_W padding).
     float vis_w_px = 0.0f;
