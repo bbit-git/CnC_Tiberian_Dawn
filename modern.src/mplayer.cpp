@@ -547,6 +547,18 @@ int Com_Scenario_Dialog(void)
 		int screen_w = SeenBuff.Get_Width();
 		int screen_h = SeenBuff.Get_Height();
 
+		// The bridge skirmish dialog bypasses the legacy first_time path below.
+		// Seed the historical default here so a fresh session doesn't start at 0 credits.
+		if (MPlayerCredits <= 0) {
+			MPlayerCredits = 3000;
+		}
+		if (MPlayerAIs <= 0) {
+			MPlayerAIs = MPlayerMax - 1;
+		}
+		if (MPlayerAISkill < 0 || MPlayerAISkill > 2) {
+			MPlayerAISkill = 1;
+		}
+
 		if (MPlayerScenarios.Count() == 0) {
 			Read_Scenario_Descriptions();
 		}
