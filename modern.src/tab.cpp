@@ -41,6 +41,36 @@
 
 #include "function.h"
 
+#ifdef USE_RENDER_BRIDGE
+extern bool Render_Bridge_Use_Legacy_Sidebar_Mode();
+extern void Render_Bridge_Get_Logical_Screen_Size(int& w, int& h);
+
+static void convert_legacy_ui_point(int& x, int& y)
+{
+	if (!Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+		return;
+	}
+
+	int base_w = SeenBuff.Get_Width();
+	int base_h = SeenBuff.Get_Height();
+	int logical_w = 0;
+	int logical_h = 0;
+	Render_Bridge_Get_Logical_Screen_Size(logical_w, logical_h);
+	if (base_w <= 0 || base_h <= 0 || logical_w <= 0 || logical_h <= 0) {
+		return;
+	}
+
+	float scale_x = static_cast<float>(logical_w) / static_cast<float>(base_w);
+	float scale_y = static_cast<float>(logical_h) / static_cast<float>(base_h);
+	float scale = (scale_x < scale_y) ? scale_x : scale_y;
+	int offset_x = static_cast<int>((logical_w - base_w * scale) * 0.5f);
+	int offset_y = static_cast<int>((logical_h - base_h * scale) * 0.5f);
+
+	x = static_cast<int>((static_cast<float>(x - offset_x)) / scale);
+	y = static_cast<int>((static_cast<float>(y - offset_y)) / scale);
+}
+#endif
+
 
 void const * TabClass::TabShape = NULL;
 
@@ -180,6 +210,10 @@ void TabClass::Hilite_Tab(int tab)
  *=============================================================================================*/
 void TabClass::AI(KeyNumType &input, int x, int y)
 {
+#ifdef USE_RENDER_BRIDGE
+	convert_legacy_ui_point(x, y);
+#endif
+
 	if (y >= 0 && y < Tab_Height && x < (SeenBuff.Get_Width() - 1) && x > 0) {
 
 		bool ok = false;

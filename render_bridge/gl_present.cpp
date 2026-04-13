@@ -26,6 +26,11 @@ extern void Options_Set_HD_Graphics_Default(bool enabled);
 // Set to true by NATIVE_SIDEBAR=0 env var to fall back to legacy SeenBuff sidebar.
 bool k_enable_seenbuff_chrome = false;
 
+bool Render_Bridge_Use_Legacy_Sidebar_Mode()
+{
+    return k_enable_seenbuff_chrome || !Render_Bridge_Get_HD_Graphics();
+}
+
 void Render_Bridge_Chrome_Toggle()
 {
     k_enable_seenbuff_chrome = !k_enable_seenbuff_chrome;
@@ -490,10 +495,10 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
     }
 
     SDL_GL_MakeCurrent(g_window, g_gl_ctx);
-    // SeenBuff indexed texture is needed for menu passthrough and, when
-    // k_enable_seenbuff_chrome is true, for legacy sidebar/header chrome.
+    // SeenBuff indexed texture is needed for menu passthrough and whenever
+    // gameplay presents the legacy header/sidebar/radar from the old buffer.
     // Skip the upload during gameplay only when the chrome is fully native.
-    if (!InMainLoop || k_enable_seenbuff_chrome) {
+    if (!InMainLoop || Render_Bridge_Use_Legacy_Sidebar_Mode()) {
         upload_indexed_frame(indexed_pixels, pitch, w, h);
     }
     upload_palette(vga_palette);
@@ -546,6 +551,9 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
     ctx.legacy_ui_scale = legacy_ui_scale;
     ctx.legacy_offset_x = legacy_offset_x;
     ctx.legacy_offset_y = legacy_offset_y;
+    ctx.legacy_header_h = Map.TacPixelY;
+    ctx.legacy_side_game_x = Map.SideX;
+    ctx.legacy_side_game_w = Map.SideWidth;
     ctx.ui_scale = ui_scale;
     ctx.offset_x = offset_x;
     ctx.offset_y = offset_y;
@@ -625,11 +633,17 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         extern int g_mouse_x, g_mouse_y;
 
         Render_Bridge_UI_Begin_Frame();
-        UI_Header_Emit();
+        bool legacy_sidebar_mode = Render_Bridge_Use_Legacy_Sidebar_Mode();
+
+        if (!legacy_sidebar_mode) {
+            UI_Header_Emit();
+        }
         UI_Help_Emit();
         UI_Messages_Emit();
-        UI_Sidebar_Emit();
-        UI_Radar_Emit();
+        if (!legacy_sidebar_mode) {
+            UI_Sidebar_Emit();
+            UI_Radar_Emit();
+        }
         // Complex dialogs (only one active at a time)
         UI_Game_Options_Emit();
         UI_Load_Dialog_Emit();

@@ -92,24 +92,24 @@ bool GL_Present_Draw_Regions(const GLPresentFrameContext& ctx,
         return false;
     }
 
-    if (k_enable_seenbuff_chrome) {
-        if (ctx.tactical_game_y > 0) {
+    if (Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+        if (ctx.legacy_header_h > 0) {
             // Legacy header/tab chrome can still be presented from SeenBuff
             // while the bridge-native UI path is incomplete.
-            GL_Present_Draw_Quad(0, 0, ctx.buffer_w, ctx.tactical_game_y,
-                                 ctx.offset_x, ctx.offset_y,
-                                 static_cast<int>(ctx.buffer_w * ctx.ui_scale),
-                                 static_cast<int>(ctx.tactical_game_y * ctx.ui_scale),
+            GL_Present_Draw_Quad(0, 0, ctx.buffer_w, ctx.legacy_header_h,
+                                 ctx.legacy_offset_x, ctx.legacy_offset_y,
+                                 static_cast<int>(ctx.buffer_w * ctx.legacy_ui_scale),
+                                 static_cast<int>(ctx.legacy_header_h * ctx.legacy_ui_scale),
                                  ctx.win_w, ctx.win_h);
         }
 
-        if (ctx.side_game_w > 0) {
+        if (ctx.legacy_side_game_w > 0) {
             // Legacy sidebar chrome uses the same game-buffer mapping as the header.
-            GL_Present_Draw_Quad(ctx.side_game_x, 0, ctx.side_game_w, ctx.buffer_h,
-                                 ctx.offset_x + static_cast<int>(ctx.side_game_x * ctx.ui_scale),
-                                 ctx.offset_y,
-                                 static_cast<int>(ctx.side_game_w * ctx.ui_scale),
-                                 static_cast<int>(ctx.buffer_h * ctx.ui_scale),
+            GL_Present_Draw_Quad(ctx.legacy_side_game_x, 0, ctx.legacy_side_game_w, ctx.buffer_h,
+                                 ctx.legacy_offset_x + static_cast<int>(ctx.legacy_side_game_x * ctx.legacy_ui_scale),
+                                 ctx.legacy_offset_y,
+                                 static_cast<int>(ctx.legacy_side_game_w * ctx.legacy_ui_scale),
+                                 static_cast<int>(ctx.buffer_h * ctx.legacy_ui_scale),
                                  ctx.win_w, ctx.win_h);
         }
     }
@@ -126,10 +126,20 @@ bool GL_Present_Draw_Regions(const GLPresentFrameContext& ctx,
     glBindTexture(GL_TEXTURE_2D, g_tac_tex);
 
     // The visible portion of the native tactical texture (vis_w × vis_h) is
-    // fitted uniformly into the render tactical screen area. The UV selects the
-    // source region; zoom controls how much of the texture is visible. The
-    // destination always fills the available screen so content scales up as the
-    // player zooms in. Sidebar-independent: the render_tac rect is stable.
+    // fitted uniformly into the tactical destination area. In HD mode this is
+    // the sidebar-independent render rect; in legacy mode it is the actual
+    // tactical viewport so the world does not cover the legacy sidebar.
+    int present_tac_x = ctx.render_tac_screen_x;
+    int present_tac_y = ctx.render_tac_screen_y;
+    int present_tac_w = ctx.render_tac_screen_w;
+    int present_tac_h = ctx.render_tac_screen_h;
+    if (Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+        present_tac_x = ctx.tactical_screen_x;
+        present_tac_y = ctx.tactical_screen_y;
+        present_tac_w = ctx.tactical_screen_w;
+        present_tac_h = ctx.tactical_screen_h;
+    }
+
     float tex_w = static_cast<float>(g_tac_tex_w);
     float tex_h = static_cast<float>(g_tac_tex_h);
     float vp_x = Render_Bridge_Get_Viewport_X();
@@ -152,20 +162,20 @@ bool GL_Present_Draw_Regions(const GLPresentFrameContext& ctx,
     if (v1 > 1.0f) v1 = 1.0f;
 
     // Uniform-fit the visible source into the render tactical area.
-    float fit_sx = static_cast<float>(ctx.render_tac_screen_w) / vis_w;
-    float fit_sy = static_cast<float>(ctx.render_tac_screen_h) / vis_h;
+    float fit_sx = static_cast<float>(present_tac_w) / vis_w;
+    float fit_sy = static_cast<float>(present_tac_h) / vis_h;
     float fit_scale = (fit_sx < fit_sy) ? fit_sx : fit_sy;
     int dst_w = static_cast<int>(std::round(vis_w * fit_scale));
     int dst_h = static_cast<int>(std::round(vis_h * fit_scale));
-    int dst_x = ctx.render_tac_screen_x + (ctx.render_tac_screen_w - dst_w) / 2;
-    int dst_y = ctx.render_tac_screen_y + (ctx.render_tac_screen_h - dst_h) / 2;
+    int dst_x = present_tac_x + (present_tac_w - dst_w) / 2;
+    int dst_y = present_tac_y + (present_tac_h - dst_h) / 2;
 
     // Scissor to the actual render tactical rect so world pixels are clipped
     // against the same screen area used for presentation.
     glEnable(GL_SCISSOR_TEST);
-    glScissor(ctx.render_tac_screen_x,
-              ctx.win_h - (ctx.render_tac_screen_y + ctx.render_tac_screen_h),
-              ctx.render_tac_screen_w, ctx.render_tac_screen_h);
+    glScissor(present_tac_x,
+              ctx.win_h - (present_tac_y + present_tac_h),
+              present_tac_w, present_tac_h);
 
     float nx0 = static_cast<float>(dst_x) / ctx.win_w * 2.0f - 1.0f;
     float ny0 = 1.0f - static_cast<float>(dst_y) / ctx.win_h * 2.0f;
@@ -286,14 +296,14 @@ void GL_Present_Draw_Source_Overlay(const GLPresentFrameContext& ctx, bool has_u
 
     // This overlay is for ownership debugging only: it shows which presenter
     // pass supplies each screen region.
-    int header_screen_h = k_enable_seenbuff_chrome
-        ? static_cast<int>(ctx.tactical_game_y * ctx.ui_scale)
+    int header_screen_h = Render_Bridge_Use_Legacy_Sidebar_Mode()
+        ? static_cast<int>(ctx.legacy_header_h * ctx.legacy_ui_scale)
         : 0;
-    int side_screen_x = k_enable_seenbuff_chrome
-        ? ctx.offset_x + static_cast<int>(ctx.side_game_x * ctx.ui_scale)
+    int side_screen_x = Render_Bridge_Use_Legacy_Sidebar_Mode()
+        ? ctx.legacy_offset_x + static_cast<int>(ctx.legacy_side_game_x * ctx.legacy_ui_scale)
         : 0;
-    int side_screen_w = k_enable_seenbuff_chrome
-        ? static_cast<int>(ctx.side_game_w * ctx.ui_scale)
+    int side_screen_w = Render_Bridge_Use_Legacy_Sidebar_Mode()
+        ? static_cast<int>(ctx.legacy_side_game_w * ctx.legacy_ui_scale)
         : 0;
 
     GL_Primitives_Render_Source_Overlay(ctx.win_w, ctx.win_h,

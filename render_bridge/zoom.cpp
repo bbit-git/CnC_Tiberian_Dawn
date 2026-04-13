@@ -27,6 +27,7 @@
 extern float g_scroll_zoom_delta;
 extern int   g_mouse_x, g_mouse_y;
 extern SDL_Window* g_window;
+extern bool Render_Bridge_Use_Legacy_Sidebar_Mode();
 
 static constexpr float ZOOM_STEP = 0.1f;
 static constexpr float ZOOM_MIN  = 1.0f;
@@ -562,11 +563,9 @@ void Render_Bridge_Transform_Mouse()
     int raw_y = 0;
     TD_SDL_Get_Raw_Mouse_Position(raw_x, raw_y);
 
-    // Gameplay mouse now stays in bridge logical screen space. Bridge-aware
+    // Gameplay mouse stays in bridge logical screen space. Bridge-aware
     // callers convert into world space explicitly through Pixel_To_Coord /
-    // Click_Cell_Calc / Render_Bridge_Tactical_To_World. Rewriting g_mouse_x/y
-    // into native-source coordinates was shrinking the actionable tactical area
-    // near the right/bottom edges.
+    // Click_Cell_Calc / Render_Bridge_Tactical_To_World.
     g_mouse_x = raw_x;
     g_mouse_y = raw_y;
 }
@@ -599,11 +598,19 @@ bool Render_Bridge_Map_Tactical_Point(int screen_x, int screen_y, int& mapped_x,
         return false;
     }
 
-    // Use render tactical rect (sidebar-independent) for the uniform-fit.
+    // Use the actual tactical viewport in legacy mode. HD mode keeps the
+    // sidebar-independent render tactical rect so world scale stays stable.
     int rtac_x, rtac_y, rtac_w, rtac_h;
-    Render_Bridge_Get_Render_Tactical_Rect(rtac_x, rtac_y, rtac_w, rtac_h);
-    if (rtac_w <= 0) rtac_w = tac_w;
-    if (rtac_h <= 0) rtac_h = tac_h;
+    if (Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+        rtac_x = tac_x;
+        rtac_y = tac_y;
+        rtac_w = tac_w;
+        rtac_h = tac_h;
+    } else {
+        Render_Bridge_Get_Render_Tactical_Rect(rtac_x, rtac_y, rtac_w, rtac_h);
+        if (rtac_w <= 0) rtac_w = tac_w;
+        if (rtac_h <= 0) rtac_h = tac_h;
+    }
 
     float fit_sx = static_cast<float>(rtac_w) / vis_w;
     float fit_sy = static_cast<float>(rtac_h) / vis_h;
@@ -744,8 +751,16 @@ void Render_Bridge_Get_Render_Tactical_Rect(int& x, int& y, int& w, int& h)
 
 void Render_Bridge_Get_Mouse_Input_Rect(int& x, int& y, int& w, int& h)
 {
-    // Input follows the actual on-screen tactical presentation, not the legacy
-    // narrower tactical window. Sidebar changes clamp behaviour, not click area.
+    if (Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+        x = g_layout.tactical_x;
+        y = g_layout.tactical_y;
+        w = g_layout.tactical_w;
+        h = g_layout.tactical_h;
+        return;
+    }
+
+    // HD input follows the full on-screen tactical presentation, not the
+    // narrower legacy tactical window. Sidebar changes clamp behaviour, not click area.
     x = g_layout.render_tac_x;
     y = g_layout.render_tac_y;
     w = g_layout.render_tac_w;

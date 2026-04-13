@@ -16,6 +16,10 @@ struct GLPresentFrameContext {
     float legacy_ui_scale = 1.0f;
     int legacy_offset_x = 0;
     int legacy_offset_y = 0;
+    // Raw legacy chrome source rects in SeenBuff pixels.
+    int legacy_header_h = 0;
+    int legacy_side_game_x = 0;
+    int legacy_side_game_w = 0;
     // Uniform game-buffer-to-window scale used for non-world UI regions.
     float ui_scale = 1.0f;
     // Letterbox / pillarbox offset for the scaled game buffer.
@@ -92,6 +96,10 @@ extern GLint g_rgba_u_dst_rect;
 /// Set NATIVE_SIDEBAR=0 to re-enable legacy SeenBuff chrome as a fallback.
 /// Menus still use SeenBuff regardless of this flag.
 extern bool k_enable_seenbuff_chrome;
+
+/// Return true when gameplay should present the legacy header/sidebar/radar
+/// from the old buffer path instead of the bridge-native UI implementation.
+bool Render_Bridge_Use_Legacy_Sidebar_Mode();
 
 /// Render the shroud overlay pass on top of the tactical world.
 int GL_Shroud_Render(int win_w, int win_h,
