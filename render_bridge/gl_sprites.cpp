@@ -312,7 +312,7 @@ static SpriteRenderStyle classify_style(const DrawCommand& draw_cmd)
         return style;
     }
 
-    if (draw_cmd.layer == LAYER_SHADOW && cmd.shapefile == get_shadow_shapes()) {
+    if (draw_cmd.layer == LAYER_SHADOW) {
         // Shroud-edge shadow tiles must render in the same late overlay pass as
         // HD units/trees, otherwise the native buffer bakes them underneath.
         style.kind = SpriteRenderKind::Shadow;
@@ -379,8 +379,11 @@ bool GL_Sprites_Should_Skip_CPU(const ShapeCmd& cmd)
 {
     SpriteRenderStyle style = classify_style(make_shape_draw_command(cmd));
     if (!style.supported) return false;
-    if (cmd.shapefile == get_shadow_shapes()) {
-        return true;
+    if (style.kind == SpriteRenderKind::Shadow) {
+        // Legacy graphics still rely on the native tactical replay to carry
+        // SHADOW.SHP corner tiles. Only hand ownership to the late GL shadow
+        // pass when HD graphics are enabled.
+        return Render_Bridge_Get_HD_Graphics();
     }
     if (style.hd_only) {
         return has_hd_frame_for_shape(cmd);
@@ -435,9 +438,10 @@ void Render_Bridge_Invalidate_HD_Sprite_Atlas()
 }
 
 /// Ensure a shape frame is in the atlas. Returns atlas frame ID.
-static AtlasFrameID ensure_in_atlas(const ShapeCmd& cmd, const uint8_t* palette)
+static AtlasFrameID ensure_in_atlas(const DrawCommand& draw_cmd, const uint8_t* palette)
 {
-    SpriteRenderStyle style = classify_style(make_shape_draw_command(cmd));
+    const ShapeCmd& cmd = draw_cmd.shape;
+    SpriteRenderStyle style = classify_style(draw_cmd);
     if (!style.supported) {
         return static_cast<AtlasFrameID>(-1);
     }
@@ -517,6 +521,11 @@ static AtlasFrameID ensure_in_atlas(const ShapeCmd& cmd, const uint8_t* palette)
         g_atlas_cache[key] = id;
     }
     return id;
+}
+
+static AtlasFrameID ensure_in_atlas(const ShapeCmd& cmd, const uint8_t* palette)
+{
+    return ensure_in_atlas(make_shape_draw_command(cmd), palette);
 }
 
 /// Discover the directory containing remastered MEG files.
@@ -722,7 +731,7 @@ int GL_Sprites_Build_Atlas(const uint8_t* vga_palette)
         uint64_t key = make_cache_key(cmd.shape.shapefile, cmd.shape.shapenum, style);
         if (g_atlas_cache.find(key) != g_atlas_cache.end()) continue;
 
-        AtlasFrameID id = ensure_in_atlas(cmd.shape, vga_palette);
+        AtlasFrameID id = ensure_in_atlas(cmd, vga_palette);
         if (id != static_cast<AtlasFrameID>(-1)) new_shapes++;
     }
 
@@ -999,19 +1008,21 @@ int GL_Sprites_Render_Shadow(int win_w, int win_h,
     (void)tac_game_y;
     (void)tac_game_w;
     (void)tac_game_h;
+    if (!Render_Bridge_Get_HD_Graphics()) {
+        return 0;
+    }
     if (!g_atlas_ready || g_page_tex_count == 0) {
         return 0;
     }
     g_batch.Begin();
 
-    const void* shadow_shapes = get_shadow_shapes();
     for (int i = 0; i < g_draw_list.Command_Count(); i++) {
         const DrawCommand& cmd = g_draw_list.Get(i);
-        if (cmd.type != CMD_SHAPE || cmd.shape.shapefile != shadow_shapes) {
+        if (cmd.type != CMD_SHAPE || cmd.layer != LAYER_SHADOW) {
             continue;
         }
 
-        AtlasFrameID id = ensure_in_atlas(cmd.shape, g_cached_pal_data);
+        AtlasFrameID id = ensure_in_atlas(cmd, g_cached_pal_data);
         if (id == static_cast<AtlasFrameID>(-1)) {
             continue;
         }
@@ -1053,10 +1064,14 @@ int GL_Sprites_Render_Shadow(int win_w, int win_h,
         entry.scale_x = scale / native_scale;
         entry.scale_y = scale / native_scale;
         entry.house_hue = -1.0f;
-        entry.flags = 0x08;
+        // SHADOW.SHP tiles encode the fog edge artwork directly in their
+        // palette colors. Preserve those greys and only apply alpha in the
+        // shader; the generic "shadow silhouette" effect collapses them into
+        // near-black and makes the corner tiles effectively disappear.
+        entry.flags = 0x04;
         if (cmd.shape.flags & SHAPE_HORZ_REV) entry.flags |= 0x01;
         if (cmd.shape.flags & SHAPE_VERT_REV) entry.flags |= 0x02;
-        entry.fade = 120;
+        entry.fade = 192;
         g_batch.Add(entry);
     }
 

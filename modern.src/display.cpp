@@ -2421,12 +2421,23 @@ void DisplayClass::Redraw_Shadow(void)
 						CellClass * cellptr = &(*this)[Coord_Cell(coord)];
 
 						if (!cellptr->IsMapped) {
+#ifdef USE_RENDER_BRIDGE
+							// In bridge mode the late black shroud pass should not depend on
+							// IsVisible to decide whether a SHADOW.SHP edge tile exists.
+							// Cell_Shadow() already encodes the authoritative mapped-neighbor
+							// test for diagonal/cardinal shroud corners.
+							int shadow = Cell_Shadow(cell);
+							if (shadow >= 0) {
+								CC_Draw_Shape(ShadowShapes, shadow, xpixel, ypixel, WINDOW_TACTICAL, SHAPE_GHOST, NULL, ShadowTrans);
+							}
+#else
 							if (cellptr->IsVisible) {
 								int shadow = Cell_Shadow(cell);
 								if (shadow >= 0) {
 									CC_Draw_Shape(ShadowShapes, shadow, xpixel, ypixel, WINDOW_TACTICAL, SHAPE_GHOST, NULL, ShadowTrans);
 								}
 							}
+#endif
 						}
 					}
 				}
@@ -2485,7 +2496,14 @@ void DisplayClass::Redraw_Shadow_Rects(void)
 						CellClass * cellptr = &(*this)[Coord_Cell(coord)];
 
 						if (!cellptr->IsMapped) {
+#ifdef USE_RENDER_BRIDGE
+							// Skip solid-black fill anywhere a SHADOW.SHP edge/corner tile
+							// should exist; otherwise the later fill pass erases diagonal
+							// shroud corners in HD mode.
+							if (Cell_Shadow(cell) < 0 && !cellptr->IsVisible) {
+#else
 							if (!cellptr->IsVisible) {
+#endif
 								int ww = CELL_PIXEL_W;
 								int hh = CELL_PIXEL_H;
 

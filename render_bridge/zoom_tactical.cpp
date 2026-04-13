@@ -164,6 +164,12 @@ static void replay_shapes(bool include_shadow)
 #ifdef USE_RENDER_BRIDGE_GL_SPRITES
             extern bool GL_Present_Is_Active();
             if (GL_Present_Is_Active()) {
+                if (include_shadow && Render_Bridge_Get_HD_Graphics()) {
+                    // Shroud edge/corner tiles are owned by the late GL shadow
+                    // pass. Replaying them into the native texture would still
+                    // leave them under the separate black shroud fill overlay.
+                    continue;
+                }
                 extern bool GL_Sprites_Should_Skip_CPU(const ShapeCmd& cmd);
                 if (GL_Sprites_Should_Skip_CPU(cmd.shape)) {
                     continue;

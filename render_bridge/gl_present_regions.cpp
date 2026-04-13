@@ -228,15 +228,22 @@ bool GL_Present_Draw_Regions(const GLPresentFrameContext& ctx,
                           dst_x, dst_y, dst_w, dst_h,
                           0, 0, g_tac_tex_w, g_tac_tex_h,
                           render_scale, vp_x, vp_y);
+    }
+#endif
+    GL_Shroud_Render(ctx.win_w, ctx.win_h,
+                     dst_x, dst_y, dst_w, dst_h,
+                     render_scale, vp_x, vp_y, vga_palette);
+#ifdef USE_RENDER_BRIDGE_GL_SPRITES
+    if (k_enable_gl_sprite_overlay && Render_Bridge_Get_HD_Graphics()) {
+        // SHADOW.SHP edge tiles must draw after the solid-black shroud fill so
+        // diagonal corners remain visible instead of being covered by the late
+        // black rect pass.
         GL_Sprites_Render_Shadow(ctx.win_w, ctx.win_h,
                                  dst_x, dst_y, dst_w, dst_h,
                                  0, 0, g_tac_tex_w, g_tac_tex_h,
                                  render_scale, vp_x, vp_y);
     }
 #endif
-    GL_Shroud_Render(ctx.win_w, ctx.win_h,
-                     dst_x, dst_y, dst_w, dst_h,
-                     render_scale, vp_x, vp_y, vga_palette);
 
     GL_Primitives_Render(ctx.win_w, ctx.win_h,
                          dst_x, dst_y, dst_w, dst_h,
