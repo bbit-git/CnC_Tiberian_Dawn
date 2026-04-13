@@ -541,13 +541,19 @@ void GScreenClass::Blit_Display(void)
 #ifdef USE_RENDER_BRIDGE
 	// In bridge gameplay mode, the presentation path reads from the native
 	// tactical texture and UI overlay, not from SeenBuff. Skip the expensive
-	// HidPage → SeenBuff copy. Menus still need it for the full-frame passthrough.
+	// HidPage → SeenBuff copy only when the sidebar/header/radar are fully native.
+	// Legacy sidebar mode still presents real old-buffer pixels from SeenBuff.
 	{
 		extern bool InMainLoop;
 		if (InMainLoop) {
+			extern bool Render_Bridge_Use_Legacy_Sidebar_Mode();
+			if (Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+				// Fall through to the normal HidPage -> SeenBuff copy below.
+			} else {
 			extern void Render_Bridge_Blit_Display();
 			Render_Bridge_Blit_Display();
 			return;
+			}
 		}
 	}
 #endif
@@ -581,6 +587,5 @@ void GScreenClass::Blit_Display(void)
 	}
 
 }
-
 
 
