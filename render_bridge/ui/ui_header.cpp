@@ -10,6 +10,8 @@
 #include "ui_draw_list.h"
 #include "ui_controls.h"
 #include "ui_text.h"
+#include "commandbar_atlas.h"
+#include "commandbar_sprites.h"
 #include "render_bridge.h"
 #include "function.h"
 
@@ -23,10 +25,29 @@ void UI_Header_Emit()
     int tab_h = hdr_h;
     if (tab_h <= 0) return;
 
-    // Keep the legacy header chrome visible until the native tab art is
-    // fully replaced. The bridge overlay only adds light accents and text.
-    g_ui_draw_list.Fill_Rect(hdr_x, hdr_y + tab_h - 1, hdr_w, 1,
-                             56, 56, 56, 180);
+    bool use_atlas = Render_Bridge_Get_HD_Graphics() && Commandbar_Atlas_Is_Ready();
+
+    if (use_atlas) {
+        // HD header: 3-part stretch (left cap + middle tile + right cap)
+        const AtlasSpriteRect* left  = Commandbar_Atlas_Find(ATLAS_SIDEBAR_BUTTONHEADER_LEFT);
+        const AtlasSpriteRect* mid   = Commandbar_Atlas_Find(ATLAS_SIDEBAR_BUTTONHEADER_MID);
+        const AtlasSpriteRect* right = Commandbar_Atlas_Find(ATLAS_SIDEBAR_BUTTONHEADER_RIGHT);
+        if (left && mid && right) {
+            int cap_w = tab_h * left->width / left->height;
+            if (cap_w < 4) cap_w = 4;
+            g_ui_draw_list.Draw_Atlas_Sprite(hdr_x, hdr_y, cap_w, tab_h,
+                                             left->u0, left->v0, left->u1, left->v1);
+            g_ui_draw_list.Draw_Atlas_Sprite(hdr_x + cap_w, hdr_y,
+                                             hdr_w - 2 * cap_w, tab_h,
+                                             mid->u0, mid->v0, mid->u1, mid->v1);
+            g_ui_draw_list.Draw_Atlas_Sprite(hdr_x + hdr_w - cap_w, hdr_y, cap_w, tab_h,
+                                             right->u0, right->v0, right->u1, right->v1);
+        }
+    } else {
+        // Legacy: thin accent line at bottom
+        g_ui_draw_list.Fill_Rect(hdr_x, hdr_y + tab_h - 1, hdr_w, 1,
+                                 56, 56, 56, 180);
+    }
 
     // Credits display — right side
     int eva_w = 80;

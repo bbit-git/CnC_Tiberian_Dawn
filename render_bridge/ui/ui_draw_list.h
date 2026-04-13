@@ -19,6 +19,7 @@ enum UIDrawCmdType : uint8_t {
     UI_CMD_DRAW_RECT,     // outlined rectangle
     UI_CMD_TEXT,          // text string
     UI_CMD_ICON,          // palette-indexed icon/sprite quad
+    UI_CMD_ATLAS_SPRITE,  // sub-rect from command bar atlas texture
     UI_CMD_CLIP_PUSH,     // push scissor clip rect
     UI_CMD_CLIP_POP,      // pop scissor clip rect
 };
@@ -46,6 +47,13 @@ struct UIIconCmd {
     int src_w, src_h;       // source dimensions
 };
 
+/// Atlas sprite quad (sub-rect from command bar atlas texture).
+struct UIAtlasSpriteCmd {
+    int   dst_x, dst_y, dst_w, dst_h;  // Destination rect in game-buffer pixels
+    float u0, v0, u1, v1;              // Pre-computed UV coordinates
+    uint8_t r, g, b, a;                // Tint color (255,255,255,255 = no tint)
+};
+
 /// Clip rect push.
 struct UIClipCmd {
     int x, y, w, h;
@@ -55,10 +63,11 @@ struct UIClipCmd {
 struct UIDrawCmd {
     UIDrawCmdType type;
     union {
-        UIRectCmd  rect;
-        UITextCmd  text;
-        UIIconCmd  icon;
-        UIClipCmd  clip;
+        UIRectCmd        rect;
+        UITextCmd        text;
+        UIIconCmd        icon;
+        UIAtlasSpriteCmd atlas;
+        UIClipCmd        clip;
     };
 };
 
@@ -78,6 +87,10 @@ public:
                    float scale = 1.0f);
     void Draw_Icon(int x, int y, int w, int h,
                    const uint8_t* pixels, int src_w, int src_h);
+    void Draw_Atlas_Sprite(int dst_x, int dst_y, int dst_w, int dst_h,
+                           float u0, float v0, float u1, float v1,
+                           uint8_t r = 255, uint8_t g = 255,
+                           uint8_t b = 255, uint8_t a = 255);
     void Clip_Push(int x, int y, int w, int h);
     void Clip_Pop();
 

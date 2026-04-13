@@ -66,6 +66,16 @@ void UIDrawList::Draw_Icon(int x, int y, int w, int h,
     commands_.push_back(cmd);
 }
 
+void UIDrawList::Draw_Atlas_Sprite(int dst_x, int dst_y, int dst_w, int dst_h,
+                                   float u0, float v0, float u1, float v1,
+                                   uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+{
+    UIDrawCmd cmd;
+    cmd.type = UI_CMD_ATLAS_SPRITE;
+    cmd.atlas = {dst_x, dst_y, dst_w, dst_h, u0, v0, u1, v1, r, g, b, a};
+    commands_.push_back(cmd);
+}
+
 void UIDrawList::Clip_Push(int x, int y, int w, int h)
 {
     UIDrawCmd cmd;

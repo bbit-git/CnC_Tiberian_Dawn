@@ -20,6 +20,8 @@
 #include "ui_input.h"
 #include "ui_layout.h"
 #include "ui_text.h"
+#include "commandbar_atlas.h"
+#include "commandbar_sprites.h"
 #include "render_bridge.h"
 #include "legacy_sprite_provider.h"
 #include "hd_sprite_provider.h"
@@ -34,6 +36,9 @@
 #undef min
 #undef max
 #include <unordered_map>
+
+/// HD command bar atlas init state (used early in Cameo_Shutdown).
+static bool g_atlas_init_attempted = false;
 
 /// Sidebar slot colors.
 static constexpr uint8_t SLOT_BG_R = 40, SLOT_BG_G = 44, SLOT_BG_B = 40;
@@ -189,6 +194,8 @@ void UI_Sidebar_Cameo_Invalidate()
 void UI_Sidebar_Cameo_Shutdown()
 {
     UI_Sidebar_Cameo_Invalidate();
+    Commandbar_Atlas_Shutdown();
+    g_atlas_init_attempted = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -241,6 +248,61 @@ void UI_Sidebar_HD_Cameo_Invalidate()
         free(kv.second.rgba);
     }
     g_hd_cameo_cache.clear();
+}
+
+// ---------------------------------------------------------------------------
+// HD command bar atlas — lazy initialization
+// ---------------------------------------------------------------------------
+
+/// Discover the TEXTURES_SRGB.MEG path and load the command bar atlas.
+/// Called once on first HD sidebar frame. Returns true if atlas is usable.
+static bool ensure_commandbar_atlas()
+{
+    if (Commandbar_Atlas_Is_Ready()) return true;
+    if (g_atlas_init_attempted) return false;
+    g_atlas_init_attempted = true;
+
+    // Replicate the data directory discovery from gl_sprites.cpp
+    const char* env = std::getenv("CNC_REMASTERED_DATA");
+    char meg_path[1024];
+
+    auto try_open = [&](const char* dir) -> bool {
+        std::snprintf(meg_path, sizeof(meg_path), "%s/TEXTURES_SRGB.MEG", dir);
+        FILE* f = fopen(meg_path, "rb");
+        if (!f) return false;
+        fclose(f);
+        return Commandbar_Atlas_Init(meg_path);
+    };
+
+    if (env && env[0] && try_open(env)) return true;
+    if (try_open("data")) return true;
+    if (try_open("Data")) return true;
+
+    const char* home = std::getenv("HOME");
+    if (home && home[0]) {
+        char steam_dir[1024];
+        std::snprintf(steam_dir, sizeof(steam_dir),
+                      "%s/.local/share/Steam/steamapps/common/CnCRemastered/Data", home);
+        if (try_open(steam_dir)) return true;
+    }
+
+    DBG("commandbar_atlas: TEXTURES_SRGB.MEG not found — HD sidebar disabled");
+    return false;
+}
+
+/// Emit an atlas sprite into the UI draw list.
+/// @return true if the sprite was found and emitted.
+static bool emit_atlas_sprite(const char* name,
+                              int dst_x, int dst_y, int dst_w, int dst_h,
+                              uint8_t r = 255, uint8_t g = 255,
+                              uint8_t b = 255, uint8_t a = 255)
+{
+    const AtlasSpriteRect* rect = Commandbar_Atlas_Find(name);
+    if (!rect) return false;
+    g_ui_draw_list.Draw_Atlas_Sprite(dst_x, dst_y, dst_w, dst_h,
+                                     rect->u0, rect->v0, rect->u1, rect->v1,
+                                     r, g, b, a);
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +359,56 @@ static uint32_t get_entity_hash(const SidebarClass::StripClass& strip, int index
     if (!obj) return 0;
 
     return sidebar_fnv1a_hash(obj->IniName);
+}
+
+/// Build the atlas sprite name for a buildable item's cameo icon.
+/// Returns true if the name was built, false if the item has no atlas cameo.
+/// Special weapons: BUILDICON_TD_IONCANNON.TGA, etc.
+/// Regular units/buildings: BUILDICON_TD_{ININAME}.TGA
+static bool get_atlas_cameo_name(const SidebarClass::StripClass& strip, int index,
+                                 char* buf, int buf_size)
+{
+    if (strip.Buildables[index].BuildableType == RTTI_SPECIAL) {
+        int spc = strip.Buildables[index].BuildableID;
+        switch (spc) {
+            case SPC_ION_CANNON:
+                snprintf(buf, buf_size, "BUILDICON_TD_IONCANNON.TGA");
+                return true;
+            case SPC_NUCLEAR_BOMB:
+                snprintf(buf, buf_size, "BUILDICON_TD_NUCLEARSTRIKE.TGA");
+                return true;
+            case SPC_AIR_STRIKE:
+                snprintf(buf, buf_size, "BUILDICON_TD_AIRSTRIKE.TGA");
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    ObjectTypeClass const* obj = Fetch_Techno_Type(
+        strip.Buildables[index].BuildableType,
+        strip.Buildables[index].BuildableID);
+    if (!obj || !obj->IniName) return false;
+
+    // Build: BUILDICON_TD_ + uppercase(IniName) + .TGA
+    snprintf(buf, buf_size, "BUILDICON_TD_%s.TGA", obj->IniName);
+    // Uppercase the IniName portion
+    for (char* p = buf + 13; *p && *p != '.'; p++) {
+        *p = static_cast<char>(toupper(static_cast<unsigned char>(*p)));
+    }
+    return true;
+}
+
+/// Try to render a cameo from the atlas. Returns true if successful.
+static bool emit_atlas_cameo(const SidebarClass::StripClass& strip, int index,
+                             int x, int y, int w, int h)
+{
+    if (!Commandbar_Atlas_Is_Ready()) return false;
+
+    char name[80];
+    if (!get_atlas_cameo_name(strip, index, name, sizeof(name))) return false;
+
+    return emit_atlas_sprite(name, x, y, w, h);
 }
 
 static const CameoCacheEntry* get_best_cameo(const SidebarClass::StripClass& strip,
@@ -672,8 +784,18 @@ static void emit_slot(int x, int y, int w, int h, int slot_index,
 
     if (!has_item) return;
 
-    // Prefer HD DDS sidebar art when available; fall back to legacy cameo SHPs.
-    {
+    // HD atlas build frame behind the cameo
+    bool use_atlas = hd_mode && Commandbar_Atlas_Is_Ready();
+    if (use_atlas) {
+        emit_atlas_sprite(ATLAS_SIDEBAR_BUILDFRAME, x, y, w, h);
+    }
+
+    // Prefer atlas BUILDICON_TD_* cameos, then HD DDS, then legacy SHP.
+    bool drew_cameo = false;
+    if (use_atlas) {
+        drew_cameo = emit_atlas_cameo(strip, actual_index, x + 1, y + 1, w - 2, h - 2);
+    }
+    if (!drew_cameo) {
         const CameoCacheEntry* cameo = get_best_cameo(strip, actual_index, hd_mode);
         if (cameo && cameo->rgba) {
             g_ui_draw_list.Draw_Icon(x + 1, y + 1, w - 2, h - 2,
@@ -835,18 +957,26 @@ static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
         SidebarClass::StripClass& strip = Map.Column[merged[item_idx].strip_col];
         int si = merged[item_idx].strip_index;
 
-        // Slot background — opaque so icons are clearly visible
-        g_ui_draw_list.Fill_Rect(cx, cy, cell_w, icon_h,
-                                 SLOT_BG_R, SLOT_BG_G, SLOT_BG_B, 200);
-        g_ui_draw_list.Draw_Rect(cx, cy, cell_w, icon_h,
-                                 SLOT_BORDER_R, SLOT_BORDER_G, SLOT_BORDER_B, 255);
+        // Slot background — use atlas build frame when available
+        bool use_atlas = hd_mode && Commandbar_Atlas_Is_Ready();
+        if (use_atlas) {
+            emit_atlas_sprite(ATLAS_SIDEBAR_BUILDFRAME, cx, cy, cell_w, icon_h);
+        } else {
+            g_ui_draw_list.Fill_Rect(cx, cy, cell_w, icon_h,
+                                     SLOT_BG_R, SLOT_BG_G, SLOT_BG_B, 200);
+            g_ui_draw_list.Draw_Rect(cx, cy, cell_w, icon_h,
+                                     SLOT_BORDER_R, SLOT_BORDER_G, SLOT_BORDER_B, 255);
+        }
 
         // Hit zone for this cell
         UIHitZoneID cell_zone = UI_Input_Register_Zone(cx, cy, cell_w, cell_h);
 
-        // Prefer HD DDS art in HD mode, falling back to legacy SHP cameos.
+        // Prefer atlas BUILDICON_TD_* cameos, then HD DDS, then legacy SHP.
         bool drew_icon = false;
-        {
+        if (use_atlas) {
+            drew_icon = emit_atlas_cameo(strip, si, cx + 1, cy + 1, cell_w - 2, icon_h - 2);
+        }
+        if (!drew_icon) {
             const CameoCacheEntry* cameo = get_best_cameo(strip, si, hd_mode);
             if (cameo && cameo->rgba) {
                 g_ui_draw_list.Draw_Icon(cx + 1, cy + 1, cell_w - 2, icon_h - 2,
@@ -926,16 +1056,21 @@ static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
 // ---------------------------------------------------------------------------
 
 /// Emit a vertical power bar gauge on the left edge of the sidebar.
-static void emit_power_bar(int x, int y, int w, int h)
+static void emit_power_bar(int x, int y, int w, int h, bool use_atlas)
 {
     if (!PlayerPtr) return;
 
     int power = PlayerPtr->Power;
     int drain = PlayerPtr->Drain;
 
-    // Bar background
-    g_ui_draw_list.Fill_Rect(x, y, w, h, POW_BG_R, POW_BG_G, POW_BG_B, 200);
-    g_ui_draw_list.Draw_Rect(x, y, w, h, 60, 60, 60, 200);
+    // Bar background — use atlas chrome if available
+    if (use_atlas) {
+        emit_atlas_sprite(ATLAS_SIDEBAR_POWERBG, x, y, w, h);
+        emit_atlas_sprite(ATLAS_SIDEBAR_POWERFRAMING, x, y, w, h);
+    } else {
+        g_ui_draw_list.Fill_Rect(x, y, w, h, POW_BG_R, POW_BG_G, POW_BG_B, 200);
+        g_ui_draw_list.Draw_Rect(x, y, w, h, 60, 60, 60, 200);
+    }
 
     if (h < 4) return;
 
@@ -1027,29 +1162,47 @@ static void load_frame_shapes()
 }
 
 /// Emit a sidebar button with SHP art if available, falling back to text.
+/// When use_atlas is true, atlas_off/atlas_on/atlas_hover/atlas_press are
+/// used for the button chrome (sized 260×78 in the atlas).
 static bool emit_sidebar_button(int x, int y, int w, int h,
                                 const void* shapefile, int frame,
                                 const char* fallback_label,
                                 bool is_active,
-                                const UIButtonStyle& style)
+                                const UIButtonStyle& style,
+                                bool use_atlas = false,
+                                const char* atlas_off = nullptr,
+                                const char* atlas_on = nullptr,
+                                const char* atlas_hover = nullptr,
+                                const char* atlas_press = nullptr)
 {
     UIButtonState state = UI_Button(x, y, w, h, nullptr, style);
 
-    const CameoCacheEntry* icon = sprite_decode(shapefile, frame, nullptr, 255);
-    if (icon && icon->rgba) {
-        g_ui_draw_list.Draw_Icon(x + 1, y + 1, w - 2, h - 2,
-                                 reinterpret_cast<const uint8_t*>(icon->rgba),
-                                 icon->width, icon->height);
+    if (use_atlas) {
+        // Pick sprite based on interaction state
+        const char* sprite = atlas_off;
+        if (is_active)                       sprite = atlas_on;
+        if (state == UI_BTN_HOVERED && atlas_hover) sprite = atlas_hover;
+        if (state == UI_BTN_PRESSED && atlas_press) sprite = atlas_press;
+        if (sprite) {
+            emit_atlas_sprite(sprite, x, y, w, h);
+        }
     } else {
-        int tx = x + 2;
-        int ty = y + (h > 8 ? 2 : 1);
-        g_ui_draw_list.Draw_Text(tx, ty, fallback_label, style.font,
-                                 style.text_r, style.text_g, style.text_b,
-                                 style.text_a, style.text_scale);
-    }
+        const CameoCacheEntry* icon = sprite_decode(shapefile, frame, nullptr, 255);
+        if (icon && icon->rgba) {
+            g_ui_draw_list.Draw_Icon(x + 1, y + 1, w - 2, h - 2,
+                                     reinterpret_cast<const uint8_t*>(icon->rgba),
+                                     icon->width, icon->height);
+        } else {
+            int tx = x + 2;
+            int ty = y + (h > 8 ? 2 : 1);
+            g_ui_draw_list.Draw_Text(tx, ty, fallback_label, style.font,
+                                     style.text_r, style.text_g, style.text_b,
+                                     style.text_a, style.text_scale);
+        }
 
-    if (is_active) {
-        g_ui_draw_list.Draw_Rect(x, y, w, h, 255, 255, 0, 180);
+        if (is_active) {
+            g_ui_draw_list.Draw_Rect(x, y, w, h, 255, 255, 0, 180);
+        }
     }
 
     return state == UI_BTN_PRESSED;
@@ -1088,8 +1241,15 @@ static void emit_credits(int x, int y, int w)
 // Sidebar frame rendering
 // ---------------------------------------------------------------------------
 
-static void emit_sidebar_frame(int x, int y, int w, int h, float sx, float sy)
+static void emit_sidebar_frame(int x, int y, int w, int h, float sx, float sy,
+                               bool use_atlas)
 {
+    if (use_atlas) {
+        // HD atlas sidebar background — stretch to fill
+        emit_atlas_sprite(ATLAS_SIDEBAR_BUILDBARBG, x, y, w, h);
+        return;
+    }
+
     load_frame_shapes();
 
     // Try to render legacy sidebar frame shapes as background
@@ -1142,8 +1302,17 @@ void UI_Sidebar_Emit()
 
     bool hd_mode = Render_Bridge_Get_HD_Graphics();
 
+    // Try to load the HD command bar atlas when in HD mode
+    bool use_atlas = hd_mode && ensure_commandbar_atlas();
+
     // Sidebar background frame
-    emit_sidebar_frame(side_x, side_y, side_w, side_h, sx, sy);
+    emit_sidebar_frame(side_x, side_y, side_w, side_h, sx, sy, use_atlas);
+
+    // --- Top button bar (options/menu strip) ---
+    if (use_atlas) {
+        int top_h = scale_y_from_legacy(16, sy);
+        emit_atlas_sprite(ATLAS_SIDEBAR_TOPBUTTON, side_x, side_y, side_w, top_h);
+    }
 
     // --- Power bar ---
     // Use legacy radar bottom as reference point (Map.RadY + Map.RadHeight in SeenBuff space,
@@ -1155,6 +1324,13 @@ void UI_Sidebar_Emit()
     int btn_h = scale_y_from_legacy(16, sy);
     int btn_y = side_y + side_h - btn_h - 2;
 
+    // --- Sell/Repair button background bar ---
+    if (use_atlas) {
+        emit_atlas_sprite(ATLAS_SIDEBAR_SELLREPAIRBG,
+                          side_x, btn_y - scale_y_from_legacy(4, sy),
+                          side_w, btn_h + scale_y_from_legacy(8, sy));
+    }
+
     // Credits display — below the radar, above the power bar / production area
     int credits_h = scale_y_from_legacy(10, sy);
     emit_credits(side_x, radar_bottom, side_w);
@@ -1162,7 +1338,7 @@ void UI_Sidebar_Emit()
     int pow_y = radar_bottom + credits_h;
     int pow_h = btn_y - pow_y - 2;
     if (pow_h > 10) {
-        emit_power_bar(pow_x, pow_y, pow_w, pow_h);
+        emit_power_bar(pow_x, pow_y, pow_w, pow_h, use_atlas);
     }
 
     // --- Production area ---
@@ -1196,29 +1372,51 @@ void UI_Sidebar_Emit()
     int btn_w = side_w / 3;
 
     UIButtonStyle bs = UI_Default_Button_Style();
-    bs.normal_r = 54; bs.normal_g = 70; bs.normal_b = 54;
-    bs.hover_r = 70; bs.hover_g = 94; bs.hover_b = 70;
-    bs.press_r = 44; bs.press_g = 56; bs.press_b = 44;
+    if (use_atlas) {
+        // Transparent background — atlas sprites provide the chrome
+        bs.normal_r = 0; bs.normal_g = 0; bs.normal_b = 0; bs.normal_a = 0;
+        bs.hover_r = 0; bs.hover_g = 0; bs.hover_b = 0; bs.hover_a = 0;
+        bs.press_r = 0; bs.press_g = 0; bs.press_b = 0; bs.press_a = 0;
+    } else {
+        bs.normal_r = 54; bs.normal_g = 70; bs.normal_b = 54;
+        bs.hover_r = 70; bs.hover_g = 94; bs.hover_b = 70;
+        bs.press_r = 44; bs.press_g = 56; bs.press_b = 44;
+    }
     bs.text_r = 0; bs.text_g = 200; bs.text_b = 0;
     bs.font = UI_FONT_6PT;
 
     bool repair_active = Map.IsRepairMode != 0;
     if (emit_sidebar_button(side_x + 2, btn_y, btn_w - 2, btn_h,
                             s_repair_shape, repair_active ? 1 : 0,
-                            "RPR", repair_active, bs)) {
+                            "RPR", repair_active, bs,
+                            use_atlas,
+                            ATLAS_SIDEBAR_BTN_REPAIR_OFF,
+                            ATLAS_SIDEBAR_BTN_REPAIR_ON,
+                            ATLAS_SIDEBAR_BTN_REPAIR_HOVER,
+                            ATLAS_SIDEBAR_BTN_REPAIR_PRESS)) {
         Map.Repair_Mode_Control(-1);
     }
 
     bool sell_active = Map.IsSellMode != 0;
     if (emit_sidebar_button(side_x + btn_w + 1, btn_y, btn_w - 2, btn_h,
                             s_sell_shape, sell_active ? 1 : 0,
-                            "SEL", sell_active, bs)) {
+                            "SEL", sell_active, bs,
+                            use_atlas,
+                            ATLAS_SIDEBAR_BTN_SELL_OFF,
+                            ATLAS_SIDEBAR_BTN_SELL_ON,
+                            ATLAS_SIDEBAR_BTN_SELL_HOVER,
+                            ATLAS_SIDEBAR_BTN_SELL_PRESS)) {
         Map.Sell_Mode_Control(-1);
     }
 
     if (emit_sidebar_button(side_x + btn_w * 2, btn_y, btn_w - 2, btn_h,
                             s_map_shape, 0,
-                            "MAP", false, bs)) {
+                            "MAP", false, bs,
+                            use_atlas,
+                            ATLAS_SIDEBAR_BTN_MAP_OFF,
+                            ATLAS_SIDEBAR_BTN_MAP_ON,
+                            ATLAS_SIDEBAR_BTN_MAP_HOVER,
+                            ATLAS_SIDEBAR_BTN_MAP_PRESS)) {
         if (Map.Is_Radar_Active()) {
             if (Map.Is_Zoomed() || GameToPlay == GAME_NORMAL) {
                 Map.Zoom_Mode(Coord_Cell(Map.TacticalCoord));

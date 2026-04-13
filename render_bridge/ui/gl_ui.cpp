@@ -10,6 +10,7 @@
 #include "ui_draw_list.h"
 #include "ui_text.h"
 #include "ui_text_sdf.h"
+#include "commandbar_atlas.h"
 #include "dbg.h"
 
 #include <cmath>
@@ -451,6 +452,38 @@ void GL_UI_Render(int win_w, int win_h,
                           1.0f, 1.0f, 1.0f, 1.0f);
                 glUniform1f(g_u_use_tex, 2.0f); // RGBA texture mode
                 flush_verts(icon_verts, true);
+                glUniform1f(g_u_use_tex, 0.0f);
+            }
+            break;
+        }
+
+        case UI_CMD_ATLAS_SPRITE: {
+            // Flush pending geometry before binding atlas texture
+            flush_verts(text_verts, true, current_sdf);
+            restore_main_program();
+            flush_verts(solid_verts, false);
+
+            const UIAtlasSpriteCmd& as = cmd.atlas;
+            GLuint atlas_tex = Commandbar_Atlas_Get_Texture();
+            if (atlas_tex && as.dst_w > 0 && as.dst_h > 0) {
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, atlas_tex);
+
+                float x0 = off_x + as.dst_x * scale;
+                float y0 = off_y + as.dst_y * scale;
+                float x1 = x0 + as.dst_w * scale;
+                float y1 = y0 + as.dst_h * scale;
+                float cr = as.r / 255.0f;
+                float cg = as.g / 255.0f;
+                float cb = as.b / 255.0f;
+                float ca = as.a / 255.0f;
+
+                std::vector<UIVertex> atlas_verts;
+                push_quad(atlas_verts, x0, y0, x1, y1,
+                          as.u0, as.v0, as.u1, as.v1,
+                          cr, cg, cb, ca);
+                glUniform1f(g_u_use_tex, 2.0f); // RGBA texture mode
+                flush_verts(atlas_verts, true);
                 glUniform1f(g_u_use_tex, 0.0f);
             }
             break;

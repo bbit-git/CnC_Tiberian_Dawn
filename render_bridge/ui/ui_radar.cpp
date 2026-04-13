@@ -10,6 +10,8 @@
 #include "ui_radar.h"
 #include "ui_draw_list.h"
 #include "ui_input.h"
+#include "commandbar_atlas.h"
+#include "commandbar_sprites.h"
 #include "render_bridge.h"
 #include "function.h"
 #include <cstdlib>
@@ -134,7 +136,55 @@ void UI_Radar_Emit()
     extern bool InMainLoop;
     if (!InMainLoop) return;
     if (!Map.IsSidebarActive) return;
-    if (!Map.Is_Radar_Active()) return;
+    if (!Map.Is_Radar_Active()) {
+        // When radar is inactive, show faction logo in the radar area (HD only)
+        bool atlas_ready = Render_Bridge_Get_HD_Graphics() && Commandbar_Atlas_Is_Ready();
+        if (atlas_ready && PlayerPtr) {
+            int base_w = SeenBuff.Get_Width();
+            int base_h = SeenBuff.Get_Height();
+            int logical_w = 0, logical_h = 0;
+            Render_Bridge_Get_Logical_Screen_Size(logical_w, logical_h);
+            float sx_f = (base_w > 0) ? static_cast<float>(logical_w) / static_cast<float>(base_w) : 1.0f;
+            float sy_f = (base_h > 0) ? static_cast<float>(logical_h) / static_cast<float>(base_h) : 1.0f;
+
+            int rf_x = static_cast<int>(Map.RadX * sx_f);
+            int rf_y = static_cast<int>(Map.RadY * sy_f);
+            int rf_w = static_cast<int>(Map.RadWidth * sx_f);
+            int rf_h = static_cast<int>(Map.RadHeight * sy_f);
+
+            // Draw radar background
+            const AtlasSpriteRect* bg = Commandbar_Atlas_Find(ATLAS_SIDEBAR_RADARBG);
+            if (bg) {
+                g_ui_draw_list.Draw_Atlas_Sprite(rf_x, rf_y, rf_w, rf_h,
+                                                 bg->u0, bg->v0, bg->u1, bg->v1);
+            }
+
+            // Draw faction logo centered
+            const char* logo_name = nullptr;
+            HousesType house = PlayerPtr->Class->House;
+            if (house == HOUSE_GOOD || house == HOUSE_MULTI1 || house == HOUSE_MULTI3 || house == HOUSE_MULTI5)
+                logo_name = ATLAS_SIDEBAR_FACTIONLOGO_GDI;
+            else
+                logo_name = ATLAS_SIDEBAR_FACTIONLOGO_NOD;
+
+            const AtlasSpriteRect* logo = Commandbar_Atlas_Find(logo_name);
+            if (logo) {
+                // Center and scale logo within radar frame, maintaining aspect ratio
+                float logo_aspect = static_cast<float>(logo->width) / static_cast<float>(logo->height);
+                int logo_h = rf_h * 3 / 4;
+                int logo_w = static_cast<int>(logo_h * logo_aspect);
+                if (logo_w > rf_w * 3 / 4) {
+                    logo_w = rf_w * 3 / 4;
+                    logo_h = static_cast<int>(logo_w / logo_aspect);
+                }
+                int logo_x = rf_x + (rf_w - logo_w) / 2;
+                int logo_y = rf_y + (rf_h - logo_h) / 2;
+                g_ui_draw_list.Draw_Atlas_Sprite(logo_x, logo_y, logo_w, logo_h,
+                                                 logo->u0, logo->v0, logo->u1, logo->v1);
+            }
+        }
+        return;
+    }
 
     // Get palette
     const uint8_t* pal = static_cast<const uint8_t*>((void*)Get_Palette());
@@ -170,15 +220,26 @@ void UI_Radar_Emit()
 
     if (radar_w <= 0 || radar_h <= 0) return;
 
-    // Dark background behind the radar
+    // Radar frame background
     int frame_x = static_cast<int>(Map.RadX * sx);
     int frame_y = static_cast<int>(Map.RadY * sy);
     int frame_w = static_cast<int>(Map.RadWidth * sx);
     int frame_h = static_cast<int>(Map.RadHeight * sy);
-    g_ui_draw_list.Fill_Rect(frame_x, frame_y, frame_w, frame_h,
-                             16, 20, 16, 200);
-    g_ui_draw_list.Draw_Rect(frame_x, frame_y, frame_w, frame_h,
-                             60, 80, 60, 255);
+
+    bool use_atlas = Render_Bridge_Get_HD_Graphics() && Commandbar_Atlas_Is_Ready();
+    if (use_atlas) {
+        // HD radar background from atlas
+        const AtlasSpriteRect* bg = Commandbar_Atlas_Find(ATLAS_SIDEBAR_RADARBG);
+        if (bg) {
+            g_ui_draw_list.Draw_Atlas_Sprite(frame_x, frame_y, frame_w, frame_h,
+                                             bg->u0, bg->v0, bg->u1, bg->v1);
+        }
+    } else {
+        g_ui_draw_list.Fill_Rect(frame_x, frame_y, frame_w, frame_h,
+                                 16, 20, 16, 200);
+        g_ui_draw_list.Draw_Rect(frame_x, frame_y, frame_w, frame_h,
+                                 60, 80, 60, 255);
+    }
 
     // Submit the radar pixel buffer as a textured icon
     g_ui_draw_list.Draw_Icon(radar_x, radar_y, radar_w, radar_h,
