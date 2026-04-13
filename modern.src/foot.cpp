@@ -562,7 +562,12 @@ bool FootClass::Basic_Path(void)
 				**	occupying the destination location.
 				*/
 				if (Mission == MISSION_MOVE && Distance(NavCom) < 0x0280) {
-					maxtype = MOVE_DESTROYABLE;
+					/*
+					**	Infantry can legitimately share a cell via sub-spots, so keep
+					**	allied infantry cell reservations passable for normal move orders.
+					**	Vehicles retain the stricter near-destination behavior.
+					*/
+					maxtype = (What_Am_I() == RTTI_INFANTRY) ? MOVE_MOVING_BLOCK : MOVE_DESTROYABLE;
 				}
 			}
 

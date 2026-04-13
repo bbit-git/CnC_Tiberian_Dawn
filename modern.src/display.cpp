@@ -3645,13 +3645,23 @@ void DisplayClass::Mouse_Left_Release(CELL cell, int x, int y, ObjectClass * obj
 				bool doflash = true;
 				AllowVoice = true;
 
+				bool infantry_only_group = true;
+				for (int index = 0; index < CurrentObject.Count(); index++) {
+					ObjectClass *tobject = CurrentObject[index];
+					if (!tobject || !tobject->IsActive) continue;
+					if (tobject->What_Am_I() != RTTI_INFANTRY) {
+						infantry_only_group = false;
+						break;
+					}
+				}
+
 				/*
 				**	Build a spread table for group moves: cell 0 = target,
 				**	then spiral outward in rings.
 				*/
 				static CELL spread_cells[64];
 				int spread_count = 0;
-				bool do_spread = (!object && CurrentObject.Count() > 1);
+				bool do_spread = (!object && CurrentObject.Count() > 1 && !infantry_only_group);
 
 				if (do_spread) {
 					spread_cells[spread_count++] = cell;
