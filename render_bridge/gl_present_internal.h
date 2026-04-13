@@ -87,6 +87,12 @@ extern GLint g_rgba_u_tex;
 extern GLint g_rgba_u_src_rect;
 extern GLint g_rgba_u_dst_rect;
 
+/// When true, the SeenBuff sidebar/header chrome region is uploaded and
+/// presented each gameplay frame. Set false (e.g. NATIVE_SIDEBAR=1) to use
+/// the bridge-native sidebar path instead. Menus still use SeenBuff
+/// regardless of this flag.
+extern bool k_enable_seenbuff_chrome;
+
 /// Render the shroud overlay pass on top of the tactical world.
 int GL_Shroud_Render(int win_w, int win_h,
                      int tac_screen_x, int tac_screen_y,

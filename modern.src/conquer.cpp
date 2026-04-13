@@ -68,6 +68,7 @@ extern void Render_Bridge_Debug_HUD_Toggle();
 extern void Render_Bridge_Debug_Bars_Toggle();
 extern void Render_Bridge_Debug_Sources_Toggle();
 extern void Render_Bridge_Debug_Dump();
+extern void Render_Bridge_Chrome_Toggle();
 #endif
 #include "actmenu.h"
 #include  "tcpip.h"
@@ -661,7 +662,11 @@ void Keyboard_Process(KeyNumType &input)
 			break;
 		case VK_F11:
 #ifdef USE_RENDER_BRIDGE
-			Render_Bridge_Debug_Sources_Toggle();
+			if (input & KN_CTRL_BIT) {
+				Render_Bridge_Chrome_Toggle();
+			} else {
+				Render_Bridge_Debug_Sources_Toggle();
+			}
 			break;
 #endif
 #if (0)

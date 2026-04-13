@@ -37,7 +37,7 @@ extern int GL_Sprites_Render_Shadow(int win_w, int win_h,
 #endif
 
 static constexpr bool k_enable_gl_sprite_overlay = true;
-static constexpr bool k_enable_seenbuff_chrome = false;
+// k_enable_seenbuff_chrome is defined in gl_present_internal.h
 
 static bool frame_has_shroud_overlay()
 {

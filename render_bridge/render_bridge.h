@@ -141,6 +141,9 @@ void Render_Bridge_Register_Shape_Identity(const void* shapefile, uint32_t entit
 /// Look up a previously registered entity hash for a shapefile pointer.
 uint32_t Render_Bridge_Get_Shape_Identity(const void* shapefile);
 
+/// Toggle the SeenBuff chrome sidebar on/off at runtime.
+void Render_Bridge_Chrome_Toggle();
+
 /// Toggle the render-source visualization overlay.
 void Render_Bridge_Debug_Sources_Toggle();
 

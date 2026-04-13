@@ -22,6 +22,16 @@ extern void GL_Sprites_Init();
 extern void Options_Set_HD_Graphics_Default(bool enabled);
 #endif
 
+// Runtime chrome toggle — default true (legacy SeenBuff sidebar).
+// Set to false by NATIVE_SIDEBAR=1 env var to use bridge-native sidebar.
+bool k_enable_seenbuff_chrome = true;
+
+void Render_Bridge_Chrome_Toggle()
+{
+    k_enable_seenbuff_chrome = !k_enable_seenbuff_chrome;
+    DBG("SeenBuff chrome %s", k_enable_seenbuff_chrome ? "enabled" : "disabled");
+}
+
 // Shared GL objects used by every presentation pass.
 SDL_GLContext g_gl_ctx = nullptr;
 GLuint g_gl_program = 0;
@@ -203,6 +213,14 @@ bool GL_Present_Init(int w, int h)
 {
     if (g_gl_failed) return false;
     if (g_gl_ready) return true;
+
+    // NATIVE_SIDEBAR=1 disables the SeenBuff sidebar/header chrome so the
+    // bridge-native sidebar path is used instead.
+    const char* ns_env = std::getenv("NATIVE_SIDEBAR");
+    if (ns_env && ns_env[0] == '1') {
+        k_enable_seenbuff_chrome = false;
+        DBG("NATIVE_SIDEBAR=1: SeenBuff chrome disabled");
+    }
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
@@ -472,10 +490,10 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
     }
 
     SDL_GL_MakeCurrent(g_window, g_gl_ctx);
-    // SeenBuff indexed texture is only needed for menu passthrough and legacy
-    // chrome (disabled). Skip the upload during gameplay to remove the last
-    // gameplay SeenBuff read in the presentation path.
-    if (!InMainLoop) {
+    // SeenBuff indexed texture is needed for menu passthrough and, when
+    // k_enable_seenbuff_chrome is true, for legacy sidebar/header chrome.
+    // Skip the upload during gameplay only when the chrome is fully native.
+    if (!InMainLoop || k_enable_seenbuff_chrome) {
         upload_indexed_frame(indexed_pixels, pitch, w, h);
     }
     upload_palette(vga_palette);
