@@ -3,11 +3,12 @@
  *
  * Reads legacy SidebarClass/StripClass state and emits UI draw list
  * commands for backgrounds, borders, slot outlines, scroll arrows,
- * production labels, and cameo icon textures.
+ * cameo icon textures, clock-sweep overlays, and pip indicators.
  *
- * Cameo icons are decoded from legacy SHP shapes via LegacySpriteProvider,
- * palette-converted to RGBA, and cached per (shapefile, remap_table) pair.
- * The cache is invalidated on palette change.
+ * Sprites (cameos, clock shapes, pips) are decoded from legacy SHP data
+ * via LegacySpriteProvider, palette-converted to RGBA, and cached per
+ * (shapefile, frame, remap_table, opacity) tuple.  The cache is
+ * invalidated on palette change.
  */
 
 #include "ui_sidebar.h"
@@ -30,8 +31,6 @@
 /// Sidebar slot colors.
 static constexpr uint8_t SLOT_BG_R = 40, SLOT_BG_G = 44, SLOT_BG_B = 40;
 static constexpr uint8_t SLOT_BORDER_R = 36, SLOT_BORDER_G = 120, SLOT_BORDER_B = 36;
-static constexpr uint8_t READY_R = 0, READY_G = 255, READY_B = 0;
-static constexpr uint8_t BUILDING_R = 200, BUILDING_G = 200, BUILDING_B = 0;
 static constexpr uint8_t SCROLL_R = 120, SCROLL_G = 120, SCROLL_B = 120;
 static constexpr uint8_t DARKEN_ALPHA = 140; // overlay alpha for unavailable items
 
@@ -50,12 +49,15 @@ struct CameoCacheEntry {
     int       height;
 };
 
-/// Cache key: combines shapefile pointer with remap table pointer.
-static uint64_t cameo_cache_key(const void* shapefile, const uint8_t* remap)
+/// Cache key: combines shapefile, frame index, remap table, and opacity.
+static uint64_t sprite_cache_key(const void* shapefile, int frame,
+                                 const uint8_t* remap, uint8_t opacity)
 {
     uint64_t key = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(shapefile));
     key = key * UINT64_C(0x9e3779b97f4a7c15) +
           static_cast<uint64_t>(reinterpret_cast<uintptr_t>(remap));
+    key = key * UINT64_C(0x517cc1b727220a95) + static_cast<uint64_t>(frame);
+    key = key * UINT64_C(0x6c62272e07bb0142) + static_cast<uint64_t>(opacity);
     return key;
 }
 
@@ -79,10 +81,14 @@ static void cameo_palette_snapshot()
     if (pal) memcpy(g_cameo_pal_snapshot, pal, 768);
 }
 
-/// Decode a cameo SHP shape to RGBA and cache the result.
+/// Decode a SHP shape frame to RGBA and cache the result.
+/// @param shapefile  SHP shape data pointer
+/// @param frame_num  Frame index within the shape file
+/// @param remap      Optional palette remap table (player colours)
+/// @param opacity    Alpha value for non-transparent pixels (255=opaque, ~180=ghost)
 /// Returns pointer to cached RGBA data, or nullptr on failure.
-static const CameoCacheEntry* cameo_decode(const void* shapefile,
-                                           const uint8_t* remap)
+static const CameoCacheEntry* sprite_decode(const void* shapefile, int frame_num,
+                                            const uint8_t* remap, uint8_t opacity)
 {
     if (!shapefile) return nullptr;
 
@@ -91,7 +97,7 @@ static const CameoCacheEntry* cameo_decode(const void* shapefile,
         UI_Sidebar_Cameo_Invalidate();
     }
 
-    uint64_t key = cameo_cache_key(shapefile, remap);
+    uint64_t key = sprite_cache_key(shapefile, frame_num, remap, opacity);
     auto it = g_cameo_cache.find(key);
     if (it != g_cameo_cache.end()) return &it->second;
 
@@ -100,9 +106,9 @@ static const CameoCacheEntry* cameo_decode(const void* shapefile,
     if (!pal) pal = GamePalette;
     if (!pal) return nullptr;
 
-    // Decode SHP frame 0
+    // Decode SHP frame
     SpriteFrame frame = {};
-    if (!g_cameo_provider.Get_Frame(shapefile, 0, frame))
+    if (!g_cameo_provider.Get_Frame(shapefile, frame_num, frame))
         return nullptr;
     if (!frame.pixels || frame.width <= 0 || frame.height <= 0)
         return nullptr;
@@ -127,9 +133,9 @@ static const CameoCacheEntry* cameo_decode(const void* shapefile,
             uint8_t r = pal[idx * 3 + 0] << 2;
             uint8_t g = pal[idx * 3 + 1] << 2;
             uint8_t b = pal[idx * 3 + 2] << 2;
-            rgba[i] = (uint32_t(255) << 24) |
-                      (uint32_t(b)   << 16) |
-                      (uint32_t(g)   << 8)  |
+            rgba[i] = (uint32_t(opacity) << 24) |
+                      (uint32_t(b)       << 16) |
+                      (uint32_t(g)       << 8)  |
                       uint32_t(r);
         }
     }
@@ -232,7 +238,39 @@ static bool is_slot_darkened(const SidebarClass::StripClass& strip, int index)
     }
 }
 
-/// Emit one production slot outline, cameo icon, and label.
+/// Draw a pip shape (PIP_READY or PIP_HOLDING) centered at the bottom of a slot.
+static void emit_pip(int pip_frame, int x, int y, int w, int h)
+{
+    const CameoCacheEntry* pip = sprite_decode(
+        ObjectTypeClass::PipShapes, pip_frame, nullptr, 255);
+    if (pip && pip->rgba) {
+        int pip_x = x + (w - pip->width) / 2;
+        int pip_y = y + h - pip->height - 2;
+        g_ui_draw_list.Draw_Icon(pip_x, pip_y, pip->width, pip->height,
+                                 reinterpret_cast<const uint8_t*>(pip->rgba),
+                                 pip->width, pip->height);
+    }
+}
+
+/// Draw a clock-sweep overlay for production progress.
+/// @param stage  Production stage (0-108 for factories, 0-102 for super weapons)
+static void emit_clock(int stage, int x, int y, int w, int h)
+{
+    if (stage <= 0) return;
+    const void* shapes = SidebarClass::StripClass::ClockShapes;
+    if (!shapes) return;
+    int frame_count = g_cameo_provider.Get_Frame_Count(shapes);
+    int frame = stage + 1;
+    if (frame >= frame_count) frame = frame_count - 1;
+    const CameoCacheEntry* clock = sprite_decode(shapes, frame, nullptr, 180);
+    if (clock && clock->rgba) {
+        g_ui_draw_list.Draw_Icon(x + 1, y + 1, w - 2, h - 2,
+                                 reinterpret_cast<const uint8_t*>(clock->rgba),
+                                 clock->width, clock->height);
+    }
+}
+
+/// Emit one production slot outline, cameo icon, and production indicators.
 static void emit_slot(int x, int y, int w, int h, int slot_index,
                       const SidebarClass::StripClass& strip)
 {
@@ -248,41 +286,72 @@ static void emit_slot(int x, int y, int w, int h, int slot_index,
     // Cameo icon
     const void* shapefile = get_cameo_shape(strip, actual_index);
     const uint8_t* remap = get_cameo_remap(strip, actual_index);
-    const CameoCacheEntry* cameo = cameo_decode(shapefile, remap);
+    const CameoCacheEntry* cameo = sprite_decode(shapefile, 0, remap, 255);
     if (cameo && cameo->rgba) {
         g_ui_draw_list.Draw_Icon(x + 1, y + 1, w - 2, h - 2,
                                  reinterpret_cast<const uint8_t*>(cameo->rgba),
                                  cameo->width, cameo->height);
     }
 
+    // Determine production state — regular buildables vs special weapons
+    bool production = false;
+    bool completed  = false;
+    bool holding    = false;
+    int  stage      = 0;
+    bool darken     = false;
+    bool is_special = (strip.Buildables[actual_index].BuildableType == RTTI_SPECIAL);
+
+    if (is_special) {
+        int spc = strip.Buildables[actual_index].BuildableID;
+        switch (spc) {
+            case SPC_ION_CANNON:
+                production = true;
+                completed = PlayerPtr->IonCannon.Is_Ready();
+                stage = PlayerPtr->IonCannon.Anim_Stage();
+                break;
+            case SPC_NUCLEAR_BOMB:
+                production = true;
+                completed = PlayerPtr->NukeStrike.Is_Ready();
+                stage = PlayerPtr->NukeStrike.Anim_Stage();
+                break;
+            case SPC_AIR_STRIKE:
+                production = true;
+                completed = PlayerPtr->AirStrike.Is_Ready();
+                stage = PlayerPtr->AirStrike.Anim_Stage();
+                break;
+        }
+    } else {
+        int factory_id = strip.Buildables[actual_index].Factory;
+        if (factory_id != -1) {
+            FactoryClass* factory = Factories.Raw_Ptr(factory_id);
+            if (factory) {
+                production = true;
+                completed = factory->Has_Completed();
+                stage = factory->Completion();
+                holding = !completed && !factory->Is_Building();
+            }
+        }
+        darken = is_slot_darkened(strip, actual_index);
+    }
+
     // Darken overlay for unavailable items (factory busy, no production started)
-    bool darken = is_slot_darkened(strip, actual_index);
     if (darken) {
         g_ui_draw_list.Fill_Rect(x, y, w, h, 0, 0, 0, DARKEN_ALPHA);
     }
 
-    // Check production state
-    int factory_id = strip.Buildables[actual_index].Factory;
-    if (factory_id != -1) {
-        FactoryClass* factory = Factories.Raw_Ptr(factory_id);
-        if (factory) {
-            if (factory->Has_Completed()) {
-                // Ready indicator
-                UI_Label(x + 2, y + h - 10, "RDY", UI_FONT_6PT,
-                         READY_R, READY_G, READY_B, 255);
-            } else if (factory->Is_Building()) {
-                // Progress percentage
-                int pct = factory->Completion();
-                char pct_buf[8];
-                snprintf(pct_buf, sizeof(pct_buf), "%d%%", pct);
-                UI_Label(x + 2, y + h - 10, pct_buf, UI_FONT_6PT,
-                         BUILDING_R, BUILDING_G, BUILDING_B, 255);
-            }
+    // Production indicators: clock sweep, pip ready/holding
+    if (production) {
+        if (completed) {
+            emit_pip(PIP_READY, x, y, w, h);
+        } else if (holding) {
+            emit_pip(PIP_HOLDING, x, y, w, h);
+        } else {
+            emit_clock(stage, x, y, w, h);
         }
     }
 
-    // Flashing indicator
-    if (strip.Flasher == actual_index) {
+    // Flash indicator — pulse on/off matching legacy Fetch_Stage() & 1 toggle
+    if (strip.Flasher == actual_index && (strip.Fetch_Stage() & 1)) {
         g_ui_draw_list.Draw_Rect(x + 1, y + 1, w - 2, h - 2,
                                  255, 255, 0, 180);
     }
