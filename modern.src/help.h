@@ -61,6 +61,9 @@ class HelpClass: public TabClass
 #ifdef USE_RENDER_BRIDGE
 		/// Return the currently visible help text for bridge-native UI rendering.
 		bool Get_Render_Bridge_Text(char const*& text, int& color, int& cost) const;
+		/// Return right-click (sidebar icon) help positioning for bridge-native rendering.
+		bool Get_Render_Bridge_Right_Text(char const*& text, int& color, int& cost,
+		                                  int& draw_x, int& draw_y, int& width) const;
 #endif
 
 		/*

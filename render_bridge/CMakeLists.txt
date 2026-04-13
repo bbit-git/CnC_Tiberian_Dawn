@@ -50,6 +50,7 @@ set(CNC_RENDER_BRIDGE_SRCS
     ${RENDER_BRIDGE_DIR}/ui/ui_draw_list.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_header.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_help.cpp
+    ${RENDER_BRIDGE_DIR}/ui/ui_action_menu.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_layout.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_input.cpp
 )

@@ -14,6 +14,18 @@ public:
     bool AI(KeyNumType & input, int x, int y);
     void Draw_It();
 
+#ifdef USE_RENDER_BRIDGE
+    /// Expose menu state for bridge-native rendering.
+    struct RenderState {
+        bool active;
+        int menu_x, menu_y, menu_w, menu_h;
+        int item_height;
+        int num_items;
+        const char* item_names[5];
+    };
+    RenderState Get_Render_State() const;
+#endif
+
 private:
     bool IsActive;
     bool EatRelease;

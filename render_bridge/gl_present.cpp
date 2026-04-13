@@ -628,6 +628,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         extern void UI_Com_Scenario_Emit();
         extern void UI_Main_Menu_Options_Emit();
 
+        extern void UI_ActionMenu_Emit();
         extern void UI_Tooltip_Emit(int, int, int, int);
         extern void GL_UI_Render(int, int, int, int, float);
         extern int g_mouse_x, g_mouse_y;
@@ -657,6 +658,7 @@ bool GL_Present_Frame(const uint8_t* indexed_pixels, int pitch,
         UI_Main_Menu_Emit();
         // Simple confirm (covers CCMessageBox + Surrender)
         UI_Dialog_Emit();
+        UI_ActionMenu_Emit();
         UI_Tooltip_Emit(g_mouse_x, g_mouse_y,
                         layout_w, layout_h);
         Render_Bridge_UI_End_Frame();

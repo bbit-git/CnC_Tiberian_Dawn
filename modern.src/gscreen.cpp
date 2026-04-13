@@ -456,8 +456,10 @@ void GScreenClass::Render(void)
 		Messages.Draw();
 #endif
 #ifdef USE_RENDER_BRIDGE
-		{ extern bool Render_Bridge_UI_Has_Active_Dialog();
-		  if (!Render_Bridge_UI_Has_Active_Dialog()) {
+		{ extern bool Render_Bridge_UI_Use_Native_ActionMenu();
+		  extern bool Render_Bridge_UI_Has_Active_Dialog();
+		  if (!Render_Bridge_UI_Use_Native_ActionMenu() &&
+		      !Render_Bridge_UI_Has_Active_Dialog()) {
 			  ActionMenu.Draw_It();
 		  } }
 #else

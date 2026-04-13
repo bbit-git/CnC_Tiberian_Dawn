@@ -273,7 +273,7 @@ void HelpClass::Draw_It(bool forced)
 	if (Text != TXT_NONE && (forced || !CountDownTimer.Time())) {
 #ifdef USE_RENDER_BRIDGE
 		{ extern bool Render_Bridge_UI_Use_Native_Help();
-		  if (Render_Bridge_UI_Use_Native_Help() && !IsRight) {
+		  if (Render_Bridge_UI_Use_Native_Help()) {
 			  return;
 		  } }
 #endif
@@ -314,6 +314,26 @@ bool HelpClass::Get_Render_Bridge_Text(char const*& text, int& color, int& cost)
 	text = Text_String(Text);
 	color = Color;
 	cost = Cost;
+	return text != nullptr && text[0] != '\0';
+}
+
+bool HelpClass::Get_Render_Bridge_Right_Text(char const*& text, int& color, int& cost,
+                                             int& draw_x, int& draw_y, int& width) const
+{
+	if (!IsRight || Text == TXT_NONE || CountDownTimer.Time()) {
+		text = nullptr;
+		color = LTGREY;
+		cost = 0;
+		draw_x = draw_y = width = 0;
+		return false;
+	}
+
+	text = Text_String(Text);
+	color = Color;
+	cost = Cost;
+	draw_x = DrawX;
+	draw_y = DrawY;
+	width = Width;
 	return text != nullptr && text[0] != '\0';
 }
 #endif

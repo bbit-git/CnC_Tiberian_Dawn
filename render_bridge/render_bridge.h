@@ -265,6 +265,9 @@ bool Render_Bridge_UI_Use_Native_Messages();
 /// Returns true when bridge-native help text replaces HelpClass::Draw_It().
 bool Render_Bridge_UI_Use_Native_Help();
 
+/// Returns true when bridge-native action menu replaces ActionMenu.Draw_It().
+bool Render_Bridge_UI_Use_Native_ActionMenu();
+
 /// Returns true when a bridge-native modal dialog is pending or active.
 bool Render_Bridge_UI_Has_Active_Dialog();
 

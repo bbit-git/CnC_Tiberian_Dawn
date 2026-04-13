@@ -99,6 +99,24 @@ bool ActionMenuClass::AI(KeyNumType & input, int x, int y)
     return false;
 }
 
+#ifdef USE_RENDER_BRIDGE
+ActionMenuClass::RenderState ActionMenuClass::Get_Render_State() const
+{
+    RenderState s = {};
+    s.active = IsActive;
+    s.menu_x = MenuX;
+    s.menu_y = MenuY;
+    s.menu_w = MenuW;
+    s.menu_h = MenuH;
+    s.item_height = ItemHeight;
+    s.num_items = NumItems;
+    for (int i = 0; i < NumItems && i < MAX_ITEMS; i++) {
+        s.item_names[i] = Items[i].Name;
+    }
+    return s;
+}
+#endif
+
 void ActionMenuClass::Draw_It()
 {
     if (!IsActive) return;

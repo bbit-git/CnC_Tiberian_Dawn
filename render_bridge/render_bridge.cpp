@@ -434,6 +434,11 @@ bool Render_Bridge_UI_Use_Native_Help()
     return true;
 }
 
+bool Render_Bridge_UI_Use_Native_ActionMenu()
+{
+    return true;
+}
+
 bool Render_Bridge_UI_Has_Active_Dialog()
 {
     return g_dialog_active;
