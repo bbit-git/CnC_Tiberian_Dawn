@@ -15,6 +15,7 @@
  */
 
 #include "ui_sidebar.h"
+#include "ui_sidebar_metrics.h"
 #include "ui_draw_list.h"
 #include "ui_controls.h"
 #include "ui_input.h"
@@ -41,6 +42,17 @@ static bool g_atlas_init_attempted = false;
 
 /// HD grid scroll state (reset on shutdown, used by emit_hd_grid).
 static int g_hd_grid_top_index = 0;
+
+// ---------------------------------------------------------------------------
+// Debug component mask (see ui_sidebar.h)
+// ---------------------------------------------------------------------------
+static uint32_t g_sidebar_debug_mask = COMP_ALL;
+
+void     UI_Sidebar_Debug_Set_Mask(uint32_t mask) { g_sidebar_debug_mask = mask; }
+uint32_t UI_Sidebar_Debug_Get_Mask()              { return g_sidebar_debug_mask; }
+bool     UI_Sidebar_Debug_Is_On(UISidebarComponent comp) {
+    return (g_sidebar_debug_mask & comp) != 0;
+}
 
 /// HD sidebar build-category filter (selected by the row below the mode tabs).
 /// Defaults to CAT_STRUCTURE so fresh games (no factories yet) show buildings
@@ -749,27 +761,31 @@ static void emit_production_overlays(int x, int y, int w, int h,
         g_ui_draw_list.Fill_Rect(x + 1, y + 1, w - 2, h - 2, 0, 0, 0, DARKEN_ALPHA);
     }
 
+    const bool show_clock = UI_Sidebar_Debug_Is_On(COMP_CLOCK_OVERLAY);
+    const bool show_pips  = UI_Sidebar_Debug_Is_On(COMP_PIPS);
+    const bool show_text  = show_progress_text && UI_Sidebar_Debug_Is_On(COMP_QUEUE_COUNT);
+
     if (state.production) {
         if (state.completed) {
-            emit_pip(PIP_READY, x, y, w, h);
-            if (show_progress_text) {
+            if (show_pips) emit_pip(PIP_READY, x, y, w, h);
+            if (show_text) {
                 g_ui_draw_list.Draw_Text(x + 2, y + h / 2 - 4, "READY", UI_FONT_6PT,
                                          0, 255, 0, 255, 0.9f);
             }
         } else if (state.holding) {
-            emit_clock(state.stage, x, y, w, h);
-            emit_pip(PIP_HOLDING, x, y, w, h);
-            if (show_progress_text) {
+            if (show_clock) emit_clock(state.stage, x, y, w, h);
+            if (show_pips)  emit_pip(PIP_HOLDING, x, y, w, h);
+            if (show_text) {
                 g_ui_draw_list.Draw_Text(x + 2, y + h / 2 - 4, "HOLD", UI_FONT_6PT,
                                          255, 200, 0, 255, 0.9f);
             }
         } else {
-            emit_clock(state.stage, x, y, w, h);
-            if (show_progress_text && state.stage > 0) {
-                char pct[8];
+            if (show_clock) emit_clock(state.stage, x, y, w, h);
+            if (show_text && state.stage > 0) {
                 // stage is 0-54 for normal production (Completion() returns percentage)
                 int pct_val = state.stage;
                 if (pct_val > 100) pct_val = 100;
+                char pct[16];  // generous, avoids -Wformat-truncation on INT_MIN
                 snprintf(pct, sizeof(pct), "%d%%", pct_val);
                 g_ui_draw_list.Draw_Text(x + 2, y + h / 2 - 4, pct, UI_FONT_6PT,
                                          200, 200, 200, 240, 0.9f);
@@ -895,7 +911,9 @@ static void emit_column(SidebarClass::StripClass& strip, bool hd_mode, int col_i
     }
 
     // Scroll arrows below slots
-    emit_scroll_arrows(col_x, col_y + obj_h * visible + 1, col_w, strip, col_index);
+    if (UI_Sidebar_Debug_Is_On(COMP_SCROLL_ARROWS)) {
+        emit_scroll_arrows(col_x, col_y + obj_h * visible + 1, col_w, strip, col_index);
+    }
 
     // Mouse wheel scrolling — only consume when hovering over this column
     if (UI_Input_Get_Hovered() == col_zone) {
@@ -958,6 +976,10 @@ static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
     // Register a hit zone for the whole grid (for mouse wheel)
     UIHitZoneID grid_zone = UI_Input_Register_Zone(grid_x, grid_y, grid_w, grid_h);
 
+    const bool show_bg      = UI_Sidebar_Debug_Is_On(COMP_GRID_BG);
+    const bool show_cameos  = UI_Sidebar_Debug_Is_On(COMP_CAMEOS);
+    const bool show_arrows  = UI_Sidebar_Debug_Is_On(COMP_SCROLL_ARROWS);
+
     // Render visible items
     for (int slot = 0; slot < visible_slots; slot++) {
         int item_idx = g_hd_grid_top_index + slot;
@@ -969,8 +991,10 @@ static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
 
         if (item_idx >= merged_count) {
             // Empty slot — just draw faint outline
-            g_ui_draw_list.Draw_Rect(cx, cy, cell_w, icon_h,
-                                     SLOT_BORDER_R, SLOT_BORDER_G, SLOT_BORDER_B, 60);
+            if (show_bg) {
+                g_ui_draw_list.Draw_Rect(cx, cy, cell_w, icon_h,
+                                         SLOT_BORDER_R, SLOT_BORDER_G, SLOT_BORDER_B, 60);
+            }
             continue;
         }
 
@@ -978,13 +1002,15 @@ static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
         int si = merged[item_idx].strip_index;
 
         // Slot background — use atlas build frame when available
-        if (use_atlas) {
-            emit_atlas_sprite(ATLAS_SIDEBAR_BUILDFRAME, cx, cy, cell_w, icon_h);
-        } else {
-            g_ui_draw_list.Fill_Rect(cx, cy, cell_w, icon_h,
-                                     SLOT_BG_R, SLOT_BG_G, SLOT_BG_B, 200);
-            g_ui_draw_list.Draw_Rect(cx, cy, cell_w, icon_h,
-                                     SLOT_BORDER_R, SLOT_BORDER_G, SLOT_BORDER_B, 255);
+        if (show_bg) {
+            if (use_atlas) {
+                emit_atlas_sprite(ATLAS_SIDEBAR_BUILDFRAME, cx, cy, cell_w, icon_h);
+            } else {
+                g_ui_draw_list.Fill_Rect(cx, cy, cell_w, icon_h,
+                                         SLOT_BG_R, SLOT_BG_G, SLOT_BG_B, 200);
+                g_ui_draw_list.Draw_Rect(cx, cy, cell_w, icon_h,
+                                         SLOT_BORDER_R, SLOT_BORDER_G, SLOT_BORDER_B, 255);
+            }
         }
 
         // Hit zone for this cell
@@ -992,16 +1018,18 @@ static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
 
         // Prefer atlas cameos, fall back to legacy SHP decode
         bool drew_icon = false;
-        if (use_atlas) {
-            drew_icon = emit_atlas_cameo(strip, si, cx + 1, cy + 1, cell_w - 2, icon_h - 2);
-        }
-        if (!drew_icon) {
-            const CameoCacheEntry* cameo = get_best_cameo(strip, si);
-            if (cameo && cameo->rgba) {
-                g_ui_draw_list.Draw_Icon(cx + 1, cy + 1, cell_w - 2, icon_h - 2,
-                                         reinterpret_cast<const uint8_t*>(cameo->rgba),
-                                         cameo->width, cameo->height);
-                drew_icon = true;
+        if (show_cameos) {
+            if (use_atlas) {
+                drew_icon = emit_atlas_cameo(strip, si, cx + 1, cy + 1, cell_w - 2, icon_h - 2);
+            }
+            if (!drew_icon) {
+                const CameoCacheEntry* cameo = get_best_cameo(strip, si);
+                if (cameo && cameo->rgba) {
+                    g_ui_draw_list.Draw_Icon(cx + 1, cy + 1, cell_w - 2, icon_h - 2,
+                                             reinterpret_cast<const uint8_t*>(cameo->rgba),
+                                             cameo->width, cameo->height);
+                    drew_icon = true;
+                }
             }
         }
 
@@ -1032,7 +1060,7 @@ static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
     bool can_up = g_hd_grid_top_index > 0;
     bool can_down = g_hd_grid_top_index + visible_slots < merged_count;
 
-    if (can_up || can_down) {
+    if ((can_up || can_down) && show_arrows) {
         int arrow_y = grid_y + grid_h - 14;
         int arrow_w = grid_w / 3;
 
@@ -1439,6 +1467,64 @@ static void emit_sidebar_frame(int x, int y, int w, int h, float sx, float sy,
 }
 
 // ---------------------------------------------------------------------------
+// SidebarMetrics — single source of truth for layout sizes
+// ---------------------------------------------------------------------------
+
+SidebarMetrics UI_Sidebar_Compute_Metrics()
+{
+    SidebarMetrics m{};
+
+    Render_Bridge_Get_Sidebar_Rect(m.side_x, m.side_y, m.side_w, m.side_h);
+    if (m.side_w <= 0) return m;  // caller checks m.valid()
+
+    const int base_w = SeenBuff.Get_Width();
+    const int base_h = SeenBuff.Get_Height();
+    int logical_w = 0, logical_h = 0;
+    Render_Bridge_Get_Logical_Screen_Size(logical_w, logical_h);
+    m.sx = (base_w > 0) ? static_cast<float>(logical_w) / static_cast<float>(base_w) : 1.0f;
+    m.sy = (base_h > 0) ? static_cast<float>(logical_h) / static_cast<float>(base_h) : 1.0f;
+    m.hd_mode = Render_Bridge_Get_HD_Graphics();
+
+    // Legacy-pixel constants, scaled once.
+    m.top_bar_h         = scale_y_from_legacy(16, m.sy);
+    m.top_btn_inset     = 2;
+    m.mode_tab_h        = scale_y_from_legacy(18, m.sy);
+    m.mode_tab_gap      = scale_y_from_legacy(3,  m.sy);
+    m.category_h        = scale_y_from_legacy(16, m.sy);
+    m.category_gap      = scale_y_from_legacy(2,  m.sy);
+    m.power_bar_w       = scale_x_from_legacy(8,  m.sx);
+    m.power_bar_x_inset = 2;
+    m.radar_gap_below   = scale_y_from_legacy(13, m.sy);
+    m.btn_row_h         = scale_y_from_legacy(16, m.sy);
+    m.credits_text_pad  = scale_x_from_legacy(6,  m.sx);
+    m.grid_cols         = HD_GRID_COLS;
+    m.grid_icon_pad     = HD_GRID_ICON_PAD;
+    m.grid_text_h       = scale_y_from_legacy(HD_GRID_TEXT_H, m.sy);
+    m.grid_x_inset      = scale_x_from_legacy(6, m.sx);
+    m.grid_x_pad        = scale_x_from_legacy(8, m.sx);
+
+    // Anchors — derive once.
+    m.radar_bottom_y = scale_y_from_legacy(Map.RadY + Map.RadHeight, m.sy)
+                     + m.radar_gap_below;
+    m.tab_row_y      = m.radar_bottom_y;
+    m.cat_row_y      = m.hd_mode ? (m.tab_row_y + m.mode_tab_h + m.mode_tab_gap)
+                                 : m.tab_row_y;
+    m.power_bar_x    = m.side_x + m.power_bar_x_inset;
+    m.power_bar_y    = m.hd_mode
+                     ? (m.cat_row_y + m.category_h + m.category_gap)
+                     : m.radar_bottom_y;
+    m.bottom_btn_y   = m.hd_mode
+                     ? (m.side_y + m.side_h - 2)
+                     : (m.side_y + m.side_h - m.btn_row_h - 2);
+    m.power_bar_h    = m.bottom_btn_y - m.power_bar_y - 2;
+    m.prod_area_x    = m.side_x + m.power_bar_w + m.grid_x_inset;
+    m.prod_area_y    = m.power_bar_y;
+    m.prod_area_w    = m.side_w - m.power_bar_w - m.grid_x_pad;
+    m.prod_area_h    = m.bottom_btn_y - m.prod_area_y - 4;
+    return m;
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -1448,56 +1534,49 @@ void UI_Sidebar_Emit()
     if (!InMainLoop) return;
     if (!Map.IsSidebarActive) return;
 
-    int side_x = 0, side_y = 0, side_w = 0, side_h = 0;
-    Render_Bridge_Get_Sidebar_Rect(side_x, side_y, side_w, side_h);
-    if (side_w <= 0) return;
-
-    int base_w = SeenBuff.Get_Width();
-    int base_h = SeenBuff.Get_Height();
-    int logical_w = 0;
-    int logical_h = 0;
-    Render_Bridge_Get_Logical_Screen_Size(logical_w, logical_h);
-    float sx = (base_w > 0) ? static_cast<float>(logical_w) / static_cast<float>(base_w) : 1.0f;
-    float sy = (base_h > 0) ? static_cast<float>(logical_h) / static_cast<float>(base_h) : 1.0f;
-
-    bool hd_mode = Render_Bridge_Get_HD_Graphics();
+    SidebarMetrics m = UI_Sidebar_Compute_Metrics();
+    if (!m.valid()) return;
 
     // Try to load the HD command bar atlas when in HD mode
-    bool use_atlas = hd_mode && ensure_commandbar_atlas();
+    bool use_atlas = m.hd_mode && ensure_commandbar_atlas();
 
     static bool logged_sidebar_state = false;
     if (!logged_sidebar_state) {
         logged_sidebar_state = true;
         DBG("[HD-SIDEBAR] UI_Sidebar_Emit: hd_mode=%d use_atlas=%d atlas_ready=%d "
-            "side_rect=(%d,%d,%d,%d) base=(%d,%d) logical=(%d,%d) sx=%.2f sy=%.2f",
-            hd_mode, use_atlas, Commandbar_Atlas_Is_Ready(),
-            side_x, side_y, side_w, side_h,
-            base_w, base_h, logical_w, logical_h, sx, sy);
+            "side_rect=(%d,%d,%d,%d) sx=%.2f sy=%.2f top_h=%d tab_h=%d cat_h=%d pow_w=%d",
+            m.hd_mode, use_atlas, Commandbar_Atlas_Is_Ready(),
+            m.side_x, m.side_y, m.side_w, m.side_h, m.sx, m.sy,
+            m.top_bar_h, m.mode_tab_h, m.category_h, m.power_bar_w);
     }
 
     // Sidebar background frame
-    emit_sidebar_frame(side_x, side_y, side_w, side_h, sx, sy, use_atlas);
+    if (UI_Sidebar_Debug_Is_On(COMP_SIDEBAR_FRAME)) {
+        emit_sidebar_frame(m.side_x, m.side_y, m.side_w, m.side_h, m.sx, m.sy, use_atlas);
+    }
 
     // --- Top button bar (HD only — legacy mode uses SIDE1.SHP chrome) ---
-    int top_h = scale_y_from_legacy(16, sy);
-    if (hd_mode) {
-        if (use_atlas) {
-            emit_atlas_sprite(ATLAS_SIDEBAR_TOPBUTTON, side_x, side_y, side_w, top_h);
+    if (m.hd_mode) {
+        if (use_atlas && UI_Sidebar_Debug_Is_On(COMP_TOP_BAR)) {
+            emit_atlas_sprite(ATLAS_SIDEBAR_TOPBUTTON, m.side_x, m.side_y, m.side_w, m.top_bar_h);
         }
 
-        int top_y = side_y;
-        int top_btn = top_h - 2;
+        int top_y = m.side_y;
+        int top_btn = m.top_bar_h - 2;
         int menu_w = top_btn;
-        int menu_x = side_x + side_w - menu_w - 2;
+        int menu_x = m.side_x + m.side_w - menu_w - 2;
         int map_w = top_btn;
         int map_x = menu_x - map_w - 2;
-        int credits_x = side_x + 4;
+        int credits_x = m.side_x + 4;
         int credits_w = map_x - credits_x - 4;
 
-        emit_credits(credits_x, top_y + 2, credits_w, sx);
+        if (UI_Sidebar_Debug_Is_On(COMP_CREDITS)) {
+            emit_credits(credits_x, top_y + 2, credits_w, m.sx);
+        }
 
         // Radar / player-names toggle (replaces the legacy bottom MAP button).
-        if (emit_icon_button(map_x, top_y + 1, map_w, top_btn,
+        if (UI_Sidebar_Debug_Is_On(COMP_MAP_BTN) &&
+            emit_icon_button(map_x, top_y + 1, map_w, top_btn,
                              "R", use_atlas,
                              ATLAS_SIDEBAR_BTN_MAP_OFF,
                              ATLAS_SIDEBAR_BTN_MAP_HOVER,
@@ -1518,7 +1597,8 @@ void UI_Sidebar_Emit()
             }
         }
 
-        if (emit_icon_button(menu_x, top_y + 1, menu_w, top_btn,
+        if (UI_Sidebar_Debug_Is_On(COMP_MENU_BTN) &&
+            emit_icon_button(menu_x, top_y + 1, menu_w, top_btn,
                              "M", use_atlas,
                              ATLAS_SIDEBAR_MENUBTN_OFF,
                              ATLAS_SIDEBAR_MENUBTN_HOVER,
@@ -1529,31 +1609,22 @@ void UI_Sidebar_Emit()
         }
     }
 
-    // --- Power bar / mode row / bottom map button ---
-    // Use legacy radar bottom as reference point (Map.RadY + Map.RadHeight in SeenBuff space,
-    // scaled to HD logical screen — both use the same SeenBuff-relative coordinate origin).
-    int pow_w = scale_x_from_legacy(8, sx);
-    int pow_x = side_x + 2;
-    int radar_bottom = scale_y_from_legacy(Map.RadY + Map.RadHeight, sy)
-                     + scale_y_from_legacy(13, sy);
-    int btn_h = scale_y_from_legacy(16, sy);
-    // HD mode has no bottom button row — extend the grid/power area to the
-    // sidebar's bottom edge. Legacy mode reserves btn_h for Repair/Sell/Map.
-    int btn_y = hd_mode ? (side_y + side_h - 2)
-                        : (side_y + side_h - btn_h - 2);
-
-    int pow_y = radar_bottom;
+    // Aliases for readability within the legacy block below.
+    const int pow_w   = m.power_bar_w;
+    const int pow_x   = m.power_bar_x;
+    const int btn_h   = m.btn_row_h;
+    const int btn_y   = m.bottom_btn_y;
+    int       pow_y   = m.power_bar_y;
 
     bool repair_active = Map.IsRepairMode != 0;
     bool sell_active = Map.IsSellMode != 0;
     bool build_active = !repair_active && !sell_active;
 
-    if (hd_mode) {
-        int tab_y = radar_bottom;
-        int tab_gap = scale_y_from_legacy(3, sy);
-        int tab_h = scale_y_from_legacy(18, sy);
-        int tab_x = side_x + 2;
-        int tab_w = side_w - 4;
+    if (m.hd_mode) {
+        int tab_y = m.tab_row_y;
+        int tab_h = m.mode_tab_h;
+        int tab_x = m.side_x + 2;
+        int tab_w = m.side_w - 4;
         int tab_btn_base_w = tab_w / 3;
         int tab_btn_rem = tab_w % 3;
         int tab_btn_w0 = tab_btn_base_w + (tab_btn_rem > 0 ? 1 : 0);
@@ -1579,28 +1650,27 @@ void UI_Sidebar_Emit()
             ATLAS_SIDEBAR_MODETAB_BUILD_ICON
         };
 
-        if (emit_mode_tab_button(tab_x0, tab_y, tab_btn_w0, tab_h,
-                                 "R", repair_active, use_atlas, &repair_tab)) {
-            Map.Repair_Mode_Control(-1);
+        if (UI_Sidebar_Debug_Is_On(COMP_MODE_TABS)) {
+            if (emit_mode_tab_button(tab_x0, tab_y, tab_btn_w0, tab_h,
+                                     "R", repair_active, use_atlas, &repair_tab)) {
+                Map.Repair_Mode_Control(-1);
+            }
+            if (emit_mode_tab_button(tab_x1, tab_y, tab_btn_w1, tab_h,
+                                     "$", sell_active, use_atlas, &sell_tab)) {
+                Map.Sell_Mode_Control(-1);
+            }
+            if (emit_mode_tab_button(tab_x2, tab_y, tab_btn_w2, tab_h,
+                                     "B", build_active, use_atlas, &build_tab)) {
+                Map.Repair_Mode_Control(0);
+                Map.Sell_Mode_Control(0);
+            }
         }
-        if (emit_mode_tab_button(tab_x1, tab_y, tab_btn_w1, tab_h,
-                                 "$", sell_active, use_atlas, &sell_tab)) {
-            Map.Sell_Mode_Control(-1);
-        }
-        if (emit_mode_tab_button(tab_x2, tab_y, tab_btn_w2, tab_h,
-                                 "B", build_active, use_atlas, &build_tab)) {
-            Map.Repair_Mode_Control(0);
-            Map.Sell_Mode_Control(0);
-        }
-
-        pow_y = tab_y + tab_h + tab_gap;
 
         // Category selector row — filters the production grid.
-        int cat_h = scale_y_from_legacy(16, sy);
-        int cat_gap = scale_y_from_legacy(2, sy);
-        int cat_y = pow_y;
-        int cat_x = side_x + 2;
-        int cat_w = side_w - 4;
+        int cat_h = m.category_h;
+        int cat_y = m.cat_row_y;
+        int cat_x = m.side_x + 2;
+        int cat_w = m.side_w - 4;
         int cat_btn_base_w = cat_w / 4;
         int cat_btn_rem = cat_w % 4;
         int cat_btn_w[4] = {
@@ -1643,68 +1713,66 @@ void UI_Sidebar_Emit()
             { "?", CAT_SUPPORT,   &cat_support   },
         };
 
-        int cat_bx = cat_x;
-        for (int i = 0; i < 4; i++) {
-            bool is_active = (g_hd_grid_category == cat_buttons[i].cat);
-            if (emit_mode_tab_button(cat_bx, cat_y, cat_btn_w[i], cat_h,
-                                     cat_buttons[i].fallback,
-                                     is_active, use_atlas,
-                                     cat_buttons[i].sprites)) {
-                if (g_hd_grid_category != cat_buttons[i].cat) {
-                    g_hd_grid_category = cat_buttons[i].cat;
-                    g_hd_grid_top_index = 0;
+        if (UI_Sidebar_Debug_Is_On(COMP_CATEGORY_ROW)) {
+            int cat_bx = cat_x;
+            for (int i = 0; i < 4; i++) {
+                bool is_active = (g_hd_grid_category == cat_buttons[i].cat);
+                if (emit_mode_tab_button(cat_bx, cat_y, cat_btn_w[i], cat_h,
+                                         cat_buttons[i].fallback,
+                                         is_active, use_atlas,
+                                         cat_buttons[i].sprites)) {
+                    if (g_hd_grid_category != cat_buttons[i].cat) {
+                        g_hd_grid_category = cat_buttons[i].cat;
+                        g_hd_grid_top_index = 0;
+                    }
                 }
+                cat_bx += cat_btn_w[i];
             }
-            cat_bx += cat_btn_w[i];
         }
-
-        pow_y = cat_y + cat_h + cat_gap;
     }
 
-    int pow_h = btn_y - pow_y - 2;
-    if (pow_h > 10) {
+    int pow_h = m.power_bar_h;
+    if (pow_h > 10 && UI_Sidebar_Debug_Is_On(COMP_POWER_BAR)) {
         emit_power_bar(pow_x, pow_y, pow_w, pow_h, use_atlas);
-    } else {
+    } else if (pow_h <= 10) {
         static bool logged_power_skip = false;
         if (!logged_power_skip) {
             logged_power_skip = true;
             DBG("[HD-SIDEBAR] skipping power bar: pow_y=%d btn_y=%d pow_h=%d side_h=%d hd_mode=%d",
-                pow_y, btn_y, pow_h, side_h, hd_mode ? 1 : 0);
+                pow_y, btn_y, pow_h, m.side_h, m.hd_mode ? 1 : 0);
         }
     }
 
     // --- Production area ---
-    if (hd_mode) {
-        // HD 3-column grid layout — fills production area next to power bar
-        int prod_x = side_x + pow_w + 6;
-        int prod_y = pow_y;
-        int prod_w = side_w - pow_w - 8;
-        int prod_h = btn_y - prod_y - 4;
-
-        if (prod_w > 60 && prod_h > 40) {
-            emit_hd_grid(prod_x, prod_y, prod_w, prod_h, sx, sy, use_atlas);
+    if (m.hd_mode) {
+        if (m.prod_area_w > 60 && m.prod_area_h > 40) {
+            // The grid itself always runs; individual layers (backgrounds,
+            // cameos, overlays, scroll arrows) are gated inside emit_hd_grid
+            // by their respective COMP_* bits.
+            emit_hd_grid(m.prod_area_x, m.prod_area_y, m.prod_area_w, m.prod_area_h,
+                         m.sx, m.sy, use_atlas);
         }
     } else {
         // Legacy 2-column layout — use scaled strip positions
         for (int c = 0; c < 2; c++) {
             SidebarClass::StripClass strip = Map.Column[c];
-            strip.X = scale_x_from_legacy(strip.X, sx);
-            strip.Y = scale_y_from_legacy(strip.Y, sy);
-            strip.ObjectWidth = scale_x_from_legacy(strip.ObjectWidth, sx);
-            strip.ObjectHeight = scale_y_from_legacy(strip.ObjectHeight, sy);
-            strip.StripWidth = scale_x_from_legacy(strip.StripWidth, sx);
-            strip.LeftEdgeOffset = scale_x_from_legacy(strip.LeftEdgeOffset, sx);
-            emit_column(strip, hd_mode, c);
+            strip.X = scale_x_from_legacy(strip.X, m.sx);
+            strip.Y = scale_y_from_legacy(strip.Y, m.sy);
+            strip.ObjectWidth = scale_x_from_legacy(strip.ObjectWidth, m.sx);
+            strip.ObjectHeight = scale_y_from_legacy(strip.ObjectHeight, m.sy);
+            strip.StripWidth = scale_x_from_legacy(strip.StripWidth, m.sx);
+            strip.LeftEdgeOffset = scale_x_from_legacy(strip.LeftEdgeOffset, m.sx);
+            emit_column(strip, m.hd_mode, c);
         }
     }
 
     // --- Legacy-only Repair / Sell / Map bottom row ---
     // The HD path hosts repair/sell as mode tabs under the radar and the
     // radar/zoom toggle in the top strip, so no bottom chrome is needed.
-    if (!hd_mode) {
+    if (!m.hd_mode && UI_Sidebar_Debug_Is_On(COMP_LEGACY_BOTTOM)) {
         load_button_shapes();
 
-        int btn_w = side_w / 3;
+        int btn_w = m.side_w / 3;
 
         UIButtonStyle bs = UI_Default_Button_Style();
         bs.normal_r = 54; bs.normal_g = 70; bs.normal_b = 54;
@@ -1713,21 +1781,21 @@ void UI_Sidebar_Emit()
         bs.text_r = 0; bs.text_g = 200; bs.text_b = 0;
         bs.font = UI_FONT_6PT;
 
-        if (emit_sidebar_button(side_x + 2, btn_y, btn_w - 2, btn_h,
+        if (emit_sidebar_button(m.side_x + 2, btn_y, btn_w - 2, btn_h,
                                 s_repair_shape, repair_active ? 1 : 0,
                                 "RPR", repair_active, bs,
                                 false, nullptr)) {
             Map.Repair_Mode_Control(-1);
         }
 
-        if (emit_sidebar_button(side_x + btn_w + 1, btn_y, btn_w - 2, btn_h,
+        if (emit_sidebar_button(m.side_x + btn_w + 1, btn_y, btn_w - 2, btn_h,
                                 s_sell_shape, sell_active ? 1 : 0,
                                 "SEL", sell_active, bs,
                                 false, nullptr)) {
             Map.Sell_Mode_Control(-1);
         }
 
-        if (emit_sidebar_button(side_x + btn_w * 2, btn_y, btn_w - 2, btn_h,
+        if (emit_sidebar_button(m.side_x + btn_w * 2, btn_y, btn_w - 2, btn_h,
                                 s_map_shape, 0,
                                 "MAP", false, bs,
                                 false, nullptr)) {
