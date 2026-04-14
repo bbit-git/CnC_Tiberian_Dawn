@@ -1163,6 +1163,45 @@ struct AtlasButtonSprites {
     const char* press;
 };
 
+/// Atlas sprite names for an HD mode-tab button in the row below the radar.
+struct AtlasModeTabSprites {
+    const char* bg_off;
+    const char* bg_on;
+    const char* icon;
+};
+
+/// Draw a sprite centered inside a target rect while preserving its aspect ratio.
+static bool emit_atlas_sprite_centered(const char* name,
+                                       int x, int y, int w, int h,
+                                       int pad_x, int pad_y,
+                                       uint8_t r = 255, uint8_t g = 255,
+                                       uint8_t b = 255, uint8_t a = 255)
+{
+    const AtlasSpriteRect* rect = Commandbar_Atlas_Find(name);
+    if (!rect) return false;
+
+    int avail_w = w - pad_x * 2;
+    int avail_h = h - pad_y * 2;
+    if (avail_w <= 0 || avail_h <= 0 || rect->width <= 0 || rect->height <= 0) {
+        return false;
+    }
+
+    int draw_w = avail_w;
+    int draw_h = (draw_w * rect->height) / rect->width;
+    if (draw_h > avail_h) {
+        draw_h = avail_h;
+        draw_w = (draw_h * rect->width) / rect->height;
+    }
+    if (draw_w <= 0 || draw_h <= 0) return false;
+
+    int draw_x = x + (w - draw_w) / 2;
+    int draw_y = y + (h - draw_h) / 2;
+    g_ui_draw_list.Draw_Atlas_Sprite(draw_x, draw_y, draw_w, draw_h,
+                                     rect->u0, rect->v0, rect->u1, rect->v1,
+                                     r, g, b, a);
+    return true;
+}
+
 /// Emit a sidebar button with SHP art if available, falling back to text.
 /// When use_atlas is true, atlas sprites provide the button chrome.
 static bool emit_sidebar_button(int x, int y, int w, int h,
@@ -1231,6 +1270,59 @@ static bool emit_icon_button(int x, int y, int w, int h,
     } else if (fallback_label && fallback_label[0]) {
         g_ui_draw_list.Draw_Text(x + 2, y + 1, fallback_label, UI_FONT_6PT,
                                  0, 220, 0, 240, 0.9f);
+    }
+
+    return state == UI_BTN_PRESSED;
+}
+
+/// Emit one HD mode-tab button. Active/hovered buttons use the atlas "_ON" art.
+static bool emit_mode_tab_button(int x, int y, int w, int h,
+                                 const char* fallback_label,
+                                 bool is_active,
+                                 bool use_atlas,
+                                 const AtlasModeTabSprites* atlas)
+{
+    UIButtonStyle style = {};
+    if (!use_atlas) {
+        style = UI_Default_Button_Style();
+        style.normal_r = 30; style.normal_g = 38; style.normal_b = 30; style.normal_a = 220;
+        style.hover_r  = 44; style.hover_g  = 58; style.hover_b  = 44; style.hover_a  = 230;
+        style.press_r  = 22; style.press_g  = 32; style.press_b  = 22; style.press_a  = 235;
+        style.border_r = 0;  style.border_g = 110; style.border_b = 0;  style.border_a = 180;
+    }
+    style.text_r = is_active ? 220 : 180;
+    style.text_g = 255;
+    style.text_b = is_active ? 120 : 180;
+    style.text_a = 255;
+    style.font = UI_FONT_6PT;
+
+    UIButtonState state = UI_Button(x, y, w, h, nullptr, style);
+    bool highlight = is_active || state == UI_BTN_HOVERED || state == UI_BTN_PRESSED;
+
+    if (use_atlas && atlas) {
+        const char* bg = highlight ? atlas->bg_on : atlas->bg_off;
+        if (bg) {
+            emit_atlas_sprite(bg, x, y, w, h);
+        }
+
+        bool drew_icon = false;
+        if (atlas->icon) {
+            int pad_x = w / 4;
+            int pad_y = h / 5;
+            if (pad_x < 4) pad_x = 4;
+            if (pad_y < 3) pad_y = 3;
+            drew_icon = emit_atlas_sprite_centered(atlas->icon, x, y, w, h, pad_x, pad_y);
+        }
+
+        if (!drew_icon && fallback_label && fallback_label[0]) {
+            g_ui_draw_list.Draw_Text(x + w / 2 - 6, y + h / 2 - 4, fallback_label, UI_FONT_6PT,
+                                     style.text_r, style.text_g, style.text_b, style.text_a, 0.9f);
+        }
+    } else if (fallback_label && fallback_label[0]) {
+        int text_w = UI_Text_Measure_Width(UI_FONT_6PT, fallback_label,
+                                           static_cast<int>(strlen(fallback_label)));
+        g_ui_draw_list.Draw_Text(x + (w - text_w) / 2, y + h / 2 - 4, fallback_label, UI_FONT_6PT,
+                                 style.text_r, style.text_g, style.text_b, style.text_a, 0.9f);
     }
 
     return state == UI_BTN_PRESSED;
@@ -1378,7 +1470,7 @@ void UI_Sidebar_Emit()
         SpecialDialog = SDLG_OPTIONS;
     }
 
-    // --- Power bar ---
+    // --- Power bar / mode row / bottom map button ---
     // Use legacy radar bottom as reference point (Map.RadY + Map.RadHeight in SeenBuff space,
     // scaled to HD logical screen — both use the same SeenBuff-relative coordinate origin).
     int pow_w = scale_x_from_legacy(8, sx);
@@ -1388,17 +1480,70 @@ void UI_Sidebar_Emit()
     int btn_h = scale_y_from_legacy(16, sy);
     int btn_y = side_y + side_h - btn_h - 2;
 
-    // --- Sell/Repair button background bar ---
-    if (use_atlas) {
-        emit_atlas_sprite(ATLAS_SIDEBAR_SELLREPAIRBG,
-                          side_x, btn_y - scale_y_from_legacy(4, sy),
-                          side_w, btn_h + scale_y_from_legacy(8, sy));
+    int pow_y = radar_bottom;
+
+    bool repair_active = Map.IsRepairMode != 0;
+    bool sell_active = Map.IsSellMode != 0;
+    bool build_active = !repair_active && !sell_active;
+
+    if (hd_mode) {
+        int tab_y = radar_bottom;
+        int tab_gap = scale_y_from_legacy(3, sy);
+        int tab_h = scale_y_from_legacy(18, sy);
+        int tab_x = side_x + 2;
+        int tab_w = side_w - 4;
+        int tab_btn_base_w = tab_w / 3;
+        int tab_btn_rem = tab_w % 3;
+        int tab_btn_w0 = tab_btn_base_w + (tab_btn_rem > 0 ? 1 : 0);
+        int tab_btn_w1 = tab_btn_base_w + (tab_btn_rem > 1 ? 1 : 0);
+        int tab_btn_w2 = tab_btn_base_w;
+        int tab_x0 = tab_x;
+        int tab_x1 = tab_x0 + tab_btn_w0;
+        int tab_x2 = tab_x1 + tab_btn_w1;
+
+        static const AtlasModeTabSprites repair_tab = {
+            ATLAS_SIDEBAR_TABBUTTON_ENABLED,
+            ATLAS_SIDEBAR_TABBUTTON_HIGHLIGHTED,
+            ATLAS_SIDEBAR_MODETAB_REPAIR_ICON
+        };
+        static const AtlasModeTabSprites sell_tab = {
+            ATLAS_SIDEBAR_TABBUTTON_ENABLED,
+            ATLAS_SIDEBAR_TABBUTTON_HIGHLIGHTED,
+            ATLAS_SIDEBAR_MODETAB_SELL_ICON
+        };
+        static const AtlasModeTabSprites build_tab = {
+            ATLAS_SIDEBAR_TABBUTTON_ENABLED,
+            ATLAS_SIDEBAR_TABBUTTON_HIGHLIGHTED,
+            ATLAS_SIDEBAR_MODETAB_BUILD_ICON
+        };
+
+        if (emit_mode_tab_button(tab_x0, tab_y, tab_btn_w0, tab_h,
+                                 "R", repair_active, use_atlas, &repair_tab)) {
+            Map.Repair_Mode_Control(-1);
+        }
+        if (emit_mode_tab_button(tab_x1, tab_y, tab_btn_w1, tab_h,
+                                 "$", sell_active, use_atlas, &sell_tab)) {
+            Map.Sell_Mode_Control(-1);
+        }
+        if (emit_mode_tab_button(tab_x2, tab_y, tab_btn_w2, tab_h,
+                                 "B", build_active, use_atlas, &build_tab)) {
+            Map.Repair_Mode_Control(0);
+            Map.Sell_Mode_Control(0);
+        }
+
+        pow_y = tab_y + tab_h + tab_gap;
     }
 
-    int pow_y = radar_bottom;
     int pow_h = btn_y - pow_y - 2;
     if (pow_h > 10) {
         emit_power_bar(pow_x, pow_y, pow_w, pow_h, use_atlas);
+    } else {
+        static int skipped_power_logs = 0;
+        if (skipped_power_logs < 5) {
+            DBG("[HD-SIDEBAR] skipping power bar: pow_y=%d btn_y=%d pow_h=%d side_h=%d hd_mode=%d",
+                pow_y, btn_y, pow_h, side_h, hd_mode ? 1 : 0);
+            skipped_power_logs++;
+        }
     }
 
     // --- Production area ---
@@ -1458,20 +1603,20 @@ void UI_Sidebar_Emit()
         ATLAS_SIDEBAR_BTN_MAP_HOVER, ATLAS_SIDEBAR_BTN_MAP_PRESS
     };
 
-    bool repair_active = Map.IsRepairMode != 0;
-    if (emit_sidebar_button(side_x + 2, btn_y, btn_w - 2, btn_h,
-                            s_repair_shape, repair_active ? 1 : 0,
-                            "RPR", repair_active, bs,
-                            use_atlas, &repair_sprites)) {
-        Map.Repair_Mode_Control(-1);
-    }
+    if (!hd_mode) {
+        if (emit_sidebar_button(side_x + 2, btn_y, btn_w - 2, btn_h,
+                                s_repair_shape, repair_active ? 1 : 0,
+                                "RPR", repair_active, bs,
+                                use_atlas, &repair_sprites)) {
+            Map.Repair_Mode_Control(-1);
+        }
 
-    bool sell_active = Map.IsSellMode != 0;
-    if (emit_sidebar_button(side_x + btn_w + 1, btn_y, btn_w - 2, btn_h,
-                            s_sell_shape, sell_active ? 1 : 0,
-                            "SEL", sell_active, bs,
-                            use_atlas, &sell_sprites)) {
-        Map.Sell_Mode_Control(-1);
+        if (emit_sidebar_button(side_x + btn_w + 1, btn_y, btn_w - 2, btn_h,
+                                s_sell_shape, sell_active ? 1 : 0,
+                                "SEL", sell_active, bs,
+                                use_atlas, &sell_sprites)) {
+            Map.Sell_Mode_Control(-1);
+        }
     }
 
     if (emit_sidebar_button(side_x + btn_w * 2, btn_y, btn_w - 2, btn_h,

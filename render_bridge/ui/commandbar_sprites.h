@@ -186,6 +186,14 @@
 #define ATLAS_SIDEBAR_MENUBTN_PRESS          "UI_SIDEBAR_MENUBUTTON_PRESS.TGA"
 
 // ---------------------------------------------------------------------------
+// Auxiliary small icons used by the HD sidebar mode-tab row
+// ---------------------------------------------------------------------------
+
+#define ATLAS_SIDEBAR_MODETAB_REPAIR_ICON    "ICON_REPAIR_STRUCTURE.TGA"
+#define ATLAS_SIDEBAR_MODETAB_SELL_ICON      "UI_TOOLTIPCOSTICON.TGA"
+#define ATLAS_SIDEBAR_MODETAB_BUILD_ICON     "UI_SIDEBAR_BUILDTABICONSUPPORT.TGA"
+
+// ---------------------------------------------------------------------------
 // Build cameos — replaces {NAME}ICNH.SHP via BUILDICON_TD_{NAME}.TGA
 // All are 341×256 px (flag=0).
 // ---------------------------------------------------------------------------
