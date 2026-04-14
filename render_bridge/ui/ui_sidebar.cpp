@@ -1206,11 +1206,41 @@ static bool emit_sidebar_button(int x, int y, int w, int h,
     return state == UI_BTN_PRESSED;
 }
 
+/// Emit a small atlas-backed icon button with text fallback.
+static bool emit_icon_button(int x, int y, int w, int h,
+                             const char* fallback_label,
+                             bool use_atlas,
+                             const char* off_sprite,
+                             const char* hover_sprite,
+                             const char* press_sprite)
+{
+    UIButtonStyle style = UI_Default_Button_Style();
+    style.normal_r = 0; style.normal_g = 0; style.normal_b = 0; style.normal_a = 0;
+    style.hover_r  = 0; style.hover_g  = 0; style.hover_b  = 0; style.hover_a  = 0;
+    style.press_r  = 0; style.press_g  = 0; style.press_b  = 0; style.press_a  = 0;
+    style.border_r = 0; style.border_g = 0; style.border_b = 0; style.border_a = 0;
+
+    UIButtonState state = UI_Button(x, y, w, h, nullptr, style);
+    if (use_atlas) {
+        const char* sprite = off_sprite;
+        if (state == UI_BTN_HOVERED && hover_sprite) sprite = hover_sprite;
+        if (state == UI_BTN_PRESSED && press_sprite) sprite = press_sprite;
+        if (sprite) {
+            emit_atlas_sprite(sprite, x, y, w, h);
+        }
+    } else if (fallback_label && fallback_label[0]) {
+        g_ui_draw_list.Draw_Text(x + 2, y + 1, fallback_label, UI_FONT_6PT,
+                                 0, 220, 0, 240, 0.9f);
+    }
+
+    return state == UI_BTN_PRESSED;
+}
+
 // ---------------------------------------------------------------------------
 // Credits display
 // ---------------------------------------------------------------------------
 
-static void emit_credits(int x, int y, int w)
+static void emit_credits(int x, int y, int w, float sx)
 {
     if (!PlayerPtr) return;
 
@@ -1223,15 +1253,22 @@ static void emit_credits(int x, int y, int w)
 
     char buf[32];
     snprintf(buf, sizeof(buf), "$%ld", display_credits);
-    g_ui_draw_list.Draw_Text(x + 4, y + 2, buf, UI_FONT_6PT,
-                             0, 220, 0, 240, 0.9f);
-
-    // Tiberium indicator
+    int text_w = UI_Text_Measure_Width(UI_FONT_6PT, buf, static_cast<int>(strlen(buf)));
     if (tiberium > 0) {
         char tbuf[32];
         snprintf(tbuf, sizeof(tbuf), "T:%ld", tiberium);
-        g_ui_draw_list.Draw_Text(x + w / 2 + 4, y + 2, tbuf, UI_FONT_6PT,
+        int tib_w = UI_Text_Measure_Width(UI_FONT_6PT, tbuf, static_cast<int>(strlen(tbuf)));
+        int gap = scale_x_from_legacy(6, sx);
+        int pair_w = text_w + gap + tib_w;
+        int text_x = x + (w - pair_w) / 2;
+        g_ui_draw_list.Draw_Text(text_x, y + 2, buf, UI_FONT_6PT,
+                                 0, 220, 0, 240, 0.9f);
+        g_ui_draw_list.Draw_Text(text_x + text_w + gap, y + 2, tbuf, UI_FONT_6PT,
                                  180, 200, 0, 200, 0.8f);
+    } else {
+        int text_x = x + (w - text_w) / 2;
+        g_ui_draw_list.Draw_Text(text_x, y + 2, buf, UI_FONT_6PT,
+                                 0, 220, 0, 240, 0.9f);
     }
 }
 
@@ -1317,9 +1354,28 @@ void UI_Sidebar_Emit()
     emit_sidebar_frame(side_x, side_y, side_w, side_h, sx, sy, use_atlas);
 
     // --- Top button bar (options/menu strip) ---
+    int top_h = scale_y_from_legacy(16, sy);
     if (use_atlas) {
-        int top_h = scale_y_from_legacy(16, sy);
         emit_atlas_sprite(ATLAS_SIDEBAR_TOPBUTTON, side_x, side_y, side_w, top_h);
+    }
+
+    int top_y = side_y;
+    int top_btn = top_h - 2;
+    int menu_w = top_btn;
+    int menu_x = side_x + side_w - menu_w - 2;
+    int credits_x = side_x + 4;
+    int credits_w = side_w - menu_w - 10;
+
+    emit_credits(credits_x, top_y + 2, credits_w, sx);
+
+    if (emit_icon_button(menu_x, top_y + 1, menu_w, top_btn,
+                         "M", use_atlas,
+                         ATLAS_SIDEBAR_MENUBTN_OFF,
+                         ATLAS_SIDEBAR_MENUBTN_HOVER,
+                         ATLAS_SIDEBAR_MENUBTN_PRESS)) {
+        // Defer to the outer conquer loop — Options.Process() runs its own
+        // Main_Loop() and must not be invoked from inside UI emission.
+        SpecialDialog = SDLG_OPTIONS;
     }
 
     // --- Power bar ---
@@ -1339,11 +1395,7 @@ void UI_Sidebar_Emit()
                           side_w, btn_h + scale_y_from_legacy(8, sy));
     }
 
-    // Credits display — below the radar, above the power bar / production area
-    int credits_h = scale_y_from_legacy(10, sy);
-    emit_credits(side_x, radar_bottom, side_w);
-
-    int pow_y = radar_bottom + credits_h;
+    int pow_y = radar_bottom;
     int pow_h = btn_y - pow_y - 2;
     if (pow_h > 10) {
         emit_power_bar(pow_x, pow_y, pow_w, pow_h, use_atlas);

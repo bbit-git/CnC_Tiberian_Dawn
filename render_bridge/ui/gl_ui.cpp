@@ -230,12 +230,14 @@ void push_line_rect(std::vector<UIVertex>& verts,
 
 // is_sdf: true when the SDF program is active. The SDF shader always
 // samples the texture, so u_use_tex (legacy program only) is skipped.
-void flush_verts(std::vector<UIVertex>& verts, bool textured, bool is_sdf = false)
+// use_tex selects the legacy fragment branch: 0 = solid color,
+// 1 = alpha-only texture (font glyphs), 2 = RGBA texture (icons/atlas).
+void flush_verts(std::vector<UIVertex>& verts, float use_tex, bool is_sdf = false)
 {
     if (verts.empty()) return;
 
     if (!is_sdf)
-        glUniform1f(g_u_use_tex, textured ? 1.0f : 0.0f);
+        glUniform1f(g_u_use_tex, use_tex);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -309,7 +311,7 @@ void GL_UI_Render(int win_w, int win_h,
 
         switch (cmd.type) {
         case UI_CMD_FILL_RECT: {
-            flush_verts(text_verts, true, current_sdf);
+            flush_verts(text_verts, 1.0f, current_sdf);
             restore_main_program();
             float x0 = off_x + cmd.rect.x * scale;
             float y0 = off_y + cmd.rect.y * scale;
@@ -324,7 +326,7 @@ void GL_UI_Render(int win_w, int win_h,
         }
 
         case UI_CMD_DRAW_RECT: {
-            flush_verts(text_verts, true, current_sdf);
+            flush_verts(text_verts, 1.0f, current_sdf);
             restore_main_program();
             float x0 = off_x + cmd.rect.x * scale;
             float y0 = off_y + cmd.rect.y * scale;
@@ -343,7 +345,7 @@ void GL_UI_Render(int win_w, int win_h,
             // any potential switch to the SDF program.
             if (!solid_verts.empty()) {
                 restore_main_program();
-                flush_verts(solid_verts, false);
+                flush_verts(solid_verts, 0.0f);
             }
             UIFontID fid = static_cast<UIFontID>(cmd.text.font_id);
             const UIFontAtlas* atlas = UI_Text_Get_Atlas(fid);
@@ -354,7 +356,7 @@ void GL_UI_Render(int win_w, int win_h,
             // leaking into subsequent FNT text commands).
             bool need_sdf = atlas->is_sdf && g_program_sdf;
             if (current_font != fid || current_sdf != need_sdf) {
-                flush_verts(text_verts, true, current_sdf);
+                flush_verts(text_verts, 1.0f, current_sdf);
                 ensure_font_texture(fid);
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, g_font_textures[fid]);
@@ -413,9 +415,9 @@ void GL_UI_Render(int win_w, int win_h,
 
         case UI_CMD_ICON: {
             // Flush pending geometry before switching to textured mode
-            flush_verts(text_verts, true, current_sdf);
+            flush_verts(text_verts, 1.0f, current_sdf);
             restore_main_program();
-            flush_verts(solid_verts, false);
+            flush_verts(solid_verts, 0.0f);
 
             const UIIconCmd& ic = cmd.icon;
             if (ic.pixels && ic.src_w > 0 && ic.src_h > 0) {
@@ -450,18 +452,16 @@ void GL_UI_Render(int win_w, int win_h,
                 push_quad(icon_verts, x0, y0, x1, y1,
                           0.0f, 0.0f, 1.0f, 1.0f,
                           1.0f, 1.0f, 1.0f, 1.0f);
-                glUniform1f(g_u_use_tex, 2.0f); // RGBA texture mode
-                flush_verts(icon_verts, true);
-                glUniform1f(g_u_use_tex, 0.0f);
+                flush_verts(icon_verts, 2.0f); // RGBA texture mode
             }
             break;
         }
 
         case UI_CMD_ATLAS_SPRITE: {
             // Flush pending geometry before binding atlas texture
-            flush_verts(text_verts, true, current_sdf);
+            flush_verts(text_verts, 1.0f, current_sdf);
             restore_main_program();
-            flush_verts(solid_verts, false);
+            flush_verts(solid_verts, 0.0f);
 
             const UIAtlasSpriteCmd& as = cmd.atlas;
             GLuint atlas_tex = Commandbar_Atlas_Get_Texture();
@@ -482,16 +482,14 @@ void GL_UI_Render(int win_w, int win_h,
                 push_quad(atlas_verts, x0, y0, x1, y1,
                           as.u0, as.v0, as.u1, as.v1,
                           cr, cg, cb, ca);
-                glUniform1f(g_u_use_tex, 2.0f); // RGBA texture mode
-                flush_verts(atlas_verts, true);
-                glUniform1f(g_u_use_tex, 0.0f);
+                flush_verts(atlas_verts, 2.0f); // RGBA texture mode
             }
             break;
         }
 
         case UI_CMD_CLIP_PUSH:
-            flush_verts(solid_verts, false);
-            flush_verts(text_verts, true, current_sdf);
+            flush_verts(solid_verts, 0.0f);
+            flush_verts(text_verts, 1.0f, current_sdf);
             restore_main_program();
             g_clip_stack.push_back({cmd.clip.x, cmd.clip.y,
                                     cmd.clip.w, cmd.clip.h});
@@ -499,8 +497,8 @@ void GL_UI_Render(int win_w, int win_h,
             break;
 
         case UI_CMD_CLIP_POP:
-            flush_verts(solid_verts, false);
-            flush_verts(text_verts, true, current_sdf);
+            flush_verts(solid_verts, 0.0f);
+            flush_verts(text_verts, 1.0f, current_sdf);
             restore_main_program();
             if (!g_clip_stack.empty()) g_clip_stack.pop_back();
             apply_scissor(win_w, win_h, off_x, off_y, scale);
@@ -511,9 +509,9 @@ void GL_UI_Render(int win_w, int win_h,
         }
     }
 
-    flush_verts(text_verts, true, current_sdf);
+    flush_verts(text_verts, 1.0f, current_sdf);
     restore_main_program();
-    flush_verts(solid_verts, false);
+    flush_verts(solid_verts, 0.0f);
 
     glDisableVertexAttribArray(0);
     glDisableVertexAttribArray(1);
