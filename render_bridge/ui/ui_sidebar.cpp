@@ -43,20 +43,20 @@ static bool g_atlas_init_attempted = false;
 static int g_hd_grid_top_index = 0;
 
 /// HD sidebar build-category filter (selected by the row below the mode tabs).
+/// Defaults to CAT_STRUCTURE so fresh games (no factories yet) show buildings
+/// rather than an empty grid.
 enum SidebarCategory {
-    CAT_ALL,
     CAT_INFANTRY,
     CAT_VEHICLE,
     CAT_STRUCTURE,
     CAT_SUPPORT,
 };
-static SidebarCategory g_hd_grid_category = CAT_VEHICLE;
+static SidebarCategory g_hd_grid_category = CAT_STRUCTURE;
 
 /// True if the given buildable RTTI belongs to the selected category.
 static bool category_matches(SidebarCategory cat, RTTIType rtti)
 {
     switch (cat) {
-        case CAT_ALL:       return true;
         case CAT_INFANTRY:  return rtti == RTTI_INFANTRYTYPE;
         case CAT_VEHICLE:   return rtti == RTTI_UNITTYPE
                                 || rtti == RTTI_AIRCRAFTTYPE;
@@ -1310,9 +1310,14 @@ static bool emit_mode_tab_button(int x, int y, int w, int h,
                                  bool use_atlas,
                                  const AtlasModeTabSprites* atlas)
 {
-    UIButtonStyle style = {};
-    if (!use_atlas) {
-        style = UI_Default_Button_Style();
+    UIButtonStyle style = UI_Default_Button_Style();
+    if (use_atlas) {
+        // Atlas sprites own the chrome — suppress the default fill.
+        style.normal_r = 0; style.normal_g = 0; style.normal_b = 0; style.normal_a = 0;
+        style.hover_r  = 0; style.hover_g  = 0; style.hover_b  = 0; style.hover_a  = 0;
+        style.press_r  = 0; style.press_g  = 0; style.press_b  = 0; style.press_a  = 0;
+        style.border_r = 0; style.border_g = 0; style.border_b = 0; style.border_a = 0;
+    } else {
         style.normal_r = 30; style.normal_g = 38; style.normal_b = 30; style.normal_a = 220;
         style.hover_r  = 44; style.hover_g  = 58; style.hover_b  = 44; style.hover_a  = 230;
         style.press_r  = 22; style.press_g  = 32; style.press_b  = 22; style.press_a  = 235;
@@ -1473,26 +1478,25 @@ void UI_Sidebar_Emit()
     // Sidebar background frame
     emit_sidebar_frame(side_x, side_y, side_w, side_h, sx, sy, use_atlas);
 
-    // --- Top button bar (options/menu strip) ---
+    // --- Top button bar (HD only — legacy mode uses SIDE1.SHP chrome) ---
     int top_h = scale_y_from_legacy(16, sy);
-    if (use_atlas) {
-        emit_atlas_sprite(ATLAS_SIDEBAR_TOPBUTTON, side_x, side_y, side_w, top_h);
-    }
-
-    int top_y = side_y;
-    int top_btn = top_h - 2;
-    int menu_w = top_btn;
-    int menu_x = side_x + side_w - menu_w - 2;
-    int map_w = top_btn;
-    int map_x = menu_x - map_w - 2;
-    int credits_x = side_x + 4;
-    int credits_w = (hd_mode ? map_x : menu_x) - credits_x - 4;
-
-    emit_credits(credits_x, top_y + 2, credits_w, sx);
-
-    // HD path hosts the radar/player-names toggle as a second top-strip icon,
-    // to the left of the menu button. Legacy mode keeps the bottom MAP button.
     if (hd_mode) {
+        if (use_atlas) {
+            emit_atlas_sprite(ATLAS_SIDEBAR_TOPBUTTON, side_x, side_y, side_w, top_h);
+        }
+
+        int top_y = side_y;
+        int top_btn = top_h - 2;
+        int menu_w = top_btn;
+        int menu_x = side_x + side_w - menu_w - 2;
+        int map_w = top_btn;
+        int map_x = menu_x - map_w - 2;
+        int credits_x = side_x + 4;
+        int credits_w = map_x - credits_x - 4;
+
+        emit_credits(credits_x, top_y + 2, credits_w, sx);
+
+        // Radar / player-names toggle (replaces the legacy bottom MAP button).
         if (emit_icon_button(map_x, top_y + 1, map_w, top_btn,
                              "R", use_atlas,
                              ATLAS_SIDEBAR_BTN_MAP_OFF,
@@ -1513,16 +1517,16 @@ void UI_Sidebar_Emit()
                 Map.Player_Names(Map.Is_Player_Names() == 0);
             }
         }
-    }
 
-    if (emit_icon_button(menu_x, top_y + 1, menu_w, top_btn,
-                         "M", use_atlas,
-                         ATLAS_SIDEBAR_MENUBTN_OFF,
-                         ATLAS_SIDEBAR_MENUBTN_HOVER,
-                         ATLAS_SIDEBAR_MENUBTN_PRESS)) {
-        // Defer to the outer conquer loop — Options.Process() runs its own
-        // Main_Loop() and must not be invoked from inside UI emission.
-        SpecialDialog = SDLG_OPTIONS;
+        if (emit_icon_button(menu_x, top_y + 1, menu_w, top_btn,
+                             "M", use_atlas,
+                             ATLAS_SIDEBAR_MENUBTN_OFF,
+                             ATLAS_SIDEBAR_MENUBTN_HOVER,
+                             ATLAS_SIDEBAR_MENUBTN_PRESS)) {
+            // Defer to the outer conquer loop — Options.Process() runs its own
+            // Main_Loop() and must not be invoked from inside UI emission.
+            SpecialDialog = SDLG_OPTIONS;
+        }
     }
 
     // --- Power bar / mode row / bottom map button ---
@@ -1533,7 +1537,10 @@ void UI_Sidebar_Emit()
     int radar_bottom = scale_y_from_legacy(Map.RadY + Map.RadHeight, sy)
                      + scale_y_from_legacy(13, sy);
     int btn_h = scale_y_from_legacy(16, sy);
-    int btn_y = side_y + side_h - btn_h - 2;
+    // HD mode has no bottom button row — extend the grid/power area to the
+    // sidebar's bottom edge. Legacy mode reserves btn_h for Repair/Sell/Map.
+    int btn_y = hd_mode ? (side_y + side_h - 2)
+                        : (side_y + side_h - btn_h - 2);
 
     int pow_y = radar_bottom;
 
@@ -1658,11 +1665,11 @@ void UI_Sidebar_Emit()
     if (pow_h > 10) {
         emit_power_bar(pow_x, pow_y, pow_w, pow_h, use_atlas);
     } else {
-        static int skipped_power_logs = 0;
-        if (skipped_power_logs < 5) {
+        static bool logged_power_skip = false;
+        if (!logged_power_skip) {
+            logged_power_skip = true;
             DBG("[HD-SIDEBAR] skipping power bar: pow_y=%d btn_y=%d pow_h=%d side_h=%d hd_mode=%d",
                 pow_y, btn_y, pow_h, side_h, hd_mode ? 1 : 0);
-            skipped_power_logs++;
         }
     }
 
@@ -1691,71 +1698,51 @@ void UI_Sidebar_Emit()
         }
     }
 
-    // --- Repair / Sell / Map buttons ---
-    load_button_shapes();
+    // --- Legacy-only Repair / Sell / Map bottom row ---
+    // The HD path hosts repair/sell as mode tabs under the radar and the
+    // radar/zoom toggle in the top strip, so no bottom chrome is needed.
+    if (!hd_mode) {
+        load_button_shapes();
 
-    int btn_w = side_w / 3;
+        int btn_w = side_w / 3;
 
-    UIButtonStyle bs = UI_Default_Button_Style();
-    if (use_atlas) {
-        // Transparent background — atlas sprites provide the chrome
-        bs.normal_r = 0; bs.normal_g = 0; bs.normal_b = 0; bs.normal_a = 0;
-        bs.hover_r = 0; bs.hover_g = 0; bs.hover_b = 0; bs.hover_a = 0;
-        bs.press_r = 0; bs.press_g = 0; bs.press_b = 0; bs.press_a = 0;
-    } else {
+        UIButtonStyle bs = UI_Default_Button_Style();
         bs.normal_r = 54; bs.normal_g = 70; bs.normal_b = 54;
         bs.hover_r = 70; bs.hover_g = 94; bs.hover_b = 70;
         bs.press_r = 44; bs.press_g = 56; bs.press_b = 44;
-    }
-    bs.text_r = 0; bs.text_g = 200; bs.text_b = 0;
-    bs.font = UI_FONT_6PT;
+        bs.text_r = 0; bs.text_g = 200; bs.text_b = 0;
+        bs.font = UI_FONT_6PT;
 
-    static const AtlasButtonSprites repair_sprites = {
-        ATLAS_SIDEBAR_BTN_REPAIR_OFF, ATLAS_SIDEBAR_BTN_REPAIR_ON,
-        ATLAS_SIDEBAR_BTN_REPAIR_HOVER, ATLAS_SIDEBAR_BTN_REPAIR_PRESS
-    };
-    static const AtlasButtonSprites sell_sprites = {
-        ATLAS_SIDEBAR_BTN_SELL_OFF, ATLAS_SIDEBAR_BTN_SELL_ON,
-        ATLAS_SIDEBAR_BTN_SELL_HOVER, ATLAS_SIDEBAR_BTN_SELL_PRESS
-    };
-    static const AtlasButtonSprites map_sprites = {
-        ATLAS_SIDEBAR_BTN_MAP_OFF, ATLAS_SIDEBAR_BTN_MAP_ON,
-        ATLAS_SIDEBAR_BTN_MAP_HOVER, ATLAS_SIDEBAR_BTN_MAP_PRESS
-    };
-
-    if (!hd_mode) {
         if (emit_sidebar_button(side_x + 2, btn_y, btn_w - 2, btn_h,
                                 s_repair_shape, repair_active ? 1 : 0,
                                 "RPR", repair_active, bs,
-                                use_atlas, &repair_sprites)) {
+                                false, nullptr)) {
             Map.Repair_Mode_Control(-1);
         }
 
         if (emit_sidebar_button(side_x + btn_w + 1, btn_y, btn_w - 2, btn_h,
                                 s_sell_shape, sell_active ? 1 : 0,
                                 "SEL", sell_active, bs,
-                                use_atlas, &sell_sprites)) {
+                                false, nullptr)) {
             Map.Sell_Mode_Control(-1);
         }
-    }
 
-    if (emit_sidebar_button(side_x + btn_w * 2, btn_y, btn_w - 2, btn_h,
-                            s_map_shape, 0,
-                            "MAP", false, bs,
-                            use_atlas, &map_sprites)) {
-        if (Map.Is_Radar_Active()) {
-            if (Map.Is_Zoomed() || GameToPlay == GAME_NORMAL) {
-                Map.Zoom_Mode(Coord_Cell(Map.TacticalCoord));
-            } else {
-                if (!Map.Is_Player_Names()) {
-                    Map.Player_Names(1);
-                } else {
-                    Map.Player_Names(0);
+        if (emit_sidebar_button(side_x + btn_w * 2, btn_y, btn_w - 2, btn_h,
+                                s_map_shape, 0,
+                                "MAP", false, bs,
+                                false, nullptr)) {
+            if (Map.Is_Radar_Active()) {
+                if (Map.Is_Zoomed() || GameToPlay == GAME_NORMAL) {
                     Map.Zoom_Mode(Coord_Cell(Map.TacticalCoord));
+                } else {
+                    if (!Map.Is_Player_Names()) {
+                        Map.Player_Names(1);
+                    } else {
+                        Map.Player_Names(0);
+                        Map.Zoom_Mode(Coord_Cell(Map.TacticalCoord));
+                    }
                 }
-            }
-        } else {
-            if (GameToPlay != GAME_NORMAL) {
+            } else if (GameToPlay != GAME_NORMAL) {
                 Map.Player_Names(Map.Is_Player_Names() == 0);
             }
         }

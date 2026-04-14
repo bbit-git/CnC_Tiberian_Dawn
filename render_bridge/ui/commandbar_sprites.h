@@ -191,7 +191,9 @@
 
 #define ATLAS_SIDEBAR_MODETAB_REPAIR_ICON    "ICON_REPAIR_STRUCTURE.TGA"
 #define ATLAS_SIDEBAR_MODETAB_SELL_ICON      "UI_TOOLTIPCOSTICON.TGA"
-#define ATLAS_SIDEBAR_MODETAB_BUILD_ICON     "UI_SIDEBAR_BUILDTABICONSUPPORT.TGA"
+// Build-mode tab uses the build-slot frame as a "grid" glyph — distinct from
+// the SUPPORT category filter icon which reuses BUILDTABICONSUPPORT.
+#define ATLAS_SIDEBAR_MODETAB_BUILD_ICON     "UI_SIDEBAR_BUILDFRAME.TGA"
 
 // ---------------------------------------------------------------------------
 // Build cameos — replaces {NAME}ICNH.SHP via BUILDICON_TD_{NAME}.TGA
