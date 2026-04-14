@@ -780,8 +780,21 @@ void SidebarClass::Draw_It(bool complete)
 {
 	/*
 	**	Render power bar, radar, and tactical map via the normal chain.
+	**	This must always run — the tactical map rendering lives at the
+	**	bottom of this Draw_It hierarchy.
 	*/
 	PowerClass::Draw_It(complete);
+
+	// When the bridge-native sidebar is active (HD mode), skip the
+	// sidebar-specific drawing below (frame shapes, strip columns,
+	// repair/sell buttons).  The bridge draws its own sidebar via
+	// UI_Sidebar_Emit() and legacy pixels here would bleed through
+	// the UI overlay diff as ghost artefacts.
+	extern bool Render_Bridge_Use_Legacy_Sidebar_Mode();
+	if (!Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+		IsToRedraw = false;
+		return;
+	}
 
 	if (IsSidebarActive && (IsToRedraw || complete) && !Debug_Map) {
 		IsToRedraw = false;

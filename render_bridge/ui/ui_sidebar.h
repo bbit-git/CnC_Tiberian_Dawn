@@ -15,9 +15,6 @@ void UI_Sidebar_Emit();
 /// Invalidate the legacy cameo RGBA cache (call on palette change or scene transition).
 void UI_Sidebar_Cameo_Invalidate();
 
-/// Invalidate the HD cameo RGBA cache (call when MEG assets change).
-void UI_Sidebar_HD_Cameo_Invalidate();
-
 /// Free all cameo cache resources (call at shutdown).
 void UI_Sidebar_Cameo_Shutdown();
 

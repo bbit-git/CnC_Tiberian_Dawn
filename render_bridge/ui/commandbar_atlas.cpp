@@ -199,16 +199,9 @@ const AtlasSpriteRect* Commandbar_Atlas_Find(const char* name)
 {
     if (!g_atlas.ready || !name) return nullptr;
 
-    const MTDEntry* e = g_atlas.mtd.Find(name);
-    if (!e) return nullptr;
-
-    // Find index by scanning (MTDReader Find returns pointer into entries vector)
-    for (int i = 0; i < g_atlas.mtd.Count(); i++) {
-        if (g_atlas.mtd.Get_Entry(i) == e) {
-            return &g_atlas.rects[i];
-        }
-    }
-    return nullptr;
+    int idx = g_atlas.mtd.Find_Index(name);
+    if (idx < 0) return nullptr;
+    return &g_atlas.rects[idx];
 }
 
 uint32_t Commandbar_Atlas_Get_Texture()

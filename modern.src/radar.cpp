@@ -336,6 +336,20 @@ void RadarClass::Draw_It(bool forced)
 {
 	//DBG("RadarClass::Draw_It");
 	DisplayClass::Draw_It(forced);
+
+#ifdef USE_RENDER_BRIDGE
+	// Skip legacy radar drawing when bridge-native sidebar is active.
+	// The bridge draws its own radar via UI_Radar_Emit().
+	{
+		extern bool Render_Bridge_Use_Legacy_Sidebar_Mode();
+		if (!Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+			IsToRedraw = false;
+			FullRedraw = false;
+			return;
+		}
+	}
+#endif
+
 //	if (!In_Debugger)	while (!HidPage.Lock()) {}
 
 	/*

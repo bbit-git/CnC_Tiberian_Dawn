@@ -10,8 +10,8 @@
  * (shapefile, frame, remap_table, opacity) tuple.  The cache is
  * invalidated on palette change.
  *
- * When HD graphics are enabled, cameo icons are loaded from MEG archives
- * via HDSpriteProvider and the sidebar uses a 3-column grid layout.
+ * When HD graphics are enabled, cameo icons are loaded from the command
+ * bar atlas (MTD/TGA) and the sidebar uses a 3-column grid layout.
  */
 
 #include "ui_sidebar.h"
@@ -24,7 +24,6 @@
 #include "commandbar_sprites.h"
 #include "render_bridge.h"
 #include "legacy_sprite_provider.h"
-#include "hd_sprite_provider.h"
 #include "function.h"
 #include "dbg.h"
 #include <cstdio>
@@ -39,6 +38,9 @@
 
 /// HD command bar atlas init state (used early in Cameo_Shutdown).
 static bool g_atlas_init_attempted = false;
+
+/// HD grid scroll state (reset on shutdown, used by emit_hd_grid).
+static int g_hd_grid_top_index = 0;
 
 /// Sidebar slot colors.
 static constexpr uint8_t SLOT_BG_R = 40, SLOT_BG_G = 44, SLOT_BG_B = 40;
@@ -56,20 +58,6 @@ static constexpr uint8_t POW_RED_R = 200, POW_RED_G = 40, POW_RED_B = 0;
 static constexpr int HD_GRID_COLS = 3;
 static constexpr int HD_GRID_ICON_PAD = 2;
 static constexpr int HD_GRID_TEXT_H = 14; // text label area below icon
-
-// ---------------------------------------------------------------------------
-// FNV-1a hash for entity name lookups (matches mixfile.cpp implementation)
-// ---------------------------------------------------------------------------
-
-static uint32_t sidebar_fnv1a_hash(const char* str)
-{
-    uint32_t h = 0x811c9dc5u;
-    for (; *str; str++) {
-        h ^= static_cast<uint8_t>(toupper(static_cast<unsigned char>(*str)));
-        h *= 0x01000193u;
-    }
-    return h;
-}
 
 // ---------------------------------------------------------------------------
 // Cameo RGBA cache
@@ -196,58 +184,7 @@ void UI_Sidebar_Cameo_Shutdown()
     UI_Sidebar_Cameo_Invalidate();
     Commandbar_Atlas_Shutdown();
     g_atlas_init_attempted = false;
-}
-
-// ---------------------------------------------------------------------------
-// HD cameo cache — separate from SHP cache, keyed by entity hash
-// ---------------------------------------------------------------------------
-
-static std::unordered_map<uint32_t, CameoCacheEntry> g_hd_cameo_cache;
-
-/// Try to get an HD cameo frame via HDSpriteProvider.
-/// Caches the decoded RGBA. Returns nullptr if HD provider unavailable or
-/// the entity has no HD frame.
-static const CameoCacheEntry* hd_cameo_decode(uint32_t entity_hash)
-{
-    if (entity_hash == 0) return nullptr;
-
-    auto it = g_hd_cameo_cache.find(entity_hash);
-    if (it != g_hd_cameo_cache.end()) return &it->second;
-
-    HDSpriteProvider* hd = static_cast<HDSpriteProvider*>(Render_Bridge_Get_HD_Sprite_Provider());
-    if (!hd) return nullptr;
-
-    const void* shape_id = reinterpret_cast<const void*>(static_cast<uintptr_t>(entity_hash));
-    SpriteFrame frame = {};
-    if (!hd->Get_Frame(shape_id, 0, frame)) return nullptr;
-    if (!frame.pixels || frame.width <= 0 || frame.height <= 0) return nullptr;
-
-    // HD frames are already RGBA — copy to owned buffer
-    int pixel_count = frame.width * frame.height;
-    uint32_t* rgba = static_cast<uint32_t*>(malloc(pixel_count * 4));
-    if (!rgba) return nullptr;
-
-    if (frame.pixel_format == SpritePixelFormat::RGBA_32BIT) {
-        const uint8_t* src = static_cast<const uint8_t*>(frame.pixels);
-        for (int y = 0; y < frame.height; y++) {
-            memcpy(rgba + y * frame.width, src + y * frame.pitch, frame.width * 4);
-        }
-    } else {
-        free(rgba);
-        return nullptr;
-    }
-
-    CameoCacheEntry entry = { rgba, frame.width, frame.height };
-    auto result = g_hd_cameo_cache.emplace(entity_hash, entry);
-    return &result.first->second;
-}
-
-void UI_Sidebar_HD_Cameo_Invalidate()
-{
-    for (auto& kv : g_hd_cameo_cache) {
-        free(kv.second.rgba);
-    }
-    g_hd_cameo_cache.clear();
+    g_hd_grid_top_index = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -286,7 +223,7 @@ static bool ensure_commandbar_atlas()
         if (try_open(steam_dir)) return true;
     }
 
-    DBG("commandbar_atlas: TEXTURES_SRGB.MEG not found — HD sidebar disabled");
+    DBG("[HD-SIDEBAR] TEXTURES_SRGB.MEG not found — HD sidebar disabled");
     return false;
 }
 
@@ -298,7 +235,14 @@ static bool emit_atlas_sprite(const char* name,
                               uint8_t b = 255, uint8_t a = 255)
 {
     const AtlasSpriteRect* rect = Commandbar_Atlas_Find(name);
-    if (!rect) return false;
+    if (!rect) {
+        static int miss_count = 0;
+        if (miss_count < 20) {
+            DBG("[HD-SIDEBAR] atlas sprite MISS: '%s'", name);
+            miss_count++;
+        }
+        return false;
+    }
     g_ui_draw_list.Draw_Atlas_Sprite(dst_x, dst_y, dst_w, dst_h,
                                      rect->u0, rect->v0, rect->u1, rect->v1,
                                      r, g, b, a);
@@ -348,23 +292,71 @@ static const void* get_cameo_shape(const SidebarClass::StripClass& strip,
     return obj ? obj->Get_Cameo_Data() : nullptr;
 }
 
-/// Get the entity name hash for a buildable item (for HD sprite lookup).
-static uint32_t get_entity_hash(const SidebarClass::StripClass& strip, int index)
+/// Map from a TD IniName (short code) to the atlas sprite's display-name
+/// suffix (e.g. "NUKE" -> "POWERPLANT" so the atlas key becomes
+/// "BUILDICON_TD_POWERPLANT.TGA").  Returns nullptr if not mapped — caller
+/// falls back to uppercasing IniName directly (works for APC, JEEP, MCV,
+/// ORCA, A10, SILO — names that already match the atlas form).
+static const char* ininame_to_atlas_suffix(const char* ini)
 {
-    if (strip.Buildables[index].BuildableType == RTTI_SPECIAL) return 0;
-
-    ObjectTypeClass const* obj = Fetch_Techno_Type(
-        strip.Buildables[index].BuildableType,
-        strip.Buildables[index].BuildableID);
-    if (!obj) return 0;
-
-    return sidebar_fnv1a_hash(obj->IniName);
+    if (!ini) return nullptr;
+    // Buildings
+    if (!strcmp(ini, "TMPL")) return "TEMPLEOFNOD";
+    if (!strcmp(ini, "EYE"))  return "ADVCOMMCTR";
+    if (!strcmp(ini, "WEAP")) return "WEAPONSFACTORY";
+    if (!strcmp(ini, "GTWR")) return "GUARDTOWER";
+    if (!strcmp(ini, "ATWR")) return "ADVGUARDTOWER";
+    if (!strcmp(ini, "OBLI")) return "OBELISK";
+    if (!strcmp(ini, "GUN"))  return "TURRET";
+    if (!strcmp(ini, "FACT")) return "CONYARD";
+    if (!strcmp(ini, "PROC")) return "REFINERY";
+    if (!strcmp(ini, "HPAD")) return "HELIPAD";
+    if (!strcmp(ini, "HQ"))   return "COMMCENTER";
+    if (!strcmp(ini, "SAM"))  return "SAMSITE";
+    if (!strcmp(ini, "AFLD")) return "AIRSTRIP";
+    if (!strcmp(ini, "NUKE")) return "POWERPLANT";
+    if (!strcmp(ini, "NUK2")) return "ADVPOWERPLANT";
+    if (!strcmp(ini, "PYLE")) return "BARRACKS";
+    if (!strcmp(ini, "HAND")) return "HANDOFNOD";
+    if (!strcmp(ini, "FIX"))  return "REPAIRFACILITY";
+    if (!strcmp(ini, "SBAG")) return "SANDBAGS";
+    if (!strcmp(ini, "CYCL")) return "CHAINLINKFENCE";
+    if (!strcmp(ini, "BRIK")) return "CONCRETEWALL";
+    if (!strcmp(ini, "BARB")) return "BARBEDWIRE";
+    if (!strcmp(ini, "WOOD")) return "WOODENFENCE";
+    // Infantry
+    if (!strcmp(ini, "E1"))   return "MINIGUNNER";
+    if (!strcmp(ini, "E2"))   return "GRENADIER";
+    if (!strcmp(ini, "E3"))   return "ROCKETSOLDIER";
+    if (!strcmp(ini, "E4"))   return "FLAMETHROWER";
+    if (!strcmp(ini, "E5"))   return "CHEMWARRIOR";
+    if (!strcmp(ini, "E6"))   return "ENGINEER";
+    if (!strcmp(ini, "RMBO")) return "COMMANDO";
+    // Units
+    if (!strcmp(ini, "FTNK")) return "FLAMETANK";
+    if (!strcmp(ini, "STNK")) return "STEALTHTANK";
+    if (!strcmp(ini, "LTNK")) return "LIGHTTANK";
+    if (!strcmp(ini, "MTNK")) return "MEDIUMTANK";
+    if (!strcmp(ini, "HTNK")) return "MAMMOTHTANK";
+    if (!strcmp(ini, "MLRS")) return "SSMLAUNCHER";
+    if (!strcmp(ini, "ARTY")) return "ARTILLERY";
+    if (!strcmp(ini, "HARV")) return "HARVESTER";
+    if (!strcmp(ini, "BGGY")) return "NODBUGGY";
+    if (!strcmp(ini, "BIKE")) return "RECONBIKE";
+    if (!strcmp(ini, "MSAM")) return "ROCKETLAUNCHER";
+    if (!strcmp(ini, "BOAT")) return "GUNBOAT";
+    // Aircraft
+    if (!strcmp(ini, "TRAN")) return "CHINOOK";
+    if (!strcmp(ini, "HELI")) return "APACHE";
+    // Names that already match verbatim: APC, JEEP, MCV, ORCA, A10, SILO
+    return nullptr;
 }
 
 /// Build the atlas sprite name for a buildable item's cameo icon.
 /// Returns true if the name was built, false if the item has no atlas cameo.
 /// Special weapons: BUILDICON_TD_IONCANNON.TGA, etc.
-/// Regular units/buildings: BUILDICON_TD_{ININAME}.TGA
+/// Regular units/buildings: BUILDICON_TD_{ATLAS_NAME}.TGA where ATLAS_NAME
+/// comes from ininame_to_atlas_suffix() or (fallback) uppercased IniName.
 static bool get_atlas_cameo_name(const SidebarClass::StripClass& strip, int index,
                                  char* buf, int buf_size)
 {
@@ -390,9 +382,14 @@ static bool get_atlas_cameo_name(const SidebarClass::StripClass& strip, int inde
         strip.Buildables[index].BuildableID);
     if (!obj || !obj->IniName) return false;
 
-    // Build: BUILDICON_TD_ + uppercase(IniName) + .TGA
+    const char* atlas_suffix = ininame_to_atlas_suffix(obj->IniName);
+    if (atlas_suffix) {
+        snprintf(buf, buf_size, "BUILDICON_TD_%s.TGA", atlas_suffix);
+        return true;
+    }
+
+    // Fallback: uppercase IniName directly (works for APC, JEEP, MCV, ORCA, A10, SILO)
     snprintf(buf, buf_size, "BUILDICON_TD_%s.TGA", obj->IniName);
-    // Uppercase the IniName portion
     for (char* p = buf + 13; *p && *p != '.'; p++) {
         *p = static_cast<char>(toupper(static_cast<unsigned char>(*p)));
     }
@@ -400,27 +397,34 @@ static bool get_atlas_cameo_name(const SidebarClass::StripClass& strip, int inde
 }
 
 /// Try to render a cameo from the atlas. Returns true if successful.
+/// Caller must verify Commandbar_Atlas_Is_Ready() before calling.
 static bool emit_atlas_cameo(const SidebarClass::StripClass& strip, int index,
                              int x, int y, int w, int h)
 {
-    if (!Commandbar_Atlas_Is_Ready()) return false;
-
     char name[80];
-    if (!get_atlas_cameo_name(strip, index, name, sizeof(name))) return false;
+    if (!get_atlas_cameo_name(strip, index, name, sizeof(name))) {
+        static int no_name_count = 0;
+        if (no_name_count < 5) {
+            DBG("[HD-SIDEBAR] cameo: no atlas name for type=%d id=%d",
+                strip.Buildables[index].BuildableType,
+                strip.Buildables[index].BuildableID);
+            no_name_count++;
+        }
+        return false;
+    }
 
-    return emit_atlas_sprite(name, x, y, w, h);
+    bool ok = emit_atlas_sprite(name, x, y, w, h);
+    static int cameo_log_count = 0;
+    if (cameo_log_count < 10) {
+        DBG("[HD-SIDEBAR] cameo lookup: '%s' → %s", name, ok ? "HIT" : "MISS");
+        cameo_log_count++;
+    }
+    return ok;
 }
 
 static const CameoCacheEntry* get_best_cameo(const SidebarClass::StripClass& strip,
-                                             int index, bool hd_mode)
+                                             int index)
 {
-    if (hd_mode) {
-        const CameoCacheEntry* hd_cameo = hd_cameo_decode(get_entity_hash(strip, index));
-        if (hd_cameo && hd_cameo->rgba) {
-            return hd_cameo;
-        }
-    }
-
     const void* shapefile = get_cameo_shape(strip, index);
     const uint8_t* remap = get_cameo_remap(strip, index);
     return sprite_decode(shapefile, 0, remap, 255);
@@ -468,7 +472,7 @@ static bool is_slot_darkened(const SidebarClass::StripClass& strip, int index)
 static void handle_slot_left_click(SidebarClass::StripClass& strip, int actual_index)
 {
     if (actual_index >= strip.BuildableCount) return;
-    ERR("sidebar: left_click index=%d count=%d", actual_index, strip.BuildableCount);
+    DBG("sidebar: left_click index=%d count=%d", actual_index, strip.BuildableCount);
 
     RTTIType otype = strip.Buildables[actual_index].BuildableType;
     int oid = strip.Buildables[actual_index].BuildableID;
@@ -536,40 +540,40 @@ static void handle_slot_left_click(SidebarClass::StripClass& strip, int actual_i
         return;
     }
 
-    ERR("sidebar: click type=%d id=%d factory=%d genfactory=%d", (int)otype, oid, fnumber, genfactory);
+    DBG("sidebar: click type=%d id=%d factory=%d genfactory=%d", (int)otype, oid, fnumber, genfactory);
 
     if (factory) {
         if (factory->Is_Building()) {
-            ERR("sidebar: factory busy — VOX_NO_FACTORY");
+            DBG("sidebar: factory busy — VOX_NO_FACTORY");
             Speak(VOX_NO_FACTORY);
         } else if (factory->Has_Completed()) {
             TechnoClass* pending = factory->Get_Object();
             if (!pending && factory->Get_Special_Item()) {
-                ERR("sidebar: completed special — entering target mode");
+                DBG("sidebar: completed special — entering target mode");
                 Map.IsTargettingMode = true;
             } else if (pending) {
                 BuildingClass* builder = pending->Who_Can_Build_Me(false, false);
                 if (!builder) {
-                    ERR("sidebar: completed but no builder — ABANDON");
+                    DBG("sidebar: completed but no builder — ABANDON");
                     OutList.Add(EventClass(EventClass::ABANDON, otype, oid));
                     Speak(VOX_NO_FACTORY);
                 } else if (pending->What_Am_I() == RTTI_BUILDING) {
-                    ERR("sidebar: completed building — Manual_Place");
+                    DBG("sidebar: completed building — Manual_Place");
                     PlayerPtr->Manual_Place(builder, (BuildingClass*)pending);
                 } else {
-                    ERR("sidebar: completed unit — PLACE");
+                    DBG("sidebar: completed unit — PLACE");
                     OutList.Add(EventClass(EventClass::PLACE, otype, (CELL)-1));
                 }
             }
         } else {
             // Suspended — resume
-            ERR("sidebar: resuming — PRODUCE event queued");
+            DBG("sidebar: resuming — PRODUCE event queued");
             Speak(VOX_BUILDING);
             OutList.Add(EventClass(EventClass::PRODUCE, otype, oid));
         }
     } else {
         // No factory — start production
-        ERR("sidebar: new production — PRODUCE event queued");
+        DBG("sidebar: new production — PRODUCE event queued");
         Speak(VOX_BUILDING);
         OutList.Add(EventClass(EventClass::PRODUCE, otype, oid));
     }
@@ -690,13 +694,6 @@ static SlotState get_slot_state(const SidebarClass::StripClass& strip, int actua
                 s.completed = factory->Has_Completed();
                 s.stage = factory->Completion();
                 s.holding = !s.completed && !factory->Is_Building();
-                // Throttled diagnostic: log once per second (every ~15 frames)
-                static int diag_counter = 0;
-                if ((diag_counter++ % 15) == 0) {
-                    ERR("slot_state[%d]: fac=%d stage=%d completed=%d building=%d holding=%d",
-                        actual_index, factory_id, s.stage, s.completed,
-                        factory->Is_Building(), s.holding);
-                }
             }
         } else {
             // Also check the real Map.Column to see if Factory was linked there
@@ -706,12 +703,8 @@ static SlotState get_slot_state(const SidebarClass::StripClass& strip, int actua
                     Map.Column[c].Buildables[actual_index].BuildableType == strip.Buildables[actual_index].BuildableType &&
                     Map.Column[c].Buildables[actual_index].BuildableID == strip.Buildables[actual_index].BuildableID &&
                     Map.Column[c].Buildables[actual_index].Factory != -1) {
-                    static bool logged_mismatch = false;
-                    if (!logged_mismatch) {
-                        ERR("slot_state: MISMATCH — strip copy has Factory=-1 but Map.Column[%d] has Factory=%d",
-                            c, Map.Column[c].Buildables[actual_index].Factory);
-                        logged_mismatch = true;
-                    }
+                    DBG("slot_state: MISMATCH — strip copy has Factory=-1 but Map.Column[%d] has Factory=%d",
+                        c, Map.Column[c].Buildables[actual_index].Factory);
                 }
             }
         }
@@ -770,7 +763,8 @@ static void emit_production_overlays(int x, int y, int w, int h,
 /// Emit one production slot outline, cameo icon, production indicators, and hit zone.
 /// Returns the hit zone ID for click handling in the caller (for non-HD legacy path).
 static void emit_slot(int x, int y, int w, int h, int slot_index,
-                      SidebarClass::StripClass& strip, bool hd_mode)
+                      SidebarClass::StripClass& strip, bool hd_mode,
+                      bool use_atlas)
 {
     int actual_index = strip.TopIndex + slot_index;
     bool has_item = actual_index < strip.BuildableCount;
@@ -783,20 +777,17 @@ static void emit_slot(int x, int y, int w, int h, int slot_index,
     UIHitZoneID zone = UI_Input_Register_Zone(x, y, w, h);
 
     if (!has_item) return;
-
-    // HD atlas build frame behind the cameo
-    bool use_atlas = hd_mode && Commandbar_Atlas_Is_Ready();
     if (use_atlas) {
         emit_atlas_sprite(ATLAS_SIDEBAR_BUILDFRAME, x, y, w, h);
     }
 
-    // Prefer atlas BUILDICON_TD_* cameos, then HD DDS, then legacy SHP.
+    // Prefer atlas cameos, fall back to legacy SHP decode
     bool drew_cameo = false;
     if (use_atlas) {
         drew_cameo = emit_atlas_cameo(strip, actual_index, x + 1, y + 1, w - 2, h - 2);
     }
     if (!drew_cameo) {
-        const CameoCacheEntry* cameo = get_best_cameo(strip, actual_index, hd_mode);
+        const CameoCacheEntry* cameo = get_best_cameo(strip, actual_index);
         if (cameo && cameo->rgba) {
             g_ui_draw_list.Draw_Icon(x + 1, y + 1, w - 2, h - 2,
                                      reinterpret_cast<const uint8_t*>(cameo->rgba),
@@ -866,6 +857,9 @@ static void emit_column(SidebarClass::StripClass& strip, bool hd_mode, int col_i
     g_ui_draw_list.Fill_Rect(col_x, col_y, col_w, col_h,
                              34, 36, 34, 96);
 
+    // Register a hit zone for the whole column (for hover-gated scrolling)
+    UIHitZoneID col_zone = UI_Input_Register_Zone(col_x, col_y, col_w, col_h);
+
     // Production slots
     UILayout layout;
     layout.Begin(col_x + strip.LeftEdgeOffset, col_y, obj_w, col_h,
@@ -873,18 +867,20 @@ static void emit_column(SidebarClass::StripClass& strip, bool hd_mode, int col_i
     for (int i = 0; i < visible; i++) {
         int sx, sy;
         layout.Next(obj_w, obj_h, sx, sy);
-        emit_slot(sx, sy, obj_w, obj_h, i, strip, hd_mode);
+        emit_slot(sx, sy, obj_w, obj_h, i, strip, hd_mode, false);
     }
 
     // Scroll arrows below slots
     emit_scroll_arrows(col_x, col_y + obj_h * visible + 1, col_w, strip, col_index);
 
-    // Mouse wheel scrolling — use Map.Column directly to persist scroll
-    float scroll_delta = UI_Input_Consume_Scroll_Delta();
-    if (scroll_delta > 0.0f && strip.TopIndex > 0) {
-        Map.Column[col_index].Scroll(true);
-    } else if (scroll_delta < 0.0f && strip.TopIndex + 4 < strip.BuildableCount) {
-        Map.Column[col_index].Scroll(false);
+    // Mouse wheel scrolling — only consume when hovering over this column
+    if (UI_Input_Get_Hovered() == col_zone) {
+        float scroll_delta = UI_Input_Consume_Scroll_Delta();
+        if (scroll_delta > 0.0f && strip.TopIndex > 0) {
+            Map.Column[col_index].Scroll(true);
+        } else if (scroll_delta < 0.0f && strip.TopIndex + 4 < strip.BuildableCount) {
+            Map.Column[col_index].Scroll(false);
+        }
     }
 }
 
@@ -892,14 +888,10 @@ static void emit_column(SidebarClass::StripClass& strip, bool hd_mode, int col_i
 // HD 3-column grid layout
 // ---------------------------------------------------------------------------
 
-/// HD grid scroll state (shared for the unified grid).
-static int g_hd_grid_top_index = 0;
-
 /// Emit the HD 3-column grid sidebar layout, merging both strip columns.
 static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
-                          float sx, float sy)
+                          float sx, float sy, bool use_atlas)
 {
-    bool hd_mode = Render_Bridge_Get_HD_Graphics();
 
     // Compute cell dimensions
     int cell_w = (grid_w - HD_GRID_ICON_PAD * (HD_GRID_COLS + 1)) / HD_GRID_COLS;
@@ -958,7 +950,6 @@ static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
         int si = merged[item_idx].strip_index;
 
         // Slot background — use atlas build frame when available
-        bool use_atlas = hd_mode && Commandbar_Atlas_Is_Ready();
         if (use_atlas) {
             emit_atlas_sprite(ATLAS_SIDEBAR_BUILDFRAME, cx, cy, cell_w, icon_h);
         } else {
@@ -971,13 +962,13 @@ static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
         // Hit zone for this cell
         UIHitZoneID cell_zone = UI_Input_Register_Zone(cx, cy, cell_w, cell_h);
 
-        // Prefer atlas BUILDICON_TD_* cameos, then HD DDS, then legacy SHP.
+        // Prefer atlas cameos, fall back to legacy SHP decode
         bool drew_icon = false;
         if (use_atlas) {
             drew_icon = emit_atlas_cameo(strip, si, cx + 1, cy + 1, cell_w - 2, icon_h - 2);
         }
         if (!drew_icon) {
-            const CameoCacheEntry* cameo = get_best_cameo(strip, si, hd_mode);
+            const CameoCacheEntry* cameo = get_best_cameo(strip, si);
             if (cameo && cameo->rgba) {
                 g_ui_draw_list.Draw_Icon(cx + 1, cy + 1, cell_w - 2, icon_h - 2,
                                          reinterpret_cast<const uint8_t*>(cameo->rgba),
@@ -1041,13 +1032,16 @@ static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
         }
     }
 
-    // Mouse wheel scrolling
-    float scroll_delta = UI_Input_Consume_Scroll_Delta();
-    if (scroll_delta > 0.0f && can_up) {
-        g_hd_grid_top_index -= HD_GRID_COLS;
-        if (g_hd_grid_top_index < 0) g_hd_grid_top_index = 0;
-    } else if (scroll_delta < 0.0f && can_down) {
-        g_hd_grid_top_index += HD_GRID_COLS;
+    // Mouse wheel scrolling — only consume when hovering over the grid
+    UIHitZoneID hovered = UI_Input_Get_Hovered();
+    if (hovered == grid_zone) {
+        float scroll_delta = UI_Input_Consume_Scroll_Delta();
+        if (scroll_delta > 0.0f && can_up) {
+            g_hd_grid_top_index -= HD_GRID_COLS;
+            if (g_hd_grid_top_index < 0) g_hd_grid_top_index = 0;
+        } else if (scroll_delta < 0.0f && can_down) {
+            g_hd_grid_top_index += HD_GRID_COLS;
+        }
     }
 }
 
@@ -1161,28 +1155,32 @@ static void load_frame_shapes()
     s_sidebar_shape2 = SidebarClass::SidebarShape2;
 }
 
+/// Atlas sprite names for a multi-state button (off/on/hover/press).
+struct AtlasButtonSprites {
+    const char* off;
+    const char* on;
+    const char* hover;
+    const char* press;
+};
+
 /// Emit a sidebar button with SHP art if available, falling back to text.
-/// When use_atlas is true, atlas_off/atlas_on/atlas_hover/atlas_press are
-/// used for the button chrome (sized 260×78 in the atlas).
+/// When use_atlas is true, atlas sprites provide the button chrome.
 static bool emit_sidebar_button(int x, int y, int w, int h,
                                 const void* shapefile, int frame,
                                 const char* fallback_label,
                                 bool is_active,
                                 const UIButtonStyle& style,
                                 bool use_atlas = false,
-                                const char* atlas_off = nullptr,
-                                const char* atlas_on = nullptr,
-                                const char* atlas_hover = nullptr,
-                                const char* atlas_press = nullptr)
+                                const AtlasButtonSprites* atlas = nullptr)
 {
     UIButtonState state = UI_Button(x, y, w, h, nullptr, style);
 
-    if (use_atlas) {
+    if (use_atlas && atlas) {
         // Pick sprite based on interaction state
-        const char* sprite = atlas_off;
-        if (is_active)                       sprite = atlas_on;
-        if (state == UI_BTN_HOVERED && atlas_hover) sprite = atlas_hover;
-        if (state == UI_BTN_PRESSED && atlas_press) sprite = atlas_press;
+        const char* sprite = atlas->off;
+        if (is_active)                              sprite = atlas->on;
+        if (state == UI_BTN_HOVERED && atlas->hover) sprite = atlas->hover;
+        if (state == UI_BTN_PRESSED && atlas->press) sprite = atlas->press;
         if (sprite) {
             emit_atlas_sprite(sprite, x, y, w, h);
         }
@@ -1305,6 +1303,16 @@ void UI_Sidebar_Emit()
     // Try to load the HD command bar atlas when in HD mode
     bool use_atlas = hd_mode && ensure_commandbar_atlas();
 
+    static bool logged_sidebar_state = false;
+    if (!logged_sidebar_state) {
+        logged_sidebar_state = true;
+        DBG("[HD-SIDEBAR] UI_Sidebar_Emit: hd_mode=%d use_atlas=%d atlas_ready=%d "
+            "side_rect=(%d,%d,%d,%d) base=(%d,%d) logical=(%d,%d) sx=%.2f sy=%.2f",
+            hd_mode, use_atlas, Commandbar_Atlas_Is_Ready(),
+            side_x, side_y, side_w, side_h,
+            base_w, base_h, logical_w, logical_h, sx, sy);
+    }
+
     // Sidebar background frame
     emit_sidebar_frame(side_x, side_y, side_w, side_h, sx, sy, use_atlas);
 
@@ -1350,7 +1358,7 @@ void UI_Sidebar_Emit()
         int prod_h = btn_y - prod_y - 4;
 
         if (prod_w > 60 && prod_h > 40) {
-            emit_hd_grid(prod_x, prod_y, prod_w, prod_h, sx, sy);
+            emit_hd_grid(prod_x, prod_y, prod_w, prod_h, sx, sy, use_atlas);
         }
     } else {
         // Legacy 2-column layout — use scaled strip positions
@@ -1385,15 +1393,24 @@ void UI_Sidebar_Emit()
     bs.text_r = 0; bs.text_g = 200; bs.text_b = 0;
     bs.font = UI_FONT_6PT;
 
+    static const AtlasButtonSprites repair_sprites = {
+        ATLAS_SIDEBAR_BTN_REPAIR_OFF, ATLAS_SIDEBAR_BTN_REPAIR_ON,
+        ATLAS_SIDEBAR_BTN_REPAIR_HOVER, ATLAS_SIDEBAR_BTN_REPAIR_PRESS
+    };
+    static const AtlasButtonSprites sell_sprites = {
+        ATLAS_SIDEBAR_BTN_SELL_OFF, ATLAS_SIDEBAR_BTN_SELL_ON,
+        ATLAS_SIDEBAR_BTN_SELL_HOVER, ATLAS_SIDEBAR_BTN_SELL_PRESS
+    };
+    static const AtlasButtonSprites map_sprites = {
+        ATLAS_SIDEBAR_BTN_MAP_OFF, ATLAS_SIDEBAR_BTN_MAP_ON,
+        ATLAS_SIDEBAR_BTN_MAP_HOVER, ATLAS_SIDEBAR_BTN_MAP_PRESS
+    };
+
     bool repair_active = Map.IsRepairMode != 0;
     if (emit_sidebar_button(side_x + 2, btn_y, btn_w - 2, btn_h,
                             s_repair_shape, repair_active ? 1 : 0,
                             "RPR", repair_active, bs,
-                            use_atlas,
-                            ATLAS_SIDEBAR_BTN_REPAIR_OFF,
-                            ATLAS_SIDEBAR_BTN_REPAIR_ON,
-                            ATLAS_SIDEBAR_BTN_REPAIR_HOVER,
-                            ATLAS_SIDEBAR_BTN_REPAIR_PRESS)) {
+                            use_atlas, &repair_sprites)) {
         Map.Repair_Mode_Control(-1);
     }
 
@@ -1401,22 +1418,14 @@ void UI_Sidebar_Emit()
     if (emit_sidebar_button(side_x + btn_w + 1, btn_y, btn_w - 2, btn_h,
                             s_sell_shape, sell_active ? 1 : 0,
                             "SEL", sell_active, bs,
-                            use_atlas,
-                            ATLAS_SIDEBAR_BTN_SELL_OFF,
-                            ATLAS_SIDEBAR_BTN_SELL_ON,
-                            ATLAS_SIDEBAR_BTN_SELL_HOVER,
-                            ATLAS_SIDEBAR_BTN_SELL_PRESS)) {
+                            use_atlas, &sell_sprites)) {
         Map.Sell_Mode_Control(-1);
     }
 
     if (emit_sidebar_button(side_x + btn_w * 2, btn_y, btn_w - 2, btn_h,
                             s_map_shape, 0,
                             "MAP", false, bs,
-                            use_atlas,
-                            ATLAS_SIDEBAR_BTN_MAP_OFF,
-                            ATLAS_SIDEBAR_BTN_MAP_ON,
-                            ATLAS_SIDEBAR_BTN_MAP_HOVER,
-                            ATLAS_SIDEBAR_BTN_MAP_PRESS)) {
+                            use_atlas, &map_sprites)) {
         if (Map.Is_Radar_Active()) {
             if (Map.Is_Zoomed() || GameToPlay == GAME_NORMAL) {
                 Map.Zoom_Mode(Coord_Cell(Map.TacticalCoord));

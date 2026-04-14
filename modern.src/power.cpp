@@ -227,7 +227,14 @@ void PowerClass::Draw_It(bool complete)
 {
 	if (complete || IsToRedraw) {
 		IsToRedraw = false;
-		Draw_Bar();
+#ifdef USE_RENDER_BRIDGE
+		// Skip legacy power bar drawing when bridge-native sidebar is active.
+		extern bool Render_Bridge_Use_Legacy_Sidebar_Mode();
+		if (Render_Bridge_Use_Legacy_Sidebar_Mode())
+#endif
+		{
+			Draw_Bar();
+		}
 	}
 	RadarClass::Draw_It(complete);
 }

@@ -137,19 +137,22 @@ void TabClass::Draw_It(bool complete)
 	int rightx = width - 1;
 
 	if (complete || IsToRedraw) {
+		// Skip legacy tab/header drawing when bridge-native sidebar is active.
+		// The bridge draws its own header via UI_Header_Emit().
+		if (Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+			if (LogicPage->Lock()){
 
-		if (LogicPage->Lock()){
+				LogicPage->Fill_Rect(0, 0, rightx, Tab_Height-2, BLACK);
+				CC_Draw_Shape(TabShape, 0, 0, 0, WINDOW_MAIN, SHAPE_NORMAL);
+				CC_Draw_Shape(TabShape, 0, width-Eva_Width, 0, WINDOW_MAIN, SHAPE_NORMAL);
+				Draw_Credits_Tab();
+				LogicPage->Draw_Line(0, Tab_Height-1, rightx, Tab_Height-1, BLACK);
 
-			LogicPage->Fill_Rect(0, 0, rightx, Tab_Height-2, BLACK);
-			CC_Draw_Shape(TabShape, 0, 0, 0, WINDOW_MAIN, SHAPE_NORMAL);
-			CC_Draw_Shape(TabShape, 0, width-Eva_Width, 0, WINDOW_MAIN, SHAPE_NORMAL);
-			Draw_Credits_Tab();
-			LogicPage->Draw_Line(0, Tab_Height-1, rightx, Tab_Height-1, BLACK);
-
-			Fancy_Text_Print(TXT_TAB_BUTTON_CONTROLS, Eva_Width/2, 0, 11, TBLACK, TPF_GREEN12_GRAD|TPF_CENTER | TPF_USE_GRAD_PAL);
-			Fancy_Text_Print(TXT_TAB_SIDEBAR, width-(Eva_Width/2), 0, 11, TBLACK, TPF_GREEN12_GRAD|TPF_CENTER | TPF_USE_GRAD_PAL);
+				Fancy_Text_Print(TXT_TAB_BUTTON_CONTROLS, Eva_Width/2, 0, 11, TBLACK, TPF_GREEN12_GRAD|TPF_CENTER | TPF_USE_GRAD_PAL);
+				Fancy_Text_Print(TXT_TAB_SIDEBAR, width-(Eva_Width/2), 0, 11, TBLACK, TPF_GREEN12_GRAD|TPF_CENTER | TPF_USE_GRAD_PAL);
+			}
+			LogicPage->Unlock();
 		}
-		LogicPage->Unlock();
 	}
 
 	Credits.Graphic_Logic(complete || IsToRedraw);
