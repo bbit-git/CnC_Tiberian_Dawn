@@ -3,7 +3,7 @@
  *
  * Each frame, iterates the visible map cells, builds an RGBA pixel
  * buffer (one pixel per cell), and submits it to the UI draw list as
- * a textured quad.  Draws a white viewport rectangle overlay and
+ * a textured quad.  Draws a green viewport rectangle overlay and
  * handles click-to-move input on the radar area.
  */
 
@@ -24,6 +24,11 @@
 static uint32_t* g_radar_pixels = nullptr;
 static int       g_radar_alloc_w = 0;
 static int       g_radar_alloc_h = 0;
+
+static constexpr uint8_t RADAR_VIEWPORT_R = 0;
+static constexpr uint8_t RADAR_VIEWPORT_G = 200;
+static constexpr uint8_t RADAR_VIEWPORT_B = 0;
+static constexpr uint8_t RADAR_VIEWPORT_A = 200;
 
 extern unsigned char* GamePalette;
 extern bool Debug_Unshroud;
@@ -275,7 +280,10 @@ void UI_Radar_Emit()
     if (vr_y + vr_h > radar_y + radar_h) vr_h = radar_y + radar_h - vr_y;
     if (vr_w > 0 && vr_h > 0) {
         g_ui_draw_list.Draw_Rect(vr_x, vr_y, vr_w, vr_h,
-                                 255, 255, 255, 200);
+                                 RADAR_VIEWPORT_R,
+                                 RADAR_VIEWPORT_G,
+                                 RADAR_VIEWPORT_B,
+                                 RADAR_VIEWPORT_A);
     }
 
     // --- Click-to-move input ---
