@@ -42,6 +42,30 @@ static bool g_atlas_init_attempted = false;
 /// HD grid scroll state (reset on shutdown, used by emit_hd_grid).
 static int g_hd_grid_top_index = 0;
 
+/// HD sidebar build-category filter (selected by the row below the mode tabs).
+enum SidebarCategory {
+    CAT_ALL,
+    CAT_INFANTRY,
+    CAT_VEHICLE,
+    CAT_STRUCTURE,
+    CAT_SUPPORT,
+};
+static SidebarCategory g_hd_grid_category = CAT_VEHICLE;
+
+/// True if the given buildable RTTI belongs to the selected category.
+static bool category_matches(SidebarCategory cat, RTTIType rtti)
+{
+    switch (cat) {
+        case CAT_ALL:       return true;
+        case CAT_INFANTRY:  return rtti == RTTI_INFANTRYTYPE;
+        case CAT_VEHICLE:   return rtti == RTTI_UNITTYPE
+                                || rtti == RTTI_AIRCRAFTTYPE;
+        case CAT_STRUCTURE: return rtti == RTTI_BUILDINGTYPE;
+        case CAT_SUPPORT:   return rtti == RTTI_SPECIAL;
+    }
+    return true;
+}
+
 /// Sidebar slot colors.
 static constexpr uint8_t SLOT_BG_R = 40, SLOT_BG_G = 44, SLOT_BG_B = 40;
 static constexpr uint8_t SLOT_BORDER_R = 36, SLOT_BORDER_G = 120, SLOT_BORDER_B = 36;
@@ -915,6 +939,10 @@ static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
     for (int c = 0; c < 2; c++) {
         SidebarClass::StripClass& strip = Map.Column[c];
         for (int i = 0; i < strip.BuildableCount && merged_count < 60; i++) {
+            if (!category_matches(g_hd_grid_category,
+                                  strip.Buildables[i].BuildableType)) {
+                continue;
+            }
             merged[merged_count].strip_col = c;
             merged[merged_count].strip_index = i;
             merged_count++;
@@ -1455,10 +1483,37 @@ void UI_Sidebar_Emit()
     int top_btn = top_h - 2;
     int menu_w = top_btn;
     int menu_x = side_x + side_w - menu_w - 2;
+    int map_w = top_btn;
+    int map_x = menu_x - map_w - 2;
     int credits_x = side_x + 4;
-    int credits_w = side_w - menu_w - 10;
+    int credits_w = (hd_mode ? map_x : menu_x) - credits_x - 4;
 
     emit_credits(credits_x, top_y + 2, credits_w, sx);
+
+    // HD path hosts the radar/player-names toggle as a second top-strip icon,
+    // to the left of the menu button. Legacy mode keeps the bottom MAP button.
+    if (hd_mode) {
+        if (emit_icon_button(map_x, top_y + 1, map_w, top_btn,
+                             "R", use_atlas,
+                             ATLAS_SIDEBAR_BTN_MAP_OFF,
+                             ATLAS_SIDEBAR_BTN_MAP_HOVER,
+                             ATLAS_SIDEBAR_BTN_MAP_PRESS)) {
+            if (Map.Is_Radar_Active()) {
+                if (Map.Is_Zoomed() || GameToPlay == GAME_NORMAL) {
+                    Map.Zoom_Mode(Coord_Cell(Map.TacticalCoord));
+                } else {
+                    if (!Map.Is_Player_Names()) {
+                        Map.Player_Names(1);
+                    } else {
+                        Map.Player_Names(0);
+                        Map.Zoom_Mode(Coord_Cell(Map.TacticalCoord));
+                    }
+                }
+            } else if (GameToPlay != GAME_NORMAL) {
+                Map.Player_Names(Map.Is_Player_Names() == 0);
+            }
+        }
+    }
 
     if (emit_icon_button(menu_x, top_y + 1, menu_w, top_btn,
                          "M", use_atlas,
@@ -1532,6 +1587,71 @@ void UI_Sidebar_Emit()
         }
 
         pow_y = tab_y + tab_h + tab_gap;
+
+        // Category selector row — filters the production grid.
+        int cat_h = scale_y_from_legacy(16, sy);
+        int cat_gap = scale_y_from_legacy(2, sy);
+        int cat_y = pow_y;
+        int cat_x = side_x + 2;
+        int cat_w = side_w - 4;
+        int cat_btn_base_w = cat_w / 4;
+        int cat_btn_rem = cat_w % 4;
+        int cat_btn_w[4] = {
+            cat_btn_base_w + (cat_btn_rem > 0 ? 1 : 0),
+            cat_btn_base_w + (cat_btn_rem > 1 ? 1 : 0),
+            cat_btn_base_w + (cat_btn_rem > 2 ? 1 : 0),
+            cat_btn_base_w,
+        };
+
+        static const AtlasModeTabSprites cat_infantry = {
+            ATLAS_SIDEBAR_TABBUTTON_ENABLED,
+            ATLAS_SIDEBAR_TABBUTTON_HIGHLIGHTED,
+            ATLAS_SIDEBAR_BUILDTABICON_INFANTRY
+        };
+        static const AtlasModeTabSprites cat_vehicle = {
+            ATLAS_SIDEBAR_TABBUTTON_ENABLED,
+            ATLAS_SIDEBAR_TABBUTTON_HIGHLIGHTED,
+            ATLAS_SIDEBAR_BUILDTABICON_VEHICLE
+        };
+        static const AtlasModeTabSprites cat_structure = {
+            ATLAS_SIDEBAR_TABBUTTON_ENABLED,
+            ATLAS_SIDEBAR_TABBUTTON_HIGHLIGHTED,
+            ATLAS_SIDEBAR_BUILDTABICON_STRUCTURE
+        };
+        static const AtlasModeTabSprites cat_support = {
+            ATLAS_SIDEBAR_TABBUTTON_ENABLED,
+            ATLAS_SIDEBAR_TABBUTTON_HIGHLIGHTED,
+            ATLAS_SIDEBAR_BUILDTABICON_SUPPORT
+        };
+
+        struct CatButton {
+            const char* fallback;
+            SidebarCategory cat;
+            const AtlasModeTabSprites* sprites;
+        };
+        const CatButton cat_buttons[4] = {
+            { "I", CAT_INFANTRY,  &cat_infantry  },
+            { "V", CAT_VEHICLE,   &cat_vehicle   },
+            { "S", CAT_STRUCTURE, &cat_structure },
+            { "?", CAT_SUPPORT,   &cat_support   },
+        };
+
+        int cat_bx = cat_x;
+        for (int i = 0; i < 4; i++) {
+            bool is_active = (g_hd_grid_category == cat_buttons[i].cat);
+            if (emit_mode_tab_button(cat_bx, cat_y, cat_btn_w[i], cat_h,
+                                     cat_buttons[i].fallback,
+                                     is_active, use_atlas,
+                                     cat_buttons[i].sprites)) {
+                if (g_hd_grid_category != cat_buttons[i].cat) {
+                    g_hd_grid_category = cat_buttons[i].cat;
+                    g_hd_grid_top_index = 0;
+                }
+            }
+            cat_bx += cat_btn_w[i];
+        }
+
+        pow_y = cat_y + cat_h + cat_gap;
     }
 
     int pow_h = btn_y - pow_y - 2;
