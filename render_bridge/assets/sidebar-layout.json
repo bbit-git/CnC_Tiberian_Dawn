@@ -1,0 +1,8 @@
+{
+  "reference": { "w": 1920, "h": 1080 },
+  "scaling":   "uniform",
+  "components": {
+    "top_bar":  { "anchor": "top-right",    "x": 1486, "y": 0,   "w": 434, "h": 40  },
+    "sidebar":  { "anchor": "bottom-right", "x": 1527, "y": 474, "w": 393, "h": 606 }
+  }
+}

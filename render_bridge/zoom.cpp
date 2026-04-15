@@ -19,10 +19,12 @@
  */
 
 #include "render_bridge.h"
+#include "ui/hd_sidebar_layout.h"
 #include "function.h"
 #include "dbg.h"
 #include <SDL3/SDL.h>
 #include <cmath>
+#include <cstdio>
 
 extern float g_scroll_zoom_delta;
 extern int   g_mouse_x, g_mouse_y;
@@ -689,13 +691,40 @@ void Render_Bridge_Refresh_Layout()
     g_layout.header_w = static_cast<int>(std::round(base_w * scale));
     g_layout.header_h = g_layout.tactical_y - offset_y;
 
-    // Sidebar: use the real legacy sidebar span, not the narrow bookkeeping
-    // width field alone. Tactical width and sidebar width must sum back to the
-    // full legacy SeenBuff width after promotion.
-    g_layout.sidebar_x = offset_x + static_cast<int>(std::round(Map.SideX * scale));
-    g_layout.sidebar_y = offset_y;
-    g_layout.sidebar_w = static_cast<int>(std::round(Map.SideWidth * scale));
-    g_layout.sidebar_h = static_cast<int>(std::round(base_h * scale));
+    // Sidebar rect:
+    //  - Legacy mode: derive from Map.SideX/SideWidth so the tactical and
+    //    sidebar widths sum back to the full legacy SeenBuff width.
+    //  - HD mode: own geometry via sidebar-layout.json (resolution-independent,
+    //    authored at 1920x1080, uniform-scaled/re-anchored to the target).
+    if (Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+        g_layout.sidebar_x = offset_x + static_cast<int>(std::round(Map.SideX * scale));
+        g_layout.sidebar_y = offset_y;
+        g_layout.sidebar_w = static_cast<int>(std::round(Map.SideWidth * scale));
+        g_layout.sidebar_h = static_cast<int>(std::round(base_h * scale));
+    } else {
+        auto r = render_bridge::HDSidebarLayout::Instance()
+                     .Resolve("sidebar", g_layout.logical_w, g_layout.logical_h);
+        if (r.valid()) {
+            g_layout.sidebar_x = r.x;
+            g_layout.sidebar_y = r.y;
+            g_layout.sidebar_w = r.w;
+            g_layout.sidebar_h = r.h;
+        } else {
+            // JSON is embedded at build time — an invalid rect means the
+            // resolver is broken or the "sidebar" component was removed.
+            // Surface the breakage instead of masking it as a legacy rect.
+            static bool warned = false;
+            if (!warned) {
+                warned = true;
+                std::fprintf(stderr,
+                             "[hd_sidebar_layout] Resolve(\"sidebar\") returned invalid rect; HD sidebar will not render\n");
+            }
+            g_layout.sidebar_x = 0;
+            g_layout.sidebar_y = 0;
+            g_layout.sidebar_w = 0;
+            g_layout.sidebar_h = 0;
+        }
+    }
 
     // Render tactical rect: always full content width, never narrowed by sidebar.
     // The GL world presentation uses this so toggling the sidebar does not change

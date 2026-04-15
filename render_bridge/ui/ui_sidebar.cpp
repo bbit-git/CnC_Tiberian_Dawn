@@ -23,6 +23,7 @@
 #include "ui_text.h"
 #include "commandbar_atlas.h"
 #include "commandbar_sprites.h"
+#include "hd_sidebar_layout.h"
 #include "render_bridge.h"
 #include "legacy_sprite_provider.h"
 #include "function.h"
@@ -1491,6 +1492,7 @@ SidebarMetrics UI_Sidebar_Compute_Metrics()
     m.hd_mode = Render_Bridge_Get_HD_Graphics();
 
     // Legacy-pixel constants, scaled once.
+    // HD mode will override top_bar_h below from sidebar-layout.json.
     m.top_bar_h         = scale_y_from_legacy(16, m.sy);
     m.top_btn_inset     = 2;
     m.mode_tab_h        = scale_y_from_legacy(18, m.sy);
@@ -1529,9 +1531,29 @@ SidebarMetrics UI_Sidebar_Compute_Metrics()
 
     // Per-component rects — mirror the inline math in UI_Sidebar_Emit so
     // debug overrides can patch any single target via the metrics hook.
-    m.top_bar_x   = m.side_x;
-    m.top_bar_y   = m.side_y;
-    m.top_bar_w   = m.side_w;
+    //
+    // HD top bar has its own geometry (sidebar-layout.json) — it is wider
+    // than the sidebar and extends to its left. Legacy keeps the sidebar-span
+    // derivation.
+    if (m.hd_mode) {
+        auto tb = render_bridge::HDSidebarLayout::Instance()
+                      .Resolve("top_bar", logical_w, logical_h);
+        if (tb.valid()) {
+            m.top_bar_x = tb.x;
+            m.top_bar_y = tb.y;
+            m.top_bar_w = tb.w;
+            m.top_bar_h = tb.h;
+        } else {
+            m.top_bar_x = m.side_x;
+            m.top_bar_y = m.side_y;
+            m.top_bar_w = m.side_w;
+            m.top_bar_h = scale_y_from_legacy(16, m.sy);
+        }
+    } else {
+        m.top_bar_x = m.side_x;
+        m.top_bar_y = m.side_y;
+        m.top_bar_w = m.side_w;
+    }
 
     const int top_btn = m.top_bar_h - 2;
     m.menu_btn_w  = top_btn;

@@ -54,7 +54,24 @@ set(CNC_RENDER_BRIDGE_SRCS
     ${RENDER_BRIDGE_DIR}/ui/ui_action_menu.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_layout.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_input.cpp
+    ${RENDER_BRIDGE_DIR}/ui/hd_sidebar_layout.cpp
 )
+
+# Embed sidebar-layout.json into the binary as kSidebarLayoutJson.
+set(SIDEBAR_LAYOUT_JSON ${RENDER_BRIDGE_DIR}/assets/sidebar-layout.json)
+set(SIDEBAR_LAYOUT_GENERATED
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/sidebar_layout_json.cpp)
+add_custom_command(
+    OUTPUT  ${SIDEBAR_LAYOUT_GENERATED}
+    COMMAND ${CMAKE_COMMAND}
+            -DIN=${SIDEBAR_LAYOUT_JSON}
+            -DOUT=${SIDEBAR_LAYOUT_GENERATED}
+            -DSYMBOL=kSidebarLayoutJson
+            -P ${CMAKE_SOURCE_DIR}/cmake/embed_text.cmake
+    DEPENDS ${SIDEBAR_LAYOUT_JSON}
+            ${CMAKE_SOURCE_DIR}/cmake/embed_text.cmake
+    COMMENT "Embedding sidebar-layout.json as kSidebarLayoutJson")
+list(APPEND CNC_RENDER_BRIDGE_SRCS ${SIDEBAR_LAYOUT_GENERATED})
 
 # This file provides TD_SDL_Present() and Shake_Screen() — replaces sdl3_present.cpp
 set(CNC_RENDER_BRIDGE_PRESENT_SRC
