@@ -54,6 +54,11 @@ bool     UI_Sidebar_Debug_Is_On(UISidebarComponent comp) {
     return (g_sidebar_debug_mask & comp) != 0;
 }
 
+static UI_Sidebar_Metrics_Hook g_sidebar_metrics_hook = nullptr;
+void UI_Sidebar_Debug_Set_Metrics_Hook(UI_Sidebar_Metrics_Hook hook) {
+    g_sidebar_metrics_hook = hook;
+}
+
 /// HD sidebar build-category filter (selected by the row below the mode tabs).
 /// Defaults to CAT_STRUCTURE so fresh games (no factories yet) show buildings
 /// rather than an empty grid.
@@ -1521,6 +1526,36 @@ SidebarMetrics UI_Sidebar_Compute_Metrics()
     m.prod_area_y    = m.power_bar_y;
     m.prod_area_w    = m.side_w - m.power_bar_w - m.grid_x_pad;
     m.prod_area_h    = m.bottom_btn_y - m.prod_area_y - 4;
+
+    // Per-component rects — mirror the inline math in UI_Sidebar_Emit so
+    // debug overrides can patch any single target via the metrics hook.
+    m.top_bar_x   = m.side_x;
+    m.top_bar_y   = m.side_y;
+    m.top_bar_w   = m.side_w;
+
+    const int top_btn = m.top_bar_h - 2;
+    m.menu_btn_w  = top_btn;
+    m.menu_btn_h  = top_btn;
+    m.menu_btn_x  = m.side_x + m.side_w - m.menu_btn_w - 2;
+    m.menu_btn_y  = m.side_y + 1;
+
+    m.map_btn_w   = top_btn;
+    m.map_btn_h   = top_btn;
+    m.map_btn_x   = m.menu_btn_x - m.map_btn_w - 2;
+    m.map_btn_y   = m.side_y + 1;
+
+    m.credits_x   = m.side_x + 4;
+    m.credits_y   = m.side_y + 2;
+    m.credits_w   = m.map_btn_x - m.credits_x - 4;
+    m.credits_h   = m.top_bar_h - 4;
+
+    m.mode_tabs_x = m.side_x + 2;
+    m.mode_tabs_w = m.side_w - 4;
+
+    m.cat_row_x   = m.side_x + 2;
+    m.cat_row_w   = m.side_w - 4;
+
+    if (g_sidebar_metrics_hook) g_sidebar_metrics_hook(m);
     return m;
 }
 
@@ -1558,25 +1593,17 @@ void UI_Sidebar_Emit()
     // --- Top button bar (HD only — legacy mode uses SIDE1.SHP chrome) ---
     if (m.hd_mode) {
         if (use_atlas && UI_Sidebar_Debug_Is_On(COMP_TOP_BAR)) {
-            emit_atlas_sprite(ATLAS_SIDEBAR_TOPBUTTON, m.side_x, m.side_y, m.side_w, m.top_bar_h);
+            emit_atlas_sprite(ATLAS_SIDEBAR_TOPBUTTON,
+                              m.top_bar_x, m.top_bar_y, m.top_bar_w, m.top_bar_h);
         }
 
-        int top_y = m.side_y;
-        int top_btn = m.top_bar_h - 2;
-        int menu_w = top_btn;
-        int menu_x = m.side_x + m.side_w - menu_w - 2;
-        int map_w = top_btn;
-        int map_x = menu_x - map_w - 2;
-        int credits_x = m.side_x + 4;
-        int credits_w = map_x - credits_x - 4;
-
         if (UI_Sidebar_Debug_Is_On(COMP_CREDITS)) {
-            emit_credits(credits_x, top_y + 2, credits_w, m.sx);
+            emit_credits(m.credits_x, m.credits_y, m.credits_w, m.sx);
         }
 
         // Radar / player-names toggle (replaces the legacy bottom MAP button).
         if (UI_Sidebar_Debug_Is_On(COMP_MAP_BTN) &&
-            emit_icon_button(map_x, top_y + 1, map_w, top_btn,
+            emit_icon_button(m.map_btn_x, m.map_btn_y, m.map_btn_w, m.map_btn_h,
                              "R", use_atlas,
                              ATLAS_SIDEBAR_BTN_MAP_OFF,
                              ATLAS_SIDEBAR_BTN_MAP_HOVER,
@@ -1598,7 +1625,7 @@ void UI_Sidebar_Emit()
         }
 
         if (UI_Sidebar_Debug_Is_On(COMP_MENU_BTN) &&
-            emit_icon_button(menu_x, top_y + 1, menu_w, top_btn,
+            emit_icon_button(m.menu_btn_x, m.menu_btn_y, m.menu_btn_w, m.menu_btn_h,
                              "M", use_atlas,
                              ATLAS_SIDEBAR_MENUBTN_OFF,
                              ATLAS_SIDEBAR_MENUBTN_HOVER,
@@ -1623,8 +1650,8 @@ void UI_Sidebar_Emit()
     if (m.hd_mode) {
         int tab_y = m.tab_row_y;
         int tab_h = m.mode_tab_h;
-        int tab_x = m.side_x + 2;
-        int tab_w = m.side_w - 4;
+        int tab_x = m.mode_tabs_x;
+        int tab_w = m.mode_tabs_w;
         int tab_btn_base_w = tab_w / 3;
         int tab_btn_rem = tab_w % 3;
         int tab_btn_w0 = tab_btn_base_w + (tab_btn_rem > 0 ? 1 : 0);
@@ -1669,8 +1696,8 @@ void UI_Sidebar_Emit()
         // Category selector row — filters the production grid.
         int cat_h = m.category_h;
         int cat_y = m.cat_row_y;
-        int cat_x = m.side_x + 2;
-        int cat_w = m.side_w - 4;
+        int cat_x = m.cat_row_x;
+        int cat_w = m.cat_row_w;
         int cat_btn_base_w = cat_w / 4;
         int cat_btn_rem = cat_w % 4;
         int cat_btn_w[4] = {

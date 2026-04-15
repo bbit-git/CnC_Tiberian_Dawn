@@ -52,8 +52,26 @@ struct SidebarMetrics {
     int   prod_area_h;
     int   bottom_btn_y;       ///< legacy-only Repair/Sell/Map row
 
+    /* --- Per-component rects (populated at end of Compute) -------------- *
+     * Emit sites read from these so debug overrides can patch any single
+     * component independently. Defaults mirror the inline math previously
+     * scattered in UI_Sidebar_Emit. All in logical/HD pixels.               */
+    int   top_bar_x, top_bar_y, top_bar_w;           ///< top_bar_h above
+    int   credits_x, credits_y, credits_w, credits_h;
+    int   menu_btn_x, menu_btn_y, menu_btn_w, menu_btn_h;
+    int   map_btn_x,  map_btn_y,  map_btn_w,  map_btn_h;
+    int   mode_tabs_x, mode_tabs_w;                   ///< y = tab_row_y, h = mode_tab_h
+    int   cat_row_x,   cat_row_w;                     ///< y = cat_row_y,  h = category_h
+
     bool valid() const { return side_w > 0; }
 };
+
+/* --- Debug override hook ----------------------------------------------- *
+ * Registered callback invoked at the end of UI_Sidebar_Compute_Metrics so
+ * debug tools (preview, layout editor) can patch any field. Default is
+ * nullptr — production pays no cost.                                       */
+typedef void (*UI_Sidebar_Metrics_Hook)(SidebarMetrics&);
+void UI_Sidebar_Debug_Set_Metrics_Hook(UI_Sidebar_Metrics_Hook hook);
 
 /// Populate a SidebarMetrics struct from current Render_Bridge / SeenBuff
 /// / Map state. Returns a struct with side_w=0 if the sidebar rect is
