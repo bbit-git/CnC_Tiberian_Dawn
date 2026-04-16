@@ -44,6 +44,7 @@ enum UISidebarComponent : uint32_t {
     COMP_QUEUE_COUNT      = 1u << 12,  ///< Numeric queue-count label
     COMP_SCROLL_ARROWS    = 1u << 13,
     COMP_LEGACY_BOTTOM    = 1u << 14,  ///< Legacy-only Repair/Sell/Map row
+    COMP_RADAR            = 1u << 15,  ///< Radar frame + minimap/faction logo
 
     COMP_ALL              = 0xFFFFFFFFu,
 };

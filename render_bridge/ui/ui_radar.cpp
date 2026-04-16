@@ -10,10 +10,13 @@
 #include "ui_radar.h"
 #include "ui_draw_list.h"
 #include "ui_input.h"
+#include "ui_sidebar.h"
+#include "hd_sidebar_layout.h"
 #include "commandbar_atlas.h"
 #include "commandbar_sprites.h"
 #include "render_bridge.h"
 #include "function.h"
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 
@@ -24,6 +27,7 @@
 static uint32_t* g_radar_pixels = nullptr;
 static int       g_radar_alloc_w = 0;
 static int       g_radar_alloc_h = 0;
+static UI_Radar_Frame_Rect_Hook g_radar_frame_rect_hook = nullptr;
 
 static constexpr uint8_t RADAR_VIEWPORT_R = 0;
 static constexpr uint8_t RADAR_VIEWPORT_G = 200;
@@ -32,6 +36,48 @@ static constexpr uint8_t RADAR_VIEWPORT_A = 200;
 
 extern unsigned char* GamePalette;
 extern bool Debug_Unshroud;
+
+static int round_i(float v)
+{
+    return static_cast<int>(std::lround(v));
+}
+
+void UI_Radar_Debug_Set_Frame_Rect_Hook(UI_Radar_Frame_Rect_Hook hook)
+{
+    g_radar_frame_rect_hook = hook;
+}
+
+bool UI_Radar_Resolve_Frame_Rect(int logical_w, int logical_h,
+                                 int& x, int& y, int& w, int& h)
+{
+    if (g_radar_frame_rect_hook &&
+        g_radar_frame_rect_hook(logical_w, logical_h, x, y, w, h) &&
+        w > 0 && h > 0) {
+        return true;
+    }
+
+    if (Render_Bridge_Get_HD_Graphics()) {
+        auto rect = render_bridge::HDSidebarLayout::Instance()
+                        .Resolve("radar", logical_w, logical_h);
+        if (rect.valid()) {
+            x = rect.x;
+            y = rect.y;
+            w = rect.w;
+            h = rect.h;
+            return true;
+        }
+    }
+
+    const int base_w = SeenBuff.Get_Width();
+    const int base_h = SeenBuff.Get_Height();
+    const float sx = (base_w > 0) ? static_cast<float>(logical_w) / static_cast<float>(base_w) : 1.0f;
+    const float sy = (base_h > 0) ? static_cast<float>(logical_h) / static_cast<float>(base_h) : 1.0f;
+    x = round_i(static_cast<float>(Map.RadX) * sx);
+    y = round_i(static_cast<float>(Map.RadY) * sy);
+    w = round_i(static_cast<float>(Map.RadWidth) * sx);
+    h = round_i(static_cast<float>(Map.RadHeight) * sy);
+    return w > 0 && h > 0;
+}
 
 /// Convert a VGA palette index to a packed RGBA value (0xAABBGGRR).
 static uint32_t pal_index_to_rgba(int index, const uint8_t* pal)
@@ -141,26 +187,24 @@ void UI_Radar_Emit()
     extern bool InMainLoop;
     if (!InMainLoop) return;
     if (!Map.IsSidebarActive) return;
+    if (!UI_Sidebar_Debug_Is_On(COMP_RADAR)) return;
+
+    int logical_w = 0, logical_h = 0;
+    Render_Bridge_Get_Logical_Screen_Size(logical_w, logical_h);
+    int frame_x = 0, frame_y = 0, frame_w = 0, frame_h = 0;
+    if (!UI_Radar_Resolve_Frame_Rect(logical_w, logical_h,
+                                     frame_x, frame_y, frame_w, frame_h)) {
+        return;
+    }
+
     if (!Map.Is_Radar_Active()) {
         // When radar is inactive, show faction logo in the radar area (HD only)
         bool atlas_ready = Render_Bridge_Get_HD_Graphics() && Commandbar_Atlas_Is_Ready();
         if (atlas_ready && PlayerPtr) {
-            int base_w = SeenBuff.Get_Width();
-            int base_h = SeenBuff.Get_Height();
-            int logical_w = 0, logical_h = 0;
-            Render_Bridge_Get_Logical_Screen_Size(logical_w, logical_h);
-            float sx_f = (base_w > 0) ? static_cast<float>(logical_w) / static_cast<float>(base_w) : 1.0f;
-            float sy_f = (base_h > 0) ? static_cast<float>(logical_h) / static_cast<float>(base_h) : 1.0f;
-
-            int rf_x = static_cast<int>(Map.RadX * sx_f);
-            int rf_y = static_cast<int>(Map.RadY * sy_f);
-            int rf_w = static_cast<int>(Map.RadWidth * sx_f);
-            int rf_h = static_cast<int>(Map.RadHeight * sy_f);
-
             // Draw radar background
             const AtlasSpriteRect* bg = Commandbar_Atlas_Find(ATLAS_SIDEBAR_RADARBG);
             if (bg) {
-                g_ui_draw_list.Draw_Atlas_Sprite(rf_x, rf_y, rf_w, rf_h,
+                g_ui_draw_list.Draw_Atlas_Sprite(frame_x, frame_y, frame_w, frame_h,
                                                  bg->u0, bg->v0, bg->u1, bg->v1);
             }
 
@@ -176,14 +220,14 @@ void UI_Radar_Emit()
             if (logo) {
                 // Center and scale logo within radar frame, maintaining aspect ratio
                 float logo_aspect = static_cast<float>(logo->width) / static_cast<float>(logo->height);
-                int logo_h = rf_h * 3 / 4;
+                int logo_h = frame_h * 3 / 4;
                 int logo_w = static_cast<int>(logo_h * logo_aspect);
-                if (logo_w > rf_w * 3 / 4) {
-                    logo_w = rf_w * 3 / 4;
+                if (logo_w > frame_w * 3 / 4) {
+                    logo_w = frame_w * 3 / 4;
                     logo_h = static_cast<int>(logo_w / logo_aspect);
                 }
-                int logo_x = rf_x + (rf_w - logo_w) / 2;
-                int logo_y = rf_y + (rf_h - logo_h) / 2;
+                int logo_x = frame_x + (frame_w - logo_w) / 2;
+                int logo_y = frame_y + (frame_h - logo_h) / 2;
                 g_ui_draw_list.Draw_Atlas_Sprite(logo_x, logo_y, logo_w, logo_h,
                                                  logo->u0, logo->v0, logo->u1, logo->v1);
             }
@@ -210,26 +254,29 @@ void UI_Radar_Emit()
 
     // --- Position the radar in the sidebar ---
     // Use legacy radar position members, scaled to HD logical screen space.
-    int base_w = SeenBuff.Get_Width();
-    int base_h = SeenBuff.Get_Height();
-    int logical_w = 0, logical_h = 0;
-    Render_Bridge_Get_Logical_Screen_Size(logical_w, logical_h);
-    float sx = (base_w > 0) ? static_cast<float>(logical_w) / static_cast<float>(base_w) : 1.0f;
-    float sy = (base_h > 0) ? static_cast<float>(logical_h) / static_cast<float>(base_h) : 1.0f;
+    int radar_x = frame_x;
+    int radar_y = frame_y;
+    int radar_w = frame_w;
+    int radar_h = frame_h;
 
-    // Radar interior position and size in HD space
-    int radar_x = static_cast<int>((Map.RadX + Map.RadOffX) * sx);
-    int radar_y = static_cast<int>((Map.RadY + Map.RadOffY) * sy);
-    int radar_w = static_cast<int>(Map.RadIWidth * sx);
-    int radar_h = static_cast<int>(Map.RadIHeight * sy);
+    if (Map.RadWidth > 0 && Map.RadHeight > 0 &&
+        Map.RadIWidth > 0 && Map.RadIHeight > 0) {
+        radar_x = frame_x + round_i(static_cast<float>(frame_w) *
+                                    (static_cast<float>(Map.RadOffX) / static_cast<float>(Map.RadWidth)));
+        radar_y = frame_y + round_i(static_cast<float>(frame_h) *
+                                    (static_cast<float>(Map.RadOffY) / static_cast<float>(Map.RadHeight)));
+        radar_w = round_i(static_cast<float>(frame_w) *
+                          (static_cast<float>(Map.RadIWidth) / static_cast<float>(Map.RadWidth)));
+        radar_h = round_i(static_cast<float>(frame_h) *
+                          (static_cast<float>(Map.RadIHeight) / static_cast<float>(Map.RadHeight)));
+    }
+
+    if (radar_x < frame_x) radar_x = frame_x;
+    if (radar_y < frame_y) radar_y = frame_y;
+    if (radar_x + radar_w > frame_x + frame_w) radar_w = frame_x + frame_w - radar_x;
+    if (radar_y + radar_h > frame_y + frame_h) radar_h = frame_y + frame_h - radar_y;
 
     if (radar_w <= 0 || radar_h <= 0) return;
-
-    // Radar frame background
-    int frame_x = static_cast<int>(Map.RadX * sx);
-    int frame_y = static_cast<int>(Map.RadY * sy);
-    int frame_w = static_cast<int>(Map.RadWidth * sx);
-    int frame_h = static_cast<int>(Map.RadHeight * sy);
 
     bool use_atlas = Render_Bridge_Get_HD_Graphics() && Commandbar_Atlas_Is_Ready();
     if (use_atlas) {

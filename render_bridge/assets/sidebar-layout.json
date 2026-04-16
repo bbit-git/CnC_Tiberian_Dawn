@@ -2,7 +2,10 @@
   "reference": { "w": 1920, "h": 1080 },
   "scaling":   "uniform",
   "components": {
-    "top_bar":  { "anchor": "top-right",    "x": 1486, "y": 0,   "w": 434, "h": 40  },
-    "sidebar":  { "anchor": "bottom-right", "x": 1527, "y": 474, "w": 393, "h": 606 }
+    "top_bar":      { "anchor": "top-right",    "x": 1486, "y": 0,   "w": 434, "h": 40  },
+    "credits":      { "anchor": "top-right",    "x": 1480, "y": 8,   "w": 400, "h": 32  },
+    "menu_button":  { "anchor": "top-left",     "x": 1871, "y": 6,   "w": 38,  "h": 34  },
+    "radar":        { "anchor": "top-left",     "x": 1487, "y": 42,  "w": 436, "h": 383 },
+    "sidebar":      { "anchor": "bottom-right", "x": 1527, "y": 474, "w": 393, "h": 606 }
   }
 }

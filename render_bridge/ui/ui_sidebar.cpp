@@ -20,6 +20,7 @@
 #include "ui_controls.h"
 #include "ui_input.h"
 #include "ui_layout.h"
+#include "ui_radar.h"
 #include "ui_text.h"
 #include "commandbar_atlas.h"
 #include "commandbar_sprites.h"
@@ -1511,8 +1512,15 @@ SidebarMetrics UI_Sidebar_Compute_Metrics()
     m.grid_x_pad        = scale_x_from_legacy(8, m.sx);
 
     // Anchors — derive once.
-    m.radar_bottom_y = scale_y_from_legacy(Map.RadY + Map.RadHeight, m.sy)
-                     + m.radar_gap_below;
+    int radar_frame_x = 0, radar_frame_y = 0, radar_frame_w = 0, radar_frame_h = 0;
+    if (UI_Radar_Resolve_Frame_Rect(logical_w, logical_h,
+                                    radar_frame_x, radar_frame_y,
+                                    radar_frame_w, radar_frame_h)) {
+        m.radar_bottom_y = radar_frame_y + radar_frame_h + m.radar_gap_below;
+    } else {
+        m.radar_bottom_y = scale_y_from_legacy(Map.RadY + Map.RadHeight, m.sy)
+                         + m.radar_gap_below;
+    }
     m.tab_row_y      = m.radar_bottom_y;
     m.cat_row_y      = m.hd_mode ? (m.tab_row_y + m.mode_tab_h + m.mode_tab_gap)
                                  : m.tab_row_y;
@@ -1556,20 +1564,75 @@ SidebarMetrics UI_Sidebar_Compute_Metrics()
     }
 
     const int top_btn = m.top_bar_h - 2;
-    m.menu_btn_w  = top_btn;
-    m.menu_btn_h  = top_btn;
-    m.menu_btn_x  = m.side_x + m.side_w - m.menu_btn_w - 2;
-    m.menu_btn_y  = m.side_y + 1;
+    if (m.hd_mode) {
+        auto menu_btn = render_bridge::HDSidebarLayout::Instance()
+                            .Resolve("menu_button", logical_w, logical_h);
+        if (menu_btn.valid()) {
+            m.menu_btn_x = menu_btn.x;
+            m.menu_btn_y = menu_btn.y;
+            m.menu_btn_w = menu_btn.w;
+            m.menu_btn_h = menu_btn.h;
+        } else {
+            m.menu_btn_w  = top_btn;
+            m.menu_btn_h  = top_btn;
+            m.menu_btn_x  = m.side_x + m.side_w - m.menu_btn_w - 2;
+            m.menu_btn_y  = m.side_y + 1;
+        }
 
-    m.map_btn_w   = top_btn;
-    m.map_btn_h   = top_btn;
-    m.map_btn_x   = m.menu_btn_x - m.map_btn_w - 2;
-    m.map_btn_y   = m.side_y + 1;
+        // HD: map button is the 3rd (last) slot in the mode-tabs row, replacing
+        // the legacy "B" tab. Allow a one-off "map_button" rect in
+        // sidebar-layout.json to override.
+        auto map_btn = render_bridge::HDSidebarLayout::Instance()
+                           .Resolve("map_button", logical_w, logical_h);
+        if (map_btn.valid()) {
+            m.map_btn_x = map_btn.x;
+            m.map_btn_y = map_btn.y;
+            m.map_btn_w = map_btn.w;
+            m.map_btn_h = map_btn.h;
+        } else {
+            const int tabs_x = m.side_x + 2;
+            const int tabs_w = m.side_w - 4;
+            const int slot_w = tabs_w / 3;
+            const int rem    = tabs_w % 3;
+            // First two slots absorb the remainder (matches the rendering
+            // distribution below); last slot is the bare base width.
+            m.map_btn_x = tabs_x + 2 * slot_w + rem;
+            m.map_btn_y = m.tab_row_y;
+            m.map_btn_w = slot_w;
+            m.map_btn_h = m.mode_tab_h;
+        }
+    } else {
+        m.menu_btn_w  = top_btn;
+        m.menu_btn_h  = top_btn;
+        m.menu_btn_x  = m.side_x + m.side_w - m.menu_btn_w - 2;
+        m.menu_btn_y  = m.side_y + 1;
 
-    m.credits_x   = m.side_x + 4;
-    m.credits_y   = m.side_y + 2;
-    m.credits_w   = m.map_btn_x - m.credits_x - 4;
-    m.credits_h   = m.top_bar_h - 4;
+        m.map_btn_w   = top_btn;
+        m.map_btn_h   = top_btn;
+        m.map_btn_x   = m.menu_btn_x - m.map_btn_w - 2;
+        m.map_btn_y   = m.side_y + 1;
+    }
+
+    if (m.hd_mode) {
+        auto credits = render_bridge::HDSidebarLayout::Instance()
+                           .Resolve("credits", logical_w, logical_h);
+        if (credits.valid()) {
+            m.credits_x = credits.x;
+            m.credits_y = credits.y;
+            m.credits_w = credits.w;
+            m.credits_h = credits.h;
+        } else {
+            m.credits_x = m.side_x + 4;
+            m.credits_y = m.side_y + 2;
+            m.credits_w = m.map_btn_x - m.credits_x - 4;
+            m.credits_h = m.top_bar_h - 4;
+        }
+    } else {
+        m.credits_x = m.side_x + 4;
+        m.credits_y = m.side_y + 2;
+        m.credits_w = m.map_btn_x - m.credits_x - 4;
+        m.credits_h = m.top_bar_h - 4;
+    }
 
     m.mode_tabs_x = m.side_x + 2;
     m.mode_tabs_w = m.side_w - 4;
@@ -1623,29 +1686,6 @@ void UI_Sidebar_Emit()
             emit_credits(m.credits_x, m.credits_y, m.credits_w, m.sx);
         }
 
-        // Radar / player-names toggle (replaces the legacy bottom MAP button).
-        if (UI_Sidebar_Debug_Is_On(COMP_MAP_BTN) &&
-            emit_icon_button(m.map_btn_x, m.map_btn_y, m.map_btn_w, m.map_btn_h,
-                             "R", use_atlas,
-                             ATLAS_SIDEBAR_BTN_MAP_OFF,
-                             ATLAS_SIDEBAR_BTN_MAP_HOVER,
-                             ATLAS_SIDEBAR_BTN_MAP_PRESS)) {
-            if (Map.Is_Radar_Active()) {
-                if (Map.Is_Zoomed() || GameToPlay == GAME_NORMAL) {
-                    Map.Zoom_Mode(Coord_Cell(Map.TacticalCoord));
-                } else {
-                    if (!Map.Is_Player_Names()) {
-                        Map.Player_Names(1);
-                    } else {
-                        Map.Player_Names(0);
-                        Map.Zoom_Mode(Coord_Cell(Map.TacticalCoord));
-                    }
-                }
-            } else if (GameToPlay != GAME_NORMAL) {
-                Map.Player_Names(Map.Is_Player_Names() == 0);
-            }
-        }
-
         if (UI_Sidebar_Debug_Is_On(COMP_MENU_BTN) &&
             emit_icon_button(m.menu_btn_x, m.menu_btn_y, m.menu_btn_w, m.menu_btn_h,
                              "M", use_atlas,
@@ -1667,7 +1707,6 @@ void UI_Sidebar_Emit()
 
     bool repair_active = Map.IsRepairMode != 0;
     bool sell_active = Map.IsSellMode != 0;
-    bool build_active = !repair_active && !sell_active;
 
     if (m.hd_mode) {
         int tab_y = m.tab_row_y;
@@ -1693,12 +1732,6 @@ void UI_Sidebar_Emit()
             ATLAS_SIDEBAR_TABBUTTON_HIGHLIGHTED,
             ATLAS_SIDEBAR_MODETAB_SELL_ICON
         };
-        static const AtlasModeTabSprites build_tab = {
-            ATLAS_SIDEBAR_TABBUTTON_ENABLED,
-            ATLAS_SIDEBAR_TABBUTTON_HIGHLIGHTED,
-            ATLAS_SIDEBAR_MODETAB_BUILD_ICON
-        };
-
         if (UI_Sidebar_Debug_Is_On(COMP_MODE_TABS)) {
             if (emit_mode_tab_button(tab_x0, tab_y, tab_btn_w0, tab_h,
                                      "R", repair_active, use_atlas, &repair_tab)) {
@@ -1708,10 +1741,30 @@ void UI_Sidebar_Emit()
                                      "$", sell_active, use_atlas, &sell_tab)) {
                 Map.Sell_Mode_Control(-1);
             }
-            if (emit_mode_tab_button(tab_x2, tab_y, tab_btn_w2, tab_h,
-                                     "B", build_active, use_atlas, &build_tab)) {
-                Map.Repair_Mode_Control(0);
-                Map.Sell_Mode_Control(0);
+        }
+
+        // Third slot of the mode-tabs row is the radar / player-names toggle
+        // (replaces the legacy bottom MAP button). Gated by COMP_MAP_BTN so
+        // the debug panel can still toggle it independently of R/$.
+        if (UI_Sidebar_Debug_Is_On(COMP_MAP_BTN) &&
+            emit_icon_button(tab_x2, tab_y, tab_btn_w2, tab_h,
+                             "M", use_atlas,
+                             ATLAS_SIDEBAR_BTN_MAP_OFF,
+                             ATLAS_SIDEBAR_BTN_MAP_HOVER,
+                             ATLAS_SIDEBAR_BTN_MAP_PRESS)) {
+            if (Map.Is_Radar_Active()) {
+                if (Map.Is_Zoomed() || GameToPlay == GAME_NORMAL) {
+                    Map.Zoom_Mode(Coord_Cell(Map.TacticalCoord));
+                } else {
+                    if (!Map.Is_Player_Names()) {
+                        Map.Player_Names(1);
+                    } else {
+                        Map.Player_Names(0);
+                        Map.Zoom_Mode(Coord_Cell(Map.TacticalCoord));
+                    }
+                }
+            } else if (GameToPlay != GAME_NORMAL) {
+                Map.Player_Names(Map.Is_Player_Names() == 0);
             }
         }
 
