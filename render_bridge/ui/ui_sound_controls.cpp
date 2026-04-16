@@ -5,6 +5,7 @@
  */
 
 #include "ui_sound_controls.h"
+#include "ui_sound_controls_layout.h"
 #include "ui_dialog.h"
 #include "ui_controls.h"
 #include "render_bridge.h"
@@ -70,6 +71,7 @@ void UI_Sound_Controls_Emit()
     int cx, cy, cw, ch;
     UI_Dialog_Begin(screen_w, screen_h, dialog_w, dialog_h,
                     lbl.title, style, cx, cy, cw, ch);
+    const int content_y = cy;
 
     UISliderStyle ss = UI_Default_Slider_Style();
     ss.thumb_r = 0; ss.thumb_g = 100; ss.thumb_b = 0;
@@ -78,24 +80,30 @@ void UI_Sound_Controls_Emit()
     // Music Volume
     UI_Label(cx, cy, lbl.music_vol, fnt, 180, 180, 180, 255);
     cy += row;
+    UI_Input_Push_String_ID("music_volume");
     music_vol = UI_Slider(cx, cy, cw, slider_h, music_vol, ss);
+    UI_Input_Pop_ID();
     cy += slider_h + gap;
 
     // SFX Volume
     UI_Label(cx, cy, lbl.sound_vol, fnt, 180, 180, 180, 255);
     cy += row;
+    UI_Input_Push_String_ID("sound_volume");
     sfx_vol = UI_Slider(cx, cy, cw, slider_h, sfx_vol, ss);
+    UI_Input_Pop_ID();
     cy += slider_h + gap;
 
     // Track list
-    int remaining = ch - (cy - cx + style.padding);
-    int list_h = remaining - btn_h * 2 - gap * 3;
-    if (list_h < 40) list_h = 40;
+    UISoundControlsLayout layout =
+        UI_Sound_Controls_Calc_Layout(content_y, ch, cy, btn_h, gap);
+    int list_h = layout.list_h;
 
     UIListBoxStyle lbs = UI_Default_ListBox_Style();
+    UI_Input_Push_String_ID("track_list");
     selected_track = UI_ListBox(cx, cy, cw, list_h, tracks, track_count,
-                                 selected_track, track_scroll, lbs);
-    cy += list_h + gap;
+                                selected_track, track_scroll, lbs);
+    UI_Input_Pop_ID();
+    cy = layout.action_y;
 
     // Play / Stop / Shuffle / Repeat
     UIButtonStyle bs = UI_Default_Button_Style();
@@ -107,12 +115,12 @@ void UI_Sound_Controls_Emit()
     bs.font = fnt;
 
     int btn4_w = (cw - 9) / 4;
-    if (UI_Button(cx, cy, btn4_w, btn_h, lbl.play, bs) == UI_BTN_PRESSED) {
+    if (UI_Button_Activated(UI_Button(cx, cy, btn4_w, btn_h, lbl.play, bs))) {
         Render_Bridge_UI_Sound_Controls_Update(2, music_vol, sfx_vol,
                                                selected_track, track_scroll,
                                                shuffle, repeat_on);
     }
-    if (UI_Button(cx + btn4_w + 3, cy, btn4_w, btn_h, lbl.stop, bs) == UI_BTN_PRESSED) {
+    if (UI_Button_Activated(UI_Button(cx + btn4_w + 3, cy, btn4_w, btn_h, lbl.stop, bs))) {
         Render_Bridge_UI_Sound_Controls_Update(3, music_vol, sfx_vol,
                                                selected_track, track_scroll,
                                                shuffle, repeat_on);
@@ -121,12 +129,12 @@ void UI_Sound_Controls_Emit()
                              shuffle, fnt, 180, 180, 180);
     repeat_on = UI_Checkbox(cx + (btn4_w + 3) * 3, cy, lh, lbl.repeat,
                              repeat_on, fnt, 180, 180, 180);
-    cy += btn_h + gap;
+    cy = layout.ok_y;
 
     // OK button
     int ok_w = UI_Text_Measure_Width(fnt, lbl.ok, static_cast<int>(strlen(lbl.ok))) + 20;
     if (ok_w < 80) ok_w = 80;
-    if (UI_Button(cx + (cw - ok_w) / 2, cy, ok_w, btn_h, lbl.ok, bs) == UI_BTN_PRESSED) {
+    if (UI_Button_Activated(UI_Button(cx + (cw - ok_w) / 2, cy, ok_w, btn_h, lbl.ok, bs))) {
         Render_Bridge_UI_Sound_Controls_Update(1, music_vol, sfx_vol,
                                                selected_track, track_scroll,
                                                shuffle, repeat_on);

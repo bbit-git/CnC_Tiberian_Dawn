@@ -67,7 +67,9 @@ void UI_Visual_Controls_Emit()
     for (int i = 0; i < 4; i++) {
         UI_Label(cx, cy, rows[i].label, fnt, 180, 180, 180, 255);
         cy += row;
+        UI_Input_Push_String_ID(rows[i].label ? rows[i].label : "");
         *rows[i].value = UI_Slider(cx, cy, cw, slider_h, *rows[i].value, ss);
+        UI_Input_Pop_ID();
         cy += slider_h + gap;
     }
 
@@ -87,10 +89,10 @@ void UI_Visual_Controls_Emit()
     UIButtonState reset_state = UI_Button(cx, cy, half_w, btn_h, lbl.reset, bs);
     UIButtonState ok_state = UI_Button(cx + half_w + 6, cy, half_w, btn_h, lbl.ok, bs);
 
-    if (reset_state == UI_BTN_PRESSED) {
+    if (UI_Button_Activated(reset_state)) {
         brightness = 0.5f; color = 0.5f; contrast = 0.5f; tint = 0.5f;
         Render_Bridge_UI_Visual_Controls_Set_Result(0, brightness, color, contrast, tint, hd_graphics);
-    } else if (ok_state == UI_BTN_PRESSED) {
+    } else if (UI_Button_Activated(ok_state)) {
         Render_Bridge_UI_Visual_Controls_Set_Result(1, brightness, color, contrast, tint, hd_graphics);
     } else {
         Render_Bridge_UI_Visual_Controls_Set_Result(0, brightness, color, contrast, tint, hd_graphics);

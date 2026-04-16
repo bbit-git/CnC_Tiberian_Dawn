@@ -5,15 +5,10 @@
 #include "ui_load_dialog.h"
 #include "ui_dialog.h"
 #include "ui_controls.h"
-#include "render_bridge.h"
+#include "ui_load_dialog_state.h"
 #include "function.h"
+#include <cstdio>
 #include <cstring>
-
-extern bool Render_Bridge_UI_Load_Dialog_Get_State(
-    int& mode, const char**& items, int& count, int& selected,
-    float& scroll_pos, const char*& edit_text, int& screen_w, int& screen_h,
-    const char*& title, const char*& action_label, const char*& cancel_label);
-extern void Render_Bridge_UI_Load_Dialog_Set_Result(int result, int selected, float scroll_pos);
 
 void UI_Load_Dialog_Emit()
 {
@@ -53,18 +48,21 @@ void UI_Load_Dialog_Emit()
     UIListBoxStyle lbs = UI_Default_ListBox_Style();
     int list_h = ch - btn_h - style.padding;
     if (mode == 1) list_h -= btn_h + gap; // room for edit field in save mode
+    if (list_h < 40) list_h = 40;
 
+    UI_Input_Push_String_ID("load_list");
     int new_sel = UI_ListBox(cx, cy, cw, list_h, items, count,
-                              selected, scroll_pos, lbs);
+                             selected, scroll_pos, lbs);
+    UI_Input_Pop_ID();
     cy += list_h + gap;
 
-    // Edit field for save mode (display-only for now)
-    if (mode == 1 && edit_text && edit_text[0]) {
-        g_ui_draw_list.Fill_Rect(cx, cy, cw, btn_h, 15, 15, 15, 240);
-        g_ui_draw_list.Draw_Rect(cx, cy, cw, btn_h, 0, 100, 0, 255);
-        int name_th = UI_Text_Line_Height(fnt);
-        g_ui_draw_list.Draw_Text(cx + 4, cy + (btn_h - name_th) / 2,
-                                 edit_text, fnt, 220, 220, 220, 255);
+    char edit_buf[40] = {};
+    std::snprintf(edit_buf, sizeof(edit_buf), "%s", edit_text ? edit_text : "");
+
+    if (mode == 1) {
+        UI_Input_Push_String_ID("save_name");
+        UI_TextInput(cx, cy, cw, btn_h, edit_buf, static_cast<int>(sizeof(edit_buf)), fnt);
+        UI_Input_Pop_ID();
         cy += btn_h + gap;
     }
 
@@ -74,10 +72,10 @@ void UI_Load_Dialog_Emit()
     UIDialogResult result = UI_Dialog_End(dx, dy, dialog_w, dialog_h,
                                           action_label, cancel_label, style);
     if (result == UI_DIALOG_OK) {
-        Render_Bridge_UI_Load_Dialog_Set_Result(1, new_sel, scroll_pos);
+        Render_Bridge_UI_Load_Dialog_Set_Result(1, new_sel, scroll_pos, edit_buf);
     } else if (result == UI_DIALOG_CANCEL) {
-        Render_Bridge_UI_Load_Dialog_Set_Result(2, new_sel, scroll_pos);
+        Render_Bridge_UI_Load_Dialog_Set_Result(2, new_sel, scroll_pos, edit_buf);
     } else {
-        Render_Bridge_UI_Load_Dialog_Set_Result(0, new_sel, scroll_pos);
+        Render_Bridge_UI_Load_Dialog_Set_Result(0, new_sel, scroll_pos, edit_buf);
     }
 }

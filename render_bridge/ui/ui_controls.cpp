@@ -7,6 +7,44 @@
 #include "function.h"
 #include <cstring>
 
+namespace {
+
+constexpr std::uint32_t kButtonWidgetSalt = 0x42544e31u;
+constexpr std::uint32_t kSliderWidgetSalt = 0x534c4431u;
+constexpr std::uint32_t kScrollbarWidgetSalt = 0x53435231u;
+constexpr std::uint32_t kListWidgetSalt = 0x4c535431u;
+constexpr std::uint32_t kListItemWidgetSalt = 0x4c495431u;
+constexpr std::uint32_t kCheckboxWidgetSalt = 0x43484b31u;
+constexpr std::uint32_t kTextInputWidgetSalt = 0x54455831u;
+
+UIWidgetID make_widget_from_scope_or_label(std::uint32_t salt, const char* label)
+{
+    UIWidgetID widget_id = UI_Input_Make_Widget_ID(salt);
+    if (widget_id != UI_WIDGET_NONE || !label || !label[0]) {
+        return widget_id;
+    }
+
+    UI_Input_Push_String_ID(label);
+    widget_id = UI_Input_Make_Widget_ID(salt);
+    UI_Input_Pop_ID();
+    return widget_id;
+}
+
+UIWidgetID make_widget_from_scope_or_pointer(std::uint32_t salt, const void* ptr)
+{
+    UIWidgetID widget_id = UI_Input_Make_Widget_ID(salt);
+    if (widget_id != UI_WIDGET_NONE || ptr == nullptr) {
+        return widget_id;
+    }
+
+    UI_Input_Push_Pointer_ID(ptr);
+    widget_id = UI_Input_Make_Widget_ID(salt);
+    UI_Input_Pop_ID();
+    return widget_id;
+}
+
+} // namespace
+
 UIPanelStyle UI_Default_Panel_Style()
 {
     UIPanelStyle s = {};
@@ -68,7 +106,8 @@ void UI_Label(int x, int y, const char* text, UIFontID font,
 UIButtonState UI_Button(int x, int y, int w, int h,
                         const char* label, const UIButtonStyle& style)
 {
-    UIHitZoneID zone = UI_Input_Register_Zone(x, y, w, h);
+    UIHitZoneID zone = UI_Input_Register_Zone(x, y, w, h,
+                                              make_widget_from_scope_or_label(kButtonWidgetSalt, label));
     UIHitZoneID hovered = UI_Input_Get_Hovered();
     UIHitZoneID pressed = UI_Input_Get_Pressed();
 
@@ -90,9 +129,9 @@ UIButtonState UI_Button(int x, int y, int w, int h,
         bg_b = style.hover_b; bg_a = style.hover_a;
     }
 
-    // Fire PRESSED only on the single click-edge frame (not every held frame)
+    // Report activation on release-inside, separate from held pressed visuals.
     if (UI_Input_Was_Clicked(zone)) {
-        state = UI_BTN_PRESSED;
+        state = UI_BTN_CLICKED;
     }
 
     // Draw background
@@ -142,7 +181,8 @@ float UI_Slider(int x, int y, int w, int h, float value,
     if (value < 0.0f) value = 0.0f;
     if (value > 1.0f) value = 1.0f;
 
-    UIHitZoneID zone = UI_Input_Register_Zone(x, y, w, h);
+    UIHitZoneID zone = UI_Input_Register_Zone(x, y, w, h,
+                                              UI_Input_Make_Widget_ID(kSliderWidgetSalt));
     UIHitZoneID pressed = UI_Input_Get_Pressed();
     UIHitZoneID hovered = UI_Input_Get_Hovered();
 
@@ -199,7 +239,8 @@ float UI_Scrollbar(int x, int y, int w, int h, float value,
     if (visible_frac < 0.0f) visible_frac = 0.0f;
     if (visible_frac > 1.0f) visible_frac = 1.0f;
 
-    UIHitZoneID zone = UI_Input_Register_Zone(x, y, w, h);
+    UIHitZoneID zone = UI_Input_Register_Zone(x, y, w, h,
+                                              UI_Input_Make_Widget_ID(kScrollbarWidgetSalt));
     UIHitZoneID pressed = UI_Input_Get_Pressed();
     UIHitZoneID hovered = UI_Input_Get_Hovered();
 
@@ -270,7 +311,8 @@ int UI_ListBox(int x, int y, int w, int h,
 
     // Mouse-wheel scrolling: register a hit zone for the whole list area
     // and consume scroll delta when hovered.
-    UIHitZoneID list_zone = UI_Input_Register_Zone(x, y, w, h);
+    UIHitZoneID list_zone = UI_Input_Register_Zone(x, y, w, h,
+                                                   UI_Input_Make_Widget_ID(kListWidgetSalt));
     if (needs_scroll && list_zone == UI_Input_Get_Hovered()) {
         float wheel = UI_Input_Consume_Scroll_Delta();
         if (wheel != 0.0f) {
@@ -289,8 +331,10 @@ int UI_ListBox(int x, int y, int w, int h,
         content_w = w - style.scrollbar_w;
         float vis_frac = static_cast<float>(h) / static_cast<float>(total_h);
         UIScrollbarStyle sbs = UI_Default_Scrollbar_Style();
+        UI_Input_Push_ID(-1);
         scroll_pos = UI_Scrollbar(x + content_w, y, style.scrollbar_w, h,
                                   scroll_pos, vis_frac, sbs);
+        UI_Input_Pop_ID();
     }
 
     // Clip items to list area
@@ -312,9 +356,12 @@ int UI_ListBox(int x, int y, int w, int h,
         bool is_sel = (i == selected);
 
         // Hit zone for this item
+        UI_Input_Push_ID(i);
         UIHitZoneID zone = UI_Input_Register_Zone(x + 1, iy,
-                                                   content_w - 2,
-                                                   style.item_height);
+                                                  content_w - 2,
+                                                  style.item_height,
+                                                  UI_Input_Make_Widget_ID(kListItemWidgetSalt));
+        UI_Input_Pop_ID();
 
         if (UI_Input_Was_Clicked(zone)) {
             new_selected = i;
@@ -354,7 +401,8 @@ bool UI_Checkbox(int x, int y, int size, const char* label,
         hit_w = size + 4 + UI_Text_Measure_Width(font, label,
                                                    static_cast<int>(strlen(label)));
     }
-    UIHitZoneID zone = UI_Input_Register_Zone(x, y, hit_w, size);
+    UIHitZoneID zone = UI_Input_Register_Zone(x, y, hit_w, size,
+                                              make_widget_from_scope_or_label(kCheckboxWidgetSalt, label));
     UIHitZoneID hovered = UI_Input_Get_Hovered();
 
     bool is_hovered = (zone == hovered);
@@ -371,9 +419,7 @@ bool UI_Checkbox(int x, int y, int size, const char* label,
                                  r, g, b, 255);
     }
 
-    // Toggle on click (mouse-down edge only, not every held frame).
-    // UI_Input_Was_Clicked returns true for the single frame the button
-    // transitions from released to pressed over this zone.
+    // Toggle only when the pointer is released inside the same checkbox.
     if (UI_Input_Was_Clicked(zone)) {
         checked = !checked;
     }
@@ -390,24 +436,25 @@ bool UI_Checkbox(int x, int y, int size, const char* label,
 
 // --- Text Input ---
 
-static int g_text_input_focus_id = -1;  // which zone has keyboard focus
+static UIWidgetID g_text_input_focus_id = UI_WIDGET_NONE;
 
 bool UI_TextInput(int x, int y, int w, int h, char* buf, int buf_size,
                   UIFontID font, uint8_t r, uint8_t g, uint8_t b)
 {
-    UIHitZoneID zone = UI_Input_Register_Zone(x, y, w, h);
-    bool has_focus = (zone == g_text_input_focus_id);
+    UIWidgetID widget_id = make_widget_from_scope_or_pointer(kTextInputWidgetSalt, buf);
+    UIHitZoneID zone = UI_Input_Register_Zone(x, y, w, h, widget_id);
+    bool has_focus = (widget_id != UI_WIDGET_NONE && widget_id == g_text_input_focus_id);
 
     // Click to focus / unfocus
     if (UI_Input_Was_Clicked(zone)) {
-        g_text_input_focus_id = zone;
+        g_text_input_focus_id = widget_id;
         has_focus = true;
     }
 
     // Click outside this field while focused → lose focus
     UIHitZoneID clicked_zone = UI_Input_Get_Pressed();
     if (has_focus && clicked_zone != UI_HIT_NONE && clicked_zone != zone) {
-        g_text_input_focus_id = -1;
+        g_text_input_focus_id = UI_WIDGET_NONE;
         has_focus = false;
     }
 
@@ -444,7 +491,7 @@ bool UI_TextInput(int x, int y, int w, int h, char* buf, int buf_size,
                 if (plain == (KN_BACKSPACE & 0xFF)) {
                     if (len > 0) { buf[--len] = '\0'; }
                 } else if (plain == (KN_RETURN & 0xFF) || plain == (KN_ESC & 0xFF)) {
-                    g_text_input_focus_id = -1;
+                    g_text_input_focus_id = UI_WIDGET_NONE;
                     has_focus = false;
                     break;
                 }

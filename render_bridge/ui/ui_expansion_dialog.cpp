@@ -51,8 +51,10 @@ void UI_Expansion_Dialog_Emit()
     UIListBoxStyle lbs = UI_Default_ListBox_Style();
     int list_h = ch - btn_h - style.padding;
     if (list_h < 40) list_h = 40;
+    UI_Input_Push_String_ID("expansion_list");
     int new_sel = UI_ListBox(cx, cy, cw, list_h, items, count,
-                              selected, scroll, lbs);
+                             selected, scroll, lbs);
+    UI_Input_Pop_ID();
 
     // OK / Cancel
     int dx = (screen_w - dialog_w) / 2;

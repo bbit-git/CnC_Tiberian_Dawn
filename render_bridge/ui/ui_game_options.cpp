@@ -125,7 +125,7 @@ void UI_Game_Options_Emit()
     int by = cy;
 
     for (int i = 0; i < btn_count; i++) {
-        if (UI_Button(bx, by, btn_w, btn_h, buttons[i].label, bs) == UI_BTN_PRESSED) {
+        if (UI_Button_Activated(UI_Button(bx, by, btn_w, btn_h, buttons[i].label, bs))) {
             Render_Bridge_UI_Set_Game_Options_Result(buttons[i].result);
         }
         by += btn_h + btn_spacing;
@@ -138,12 +138,12 @@ void UI_Game_Options_Emit()
     if (show_restate && lbl.restate) {
         int gap = static_cast<int>(4 * menu_scale);
         int half_w = (btn_w - gap) / 2;
-        if (UI_Button(bx, by, half_w, btn_h, lbl.resume, bs) == UI_BTN_PRESSED)
+        if (UI_Button_Activated(UI_Button(bx, by, half_w, btn_h, lbl.resume, bs)))
             Render_Bridge_UI_Set_Game_Options_Result(UI_GOPTION_RESUME);
-        if (UI_Button(bx + half_w + gap, by, half_w, btn_h, lbl.restate, bs) == UI_BTN_PRESSED)
+        if (UI_Button_Activated(UI_Button(bx + half_w + gap, by, half_w, btn_h, lbl.restate, bs)))
             Render_Bridge_UI_Set_Game_Options_Result(UI_GOPTION_RESTATE);
     } else {
-        if (UI_Button(bx, by, btn_w, btn_h, lbl.resume, bs) == UI_BTN_PRESSED)
+        if (UI_Button_Activated(UI_Button(bx, by, btn_w, btn_h, lbl.resume, bs)))
             Render_Bridge_UI_Set_Game_Options_Result(UI_GOPTION_RESUME);
     }
 

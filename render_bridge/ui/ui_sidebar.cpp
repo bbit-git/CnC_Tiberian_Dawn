@@ -821,7 +821,12 @@ static void emit_slot(int x, int y, int w, int h, int slot_index,
     g_ui_draw_list.Draw_Rect(x, y, w, h, SLOT_BORDER_R, SLOT_BORDER_G, SLOT_BORDER_B, 255);
 
     // Register hit zone for the slot (even if empty, so clicks are captured)
-    UIHitZoneID zone = UI_Input_Register_Zone(x, y, w, h);
+    UI_Input_Push_Pointer_ID(&strip);
+    UI_Input_Push_ID(actual_index);
+    UIHitZoneID zone = UI_Input_Register_Zone(x, y, w, h,
+                                              UI_Input_Make_Widget_ID(0x534c4f54u));
+    UI_Input_Pop_ID();
+    UI_Input_Pop_ID();
 
     if (!has_item) return;
     if (use_atlas) {
@@ -871,7 +876,12 @@ static void emit_scroll_arrows(int x, int y, int strip_w,
                              SCROLL_R, SCROLL_R, SCROLL_R, up_a);
     g_ui_draw_list.Draw_Text(x + 4, y + 1, "UP", UI_FONT_6PT,
                              200, 200, 200, up_a);
-    UIHitZoneID up_zone = UI_Input_Register_Zone(x + 2, y, up_w, up_h);
+    UI_Input_Push_ID(col_index);
+    UI_Input_Push_String_ID("scroll_up");
+    UIHitZoneID up_zone = UI_Input_Register_Zone(x + 2, y, up_w, up_h,
+                                                 UI_Input_Make_Widget_ID(0x555031u));
+    UI_Input_Pop_ID();
+    UI_Input_Pop_ID();
     if (UI_Input_Was_Clicked(up_zone) && can_up) {
         Map.Column[col_index].Scroll(true);
     }
@@ -883,7 +893,12 @@ static void emit_scroll_arrows(int x, int y, int strip_w,
                              SCROLL_R, SCROLL_R, SCROLL_R, dn_a);
     g_ui_draw_list.Draw_Text(dn_x + 2, y + 1, "DN", UI_FONT_6PT,
                              200, 200, 200, dn_a);
-    UIHitZoneID dn_zone = UI_Input_Register_Zone(dn_x, y, up_w, up_h);
+    UI_Input_Push_ID(col_index);
+    UI_Input_Push_String_ID("scroll_down");
+    UIHitZoneID dn_zone = UI_Input_Register_Zone(dn_x, y, up_w, up_h,
+                                                 UI_Input_Make_Widget_ID(0x444e31u));
+    UI_Input_Pop_ID();
+    UI_Input_Pop_ID();
     if (UI_Input_Was_Clicked(dn_zone) && can_down) {
         Map.Column[col_index].Scroll(false);
     }
@@ -1021,7 +1036,12 @@ static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
         }
 
         // Hit zone for this cell
-        UIHitZoneID cell_zone = UI_Input_Register_Zone(cx, cy, cell_w, cell_h);
+        UI_Input_Push_ID(merged[item_idx].strip_col);
+        UI_Input_Push_ID(si);
+        UIHitZoneID cell_zone = UI_Input_Register_Zone(cx, cy, cell_w, cell_h,
+                                                       UI_Input_Make_Widget_ID(0x43454c4cu));
+        UI_Input_Pop_ID();
+        UI_Input_Pop_ID();
 
         // Prefer atlas cameos, fall back to legacy SHP decode
         bool drew_icon = false;
@@ -1076,7 +1096,10 @@ static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
                                      SCROLL_R, SCROLL_R, SCROLL_R, 200);
             g_ui_draw_list.Draw_Text(grid_x + 8, arrow_y + 1, "UP", UI_FONT_6PT,
                                      200, 200, 200, 255);
-            UIHitZoneID up_zone = UI_Input_Register_Zone(grid_x + 4, arrow_y, arrow_w, 12);
+            UI_Input_Push_String_ID("hd_grid_up");
+            UIHitZoneID up_zone = UI_Input_Register_Zone(grid_x + 4, arrow_y, arrow_w, 12,
+                                                         UI_Input_Make_Widget_ID(0x48475550u));
+            UI_Input_Pop_ID();
             if (UI_Input_Was_Clicked(up_zone)) {
                 g_hd_grid_top_index -= HD_GRID_COLS;
                 if (g_hd_grid_top_index < 0) g_hd_grid_top_index = 0;
@@ -1088,7 +1111,10 @@ static void emit_hd_grid(int grid_x, int grid_y, int grid_w, int grid_h,
                                      SCROLL_R, SCROLL_R, SCROLL_R, 200);
             g_ui_draw_list.Draw_Text(dn_x + 4, arrow_y + 1, "DN", UI_FONT_6PT,
                                      200, 200, 200, 255);
-            UIHitZoneID dn_zone = UI_Input_Register_Zone(dn_x, arrow_y, arrow_w, 12);
+            UI_Input_Push_String_ID("hd_grid_down");
+            UIHitZoneID dn_zone = UI_Input_Register_Zone(dn_x, arrow_y, arrow_w, 12,
+                                                         UI_Input_Make_Widget_ID(0x4847444eu));
+            UI_Input_Pop_ID();
             if (UI_Input_Was_Clicked(dn_zone)) {
                 g_hd_grid_top_index += HD_GRID_COLS;
             }
@@ -1275,7 +1301,11 @@ static bool emit_sidebar_button(int x, int y, int w, int h,
                                 bool use_atlas = false,
                                 const AtlasButtonSprites* atlas = nullptr)
 {
+    UI_Input_Push_Pointer_ID(shapefile);
+    UI_Input_Push_ID(frame);
     UIButtonState state = UI_Button(x, y, w, h, nullptr, style);
+    UI_Input_Pop_ID();
+    UI_Input_Pop_ID();
 
     if (use_atlas && atlas) {
         // Pick sprite based on interaction state
@@ -1305,7 +1335,7 @@ static bool emit_sidebar_button(int x, int y, int w, int h,
         }
     }
 
-    return state == UI_BTN_PRESSED;
+    return UI_Button_Activated(state);
 }
 
 /// Emit a small atlas-backed icon button with text fallback.
@@ -1322,7 +1352,9 @@ static bool emit_icon_button(int x, int y, int w, int h,
     style.press_r  = 0; style.press_g  = 0; style.press_b  = 0; style.press_a  = 0;
     style.border_r = 0; style.border_g = 0; style.border_b = 0; style.border_a = 0;
 
+    UI_Input_Push_String_ID(off_sprite ? off_sprite : fallback_label);
     UIButtonState state = UI_Button(x, y, w, h, nullptr, style);
+    UI_Input_Pop_ID();
     if (use_atlas) {
         const char* sprite = off_sprite;
         if (state == UI_BTN_HOVERED && hover_sprite) sprite = hover_sprite;
@@ -1335,7 +1367,7 @@ static bool emit_icon_button(int x, int y, int w, int h,
                                  0, 220, 0, 240, 0.9f);
     }
 
-    return state == UI_BTN_PRESSED;
+    return UI_Button_Activated(state);
 }
 
 /// Emit one HD mode-tab button. Active/hovered buttons use the atlas "_ON" art.
@@ -1364,7 +1396,9 @@ static bool emit_mode_tab_button(int x, int y, int w, int h,
     style.text_a = 255;
     style.font = UI_FONT_6PT;
 
+    UI_Input_Push_String_ID(atlas && atlas->icon ? atlas->icon : fallback_label);
     UIButtonState state = UI_Button(x, y, w, h, nullptr, style);
+    UI_Input_Pop_ID();
     bool highlight = is_active || state == UI_BTN_HOVERED || state == UI_BTN_PRESSED;
 
     if (use_atlas && atlas) {
@@ -1393,7 +1427,7 @@ static bool emit_mode_tab_button(int x, int y, int w, int h,
                                  style.text_r, style.text_g, style.text_b, style.text_a, 0.9f);
     }
 
-    return state == UI_BTN_PRESSED;
+    return UI_Button_Activated(state);
 }
 
 // ---------------------------------------------------------------------------

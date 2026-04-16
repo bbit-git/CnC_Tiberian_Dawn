@@ -80,8 +80,8 @@ void UI_Com_Scenario_Emit()
     else                  { nod_bs.normal_r = 80; nod_bs.normal_g = 0; nod_bs.normal_b = 0; }
     UIButtonState gdi_state = UI_Button(cx, y, fac_w, btn_h, st.lbl_gdi, gdi_bs);
     UIButtonState nod_state = UI_Button(cx + fac_w + 4, y, fac_w, btn_h, st.lbl_nod, nod_bs);
-    if (gdi_state == UI_BTN_PRESSED) st.faction = 0;
-    if (nod_state == UI_BTN_PRESSED) st.faction = 1;
+    if (UI_Button_Activated(gdi_state)) st.faction = 0;
+    if (UI_Button_Activated(nod_state)) st.faction = 1;
     y += btn_h + gap;
 
     // Credits (slider: 0–10000 in steps of 500)
@@ -98,7 +98,9 @@ void UI_Com_Scenario_Emit()
         float cred_norm = static_cast<float>(st.credits) / 10000.0f;
         if (cred_norm < 0.0f) cred_norm = 0.0f;
         if (cred_norm > 1.0f) cred_norm = 1.0f;
+        UI_Input_Push_String_ID("credits");
         cred_norm = UI_Slider(cx, y, left_w, slider_h, cred_norm, ss);
+        UI_Input_Pop_ID();
         st.credits = static_cast<int>(cred_norm * 20.0f + 0.5f) * 500;  // snap to 500s
     }
     y += slider_h + gap;
@@ -111,9 +113,11 @@ void UI_Com_Scenario_Emit()
         scenario_ptrs[i] = st.scenarios[i];
     }
     UIListBoxStyle lbs = UI_Default_ListBox_Style();
+    UI_Input_Push_String_ID("scenario_list");
     int new_scen = UI_ListBox(cx, y, left_w, list_h, scenario_ptrs,
-                               st.scenario_count, st.selected_scenario,
-                               st.scenario_scroll, lbs);
+                              st.scenario_count, st.selected_scenario,
+                              st.scenario_scroll, lbs);
+    UI_Input_Pop_ID();
     st.selected_scenario = new_scen;
 
     // --- Right column ---
@@ -129,7 +133,9 @@ void UI_Com_Scenario_Emit()
         UI_Label(right_x, ry, bl_buf, fnt, 180, 180, 180, 255);
     }
     ry += row;
+    UI_Input_Push_String_ID("build_level");
     st.build_level = UI_Slider(right_x, ry, right_w, slider_h, st.build_level, ss);
+    UI_Input_Pop_ID();
     ry += slider_h + gap;
 
     // AI Players (0–5 mapped to 0.0–1.0)
@@ -142,7 +148,9 @@ void UI_Com_Scenario_Emit()
         UI_Label(right_x, ry, ai_buf, fnt, 180, 180, 180, 255);
     }
     ry += row;
+    UI_Input_Push_String_ID("ai_players");
     st.ai_players = UI_Slider(right_x, ry, right_w, slider_h, st.ai_players, ss);
+    UI_Input_Pop_ID();
     ry += slider_h + gap;
 
     // Unit Count (depends on bases toggle)
@@ -157,7 +165,9 @@ void UI_Com_Scenario_Emit()
         UI_Label(right_x, ry, uc_buf, fnt, 180, 180, 180, 255);
     }
     ry += row;
+    UI_Input_Push_String_ID("unit_count");
     st.unit_count = UI_Slider(right_x, ry, right_w, slider_h, st.unit_count, ss);
+    UI_Input_Pop_ID();
     ry += slider_h + gap;
 
     // AI Skill / Difficulty (0–2: Easy, Normal, Hard)
@@ -170,7 +180,9 @@ void UI_Com_Scenario_Emit()
         UI_Label(right_x, ry, sk_buf, fnt, 180, 180, 180, 255);
     }
     ry += row;
+    UI_Input_Push_String_ID("ai_skill");
     st.ai_skill = UI_Slider(right_x, ry, right_w, slider_h, st.ai_skill, ss);
+    UI_Input_Pop_ID();
     ry += slider_h + gap;
 
     // Option checkboxes

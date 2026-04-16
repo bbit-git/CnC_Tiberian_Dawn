@@ -181,7 +181,7 @@ void UI_Main_Menu_Emit()
             if (!input_blocked && state >= UI_BTN_HOVERED)
                 Render_Bridge_UI_Main_Menu_Signal_Input();
             bool pressed = !input_blocked &&
-                           ((state == UI_BTN_PRESSED) || (activate && is_focused));
+                           (UI_Button_Activated(state) || (activate && is_focused));
             if (pressed) {
                 if (buttons[i].result_code == -1) {
                     Render_Bridge_UI_Main_Menu_Set_Page(UI_MM_PAGE_CAMPAIGN);
@@ -244,9 +244,9 @@ void UI_Main_Menu_Emit()
             if (gdi_state >= UI_BTN_HOVERED || nod_state >= UI_BTN_HOVERED ||
                 back_state >= UI_BTN_HOVERED)
                 Render_Bridge_UI_Main_Menu_Signal_Input();
-            bool gdi_pressed  = (gdi_state == UI_BTN_PRESSED) || (activate && gdi_focused);
-            bool nod_pressed  = (nod_state == UI_BTN_PRESSED) || (activate && nod_focused);
-            bool back_pressed = (back_state == UI_BTN_PRESSED) || (activate && back_focused);
+            bool gdi_pressed  = UI_Button_Activated(gdi_state) || (activate && gdi_focused);
+            bool nod_pressed  = UI_Button_Activated(nod_state) || (activate && nod_focused);
+            bool back_pressed = UI_Button_Activated(back_state) || (activate && back_focused);
 
             if (gdi_pressed) {
                 Render_Bridge_UI_Main_Menu_Begin_Dismiss(1); // GDI

@@ -80,7 +80,9 @@ void UI_Game_Controls_Emit()
         UI_Label(cx + cw - faster_w, cy, lbl.faster, fnt, 100, 100, 100, 255);
     }
     cy += row;
+    UI_Input_Push_String_ID("game_speed");
     game_speed = UI_Slider(slider_x, cy, slider_w, slider_h, game_speed, ss);
+    UI_Input_Pop_ID();
     cy += slider_h + gap;
 
     // Scroll Rate
@@ -98,7 +100,9 @@ void UI_Game_Controls_Emit()
         UI_Label(cx + cw - faster_w, cy, lbl.faster, fnt, 100, 100, 100, 255);
     }
     cy += row;
+    UI_Input_Push_String_ID("scroll_rate");
     scroll_rate = UI_Slider(slider_x, cy, slider_w, slider_h, scroll_rate, ss);
+    UI_Input_Pop_ID();
     cy += slider_h + gap;
 
     // Sub-dialog buttons
@@ -120,11 +124,11 @@ void UI_Game_Controls_Emit()
     if (ok_w < 80) ok_w = 80;
     UIButtonState ok_state = UI_Button(cx + (cw - ok_w) / 2, cy, ok_w, btn_h, lbl.ok, bs);
 
-    if (vis_state == UI_BTN_PRESSED) {
+    if (UI_Button_Activated(vis_state)) {
         Render_Bridge_UI_Game_Controls_Set_Result(UI_GCTRL_VISUAL, game_speed, scroll_rate);
-    } else if (snd_state == UI_BTN_PRESSED) {
+    } else if (UI_Button_Activated(snd_state)) {
         Render_Bridge_UI_Game_Controls_Set_Result(UI_GCTRL_SOUND, game_speed, scroll_rate);
-    } else if (ok_state == UI_BTN_PRESSED) {
+    } else if (UI_Button_Activated(ok_state)) {
         Render_Bridge_UI_Game_Controls_Set_Result(UI_GCTRL_OK, game_speed, scroll_rate);
     } else {
         Render_Bridge_UI_Game_Controls_Set_Result(UI_GCTRL_NONE, game_speed, scroll_rate);

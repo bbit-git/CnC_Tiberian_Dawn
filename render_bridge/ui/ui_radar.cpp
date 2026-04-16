@@ -12,6 +12,7 @@
 #include "ui_input.h"
 #include "ui_sidebar.h"
 #include "hd_sidebar_layout.h"
+#include "ui_radar_math.h"
 #include "commandbar_atlas.h"
 #include "commandbar_sprites.h"
 #include "render_bridge.h"
@@ -298,35 +299,21 @@ void UI_Radar_Emit()
                              reinterpret_cast<const uint8_t*>(g_radar_pixels),
                              map_w, map_h);
 
-    // --- Viewport rectangle overlay ---
-    // Determine which map cells are currently visible in the tactical view.
-    float vp_x = Render_Bridge_Get_Viewport_X();
-    float vp_y = Render_Bridge_Get_Viewport_Y();
-    float vis_w = 0.0f, vis_h = 0.0f;
-    Render_Bridge_Get_Visible_Size(vis_w, vis_h);
+    int visible_origin_x = 0;
+    int visible_origin_y = 0;
+    int visible_w = 0;
+    int visible_h = 0;
+    Render_Bridge_Get_Visible_World_Rect(visible_origin_x, visible_origin_y,
+                                         visible_w, visible_h);
 
-    // Viewport position in cells (relative to map origin)
-    float cell_vp_x = vp_x / static_cast<float>(CELL_PIXEL_W);
-    float cell_vp_y = vp_y / static_cast<float>(CELL_PIXEL_W);
-    float cell_vis_w = vis_w / static_cast<float>(CELL_PIXEL_W);
-    float cell_vis_h = vis_h / static_cast<float>(CELL_PIXEL_W);
-
-    // Convert cell coords to radar pixel coords, then to screen coords
-    float px_per_cell_x = static_cast<float>(radar_w) / static_cast<float>(map_w);
-    float px_per_cell_y = static_cast<float>(radar_h) / static_cast<float>(map_h);
-
-    int vr_x = radar_x + static_cast<int>(cell_vp_x * px_per_cell_x);
-    int vr_y = radar_y + static_cast<int>(cell_vp_y * px_per_cell_y);
-    int vr_w = static_cast<int>(cell_vis_w * px_per_cell_x);
-    int vr_h = static_cast<int>(cell_vis_h * px_per_cell_y);
-
-    // Clamp to radar bounds
-    if (vr_x < radar_x) { vr_w -= (radar_x - vr_x); vr_x = radar_x; }
-    if (vr_y < radar_y) { vr_h -= (radar_y - vr_y); vr_y = radar_y; }
-    if (vr_x + vr_w > radar_x + radar_w) vr_w = radar_x + radar_w - vr_x;
-    if (vr_y + vr_h > radar_y + radar_h) vr_h = radar_y + radar_h - vr_y;
-    if (vr_w > 0 && vr_h > 0) {
-        g_ui_draw_list.Draw_Rect(vr_x, vr_y, vr_w, vr_h,
+    UIRadarViewportRect viewport_rect;
+    if (UI_Radar_Calc_Viewport_Rect(radar_x, radar_y, radar_w, radar_h,
+                                    map_w, map_h,
+                                    visible_origin_x, visible_origin_y,
+                                    visible_w, visible_h,
+                                    viewport_rect)) {
+        g_ui_draw_list.Draw_Rect(viewport_rect.x, viewport_rect.y,
+                                 viewport_rect.w, viewport_rect.h,
                                  RADAR_VIEWPORT_R,
                                  RADAR_VIEWPORT_G,
                                  RADAR_VIEWPORT_B,
@@ -334,44 +321,47 @@ void UI_Radar_Emit()
     }
 
     // --- Click-to-move input ---
-    UIHitZoneID zone = UI_Input_Register_Zone(radar_x, radar_y, radar_w, radar_h);
-    if (UI_Input_Was_Clicked(zone)) {
+    UI_Input_Push_String_ID("radar");
+    UIHitZoneID zone = UI_Input_Register_Zone(radar_x, radar_y, radar_w, radar_h,
+                                              UI_Input_Make_Widget_ID(0x52414452u));
+    UI_Input_Pop_ID();
+    bool left_clicked = UI_Input_Was_Clicked(zone);
+    bool right_clicked = UI_Input_Was_Right_Clicked(zone);
+    if (left_clicked || right_clicked) {
         // Get mouse position
         extern int g_mouse_x, g_mouse_y;
         int mx = g_mouse_x;
         int my = g_mouse_y;
 
         // Convert screen click to cell coordinates (relative to map origin)
+        float px_per_cell_x = static_cast<float>(radar_w) / static_cast<float>(map_w);
+        float px_per_cell_y = static_cast<float>(radar_h) / static_cast<float>(map_h);
         float click_cell_x = static_cast<float>(mx - radar_x) / px_per_cell_x;
         float click_cell_y = static_cast<float>(my - radar_y) / px_per_cell_y;
 
-        // Center the viewport on the clicked cell
-        int vis_cells_w = 0, vis_cells_h = 0;
-        {
-            int vis_lep_w = 0, vis_lep_h = 0;
-            Render_Bridge_Get_Visible_Size_Leptons(vis_lep_w, vis_lep_h);
-            vis_cells_w = Lepton_To_Cell(vis_lep_w);
-            vis_cells_h = Lepton_To_Cell(vis_lep_h);
+        int clamp_max_x = 0;
+        int clamp_max_y = 0;
+        Render_Bridge_Get_Clamp_Ranges(clamp_max_x, clamp_max_y);
+
+        UIRadarClickTarget target;
+        if (UI_Radar_Calc_Click_Target(Map.MapCellX, Map.MapCellY,
+                                       map_w, map_h,
+                                       visible_w, visible_h,
+                                       clamp_max_x, clamp_max_y,
+                                       click_cell_x, click_cell_y,
+                                       target)) {
+            if (left_clicked) {
+                Render_Bridge_Record_Tactical_Request(target.request_x, target.request_y);
+                Map.Set_Tactical_Position(XY_Coord(Cell_To_Lepton(Map.MapCellX) + target.request_x,
+                                                   Cell_To_Lepton(Map.MapCellY) + target.request_y));
+                Map.DisplayClass::IsToRedraw = true;
+                Map.Flag_To_Redraw(true);
+            }
+
+            if (right_clicked) {
+                Map.Zoom_Mode(XY_Cell(target.clicked_cell_x, target.clicked_cell_y));
+            }
         }
-
-        int cellx = Map.MapCellX + static_cast<int>(click_cell_x) - vis_cells_w / 2;
-        int celly = Map.MapCellY + static_cast<int>(click_cell_y) - vis_cells_h / 2;
-
-        // Clamp to map bounds
-        if (cellx < Map.MapCellX) cellx = Map.MapCellX;
-        if (celly < Map.MapCellY) celly = Map.MapCellY;
-
-        CELL cell = XY_Cell(cellx, celly);
-
-        // Notify the render bridge of the new tactical position
-        int rx = Cell_To_Lepton(cellx) - Cell_To_Lepton(Map.MapCellX);
-        int ry = Cell_To_Lepton(celly) - Cell_To_Lepton(Map.MapCellY);
-        Render_Bridge_Record_Tactical_Request(rx, ry);
-
-        // Update legacy tactical position
-        Map.Set_Tactical_Position(Cell_Coord(cell));
-        Map.DisplayClass::IsToRedraw = true;
-        Map.Flag_To_Redraw(true);
     }
 }
 

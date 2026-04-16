@@ -102,11 +102,11 @@ void UI_Main_Menu_Options_Emit()
     UIButtonState legacy_state = UI_Button(cx + half_w + 4, cy, half_w, tog_h, lbl.legacy_label, legacy_bs);
     cy += tog_h + gap * 2;
 
-    if (hd_state == UI_BTN_PRESSED && !hd_graphics) {
+    if (UI_Button_Activated(hd_state) && !hd_graphics) {
         hd_graphics = true;
         Render_Bridge_UI_Main_Menu_Options_Set_HD(true);
     }
-    if (legacy_state == UI_BTN_PRESSED && hd_graphics) {
+    if (UI_Button_Activated(legacy_state) && hd_graphics) {
         hd_graphics = false;
         Render_Bridge_UI_Main_Menu_Options_Set_HD(false);
     }
@@ -117,11 +117,11 @@ void UI_Main_Menu_Options_Emit()
     UIButtonState back_state = UI_Button(cx + (cw - back_w) / 2, cy, back_w, btn_h, lbl.back, bs);
 
     // ---- Commit result ----
-    if (audio_state == UI_BTN_PRESSED) {
+    if (UI_Button_Activated(audio_state)) {
         Render_Bridge_UI_Set_Main_Menu_Options_Result(UI_MM_OPT_AUDIO);
-    } else if (video_state == UI_BTN_PRESSED) {
+    } else if (UI_Button_Activated(video_state)) {
         Render_Bridge_UI_Set_Main_Menu_Options_Result(UI_MM_OPT_VIDEO);
-    } else if (back_state == UI_BTN_PRESSED) {
+    } else if (UI_Button_Activated(back_state)) {
         Render_Bridge_UI_Set_Main_Menu_Options_Result(UI_MM_OPT_BACK);
     } else if (Key_Down(KN_ESC)) {
         Render_Bridge_UI_Set_Main_Menu_Options_Result(UI_MM_OPT_BACK);

@@ -33,6 +33,7 @@ set(CNC_RENDER_BRIDGE_SRCS
     ${RENDER_BRIDGE_DIR}/ui/ui_dialog.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_game_options.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_load_dialog.cpp
+    ${RENDER_BRIDGE_DIR}/ui/ui_load_dialog_state.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_game_controls.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_visual_controls.cpp
     ${RENDER_BRIDGE_DIR}/ui/ui_sound_controls.cpp

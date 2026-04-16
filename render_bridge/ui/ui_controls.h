@@ -27,9 +27,14 @@ enum UIAlign : uint8_t {
 enum UIButtonState : uint8_t {
     UI_BTN_NORMAL  = 0,
     UI_BTN_HOVERED = 1,
-    UI_BTN_PRESSED = 2,
-    UI_BTN_CLICKED = 3,  // released while hovered (action trigger)
+    UI_BTN_PRESSED = 2,  // pressed and still held inside the button
+    UI_BTN_CLICKED = 3,  // released inside the same button (action trigger)
 };
+
+inline bool UI_Button_Activated(UIButtonState state)
+{
+    return state == UI_BTN_CLICKED;
+}
 
 /// Panel style.
 struct UIPanelStyle {

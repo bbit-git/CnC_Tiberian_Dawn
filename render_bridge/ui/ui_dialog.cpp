@@ -112,9 +112,9 @@ UIDialogResult UI_Dialog_End(int dialog_x, int dialog_y,
         UIButtonState cancel_state = UI_Button(bx + (btn3_w + style.padding) * 2, btn_y,
                                                btn3_w, style.button_h,
                                                cancel_label, bs);
-        if (ok_state == UI_BTN_PRESSED) result = UI_DIALOG_OK;
-        if (extra_state == UI_BTN_PRESSED) result = UI_DIALOG_EXTRA;
-        if (cancel_state == UI_BTN_PRESSED) result = UI_DIALOG_CANCEL;
+        if (UI_Button_Activated(ok_state)) result = UI_DIALOG_OK;
+        if (UI_Button_Activated(extra_state)) result = UI_DIALOG_EXTRA;
+        if (UI_Button_Activated(cancel_state)) result = UI_DIALOG_CANCEL;
     } else if (ok_label && cancel_label) {
         // Two buttons centered — auto-size to text width
         int ok_tw = UI_Text_Measure_Width(bs.font, ok_label,
@@ -135,20 +135,20 @@ UIDialogResult UI_Dialog_End(int dialog_x, int dialog_y,
         UIButtonState cancel_state = UI_Button(bx + ok_w + btn_gap,
                                                btn_y, cancel_w,
                                                style.button_h, cancel_label, bs);
-        if (ok_state == UI_BTN_PRESSED) result = UI_DIALOG_OK;
-        if (cancel_state == UI_BTN_PRESSED) result = UI_DIALOG_CANCEL;
+        if (UI_Button_Activated(ok_state)) result = UI_DIALOG_OK;
+        if (UI_Button_Activated(cancel_state)) result = UI_DIALOG_CANCEL;
     } else if (ok_label) {
         int bx = dialog_x + (dialog_w - style.button_w) / 2;
         UIButtonState ok_state = UI_Button(bx, btn_y,
                                            style.button_w, style.button_h,
                                            ok_label, bs);
-        if (ok_state == UI_BTN_PRESSED) result = UI_DIALOG_OK;
+        if (UI_Button_Activated(ok_state)) result = UI_DIALOG_OK;
     } else if (cancel_label) {
         int bx = dialog_x + (dialog_w - style.button_w) / 2;
         UIButtonState cancel_state = UI_Button(bx, btn_y,
                                                style.button_w, style.button_h,
                                                cancel_label, bs);
-        if (cancel_state == UI_BTN_PRESSED) result = UI_DIALOG_CANCEL;
+        if (UI_Button_Activated(cancel_state)) result = UI_DIALOG_CANCEL;
     }
 
     return result;
