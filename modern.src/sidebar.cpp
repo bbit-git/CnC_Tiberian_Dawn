@@ -790,11 +790,13 @@ void SidebarClass::Draw_It(bool complete)
 	// repair/sell buttons).  The bridge draws its own sidebar via
 	// UI_Sidebar_Emit() and legacy pixels here would bleed through
 	// the UI overlay diff as ghost artefacts.
+#ifdef USE_RENDER_BRIDGE
 	extern bool Render_Bridge_Use_Legacy_Sidebar_Mode();
 	if (!Render_Bridge_Use_Legacy_Sidebar_Mode()) {
 		IsToRedraw = false;
 		return;
 	}
+#endif
 
 	if (IsSidebarActive && (IsToRedraw || complete) && !Debug_Map) {
 		IsToRedraw = false;

@@ -138,8 +138,15 @@ void TabClass::Draw_It(bool complete)
 
 	if (complete || IsToRedraw) {
 		// Skip legacy tab/header drawing when bridge-native sidebar is active.
-		// The bridge draws its own header via UI_Header_Emit().
-		if (Render_Bridge_Use_Legacy_Sidebar_Mode()) {
+		// The bridge draws its own header via UI_Header_Emit(). Under the
+		// legacy (non-render-bridge) build there is no bridge sidebar, so
+		// always run the legacy draw.
+#ifdef USE_RENDER_BRIDGE
+		const bool draw_legacy_tab = Render_Bridge_Use_Legacy_Sidebar_Mode();
+#else
+		const bool draw_legacy_tab = true;
+#endif
+		if (draw_legacy_tab) {
 			if (LogicPage->Lock()){
 
 				LogicPage->Fill_Rect(0, 0, rightx, Tab_Height-2, BLACK);
