@@ -54,6 +54,7 @@
 #include  "sounddlg.h"
 #include  "visudlg.h"
 #include  "bridge_choose_side.h"
+#include  "hd_assets.h"
 #endif
 
 static HANDLE			hCCLibrary;
@@ -1315,18 +1316,28 @@ bool Select_Game(bool fade)
 					Theme.Fade_Out();
 					{
 						ScenDir = SCEN_DIR_EAST;
-						int bridge_side = Bridge_Choose_Side();
-						if (bridge_side == BRIDGE_CHOOSE_SIDE_CANCEL) {
-							display = true;
-							selection = SEL_NONE;
-							break;
-						}
-						if (bridge_side == BRIDGE_CHOOSE_SIDE_NOD) {
-							Whom = HOUSE_BAD;
-							ScenPlayer = SCEN_PLAYER_NOD;
-						} else {
+						// Bridge modal needs MOVIES_TD.MEG, TEXTURES_SRGB.MEG,
+						// SFX3D.MEG. When the HD data set isn't installed (no
+						// $CNC_REMASTERED_DATA, classic-MIX-only install),
+						// skip the modal and default to GDI — Start_Scenario
+						// still plays the legacy briefing VQA if present.
+						if (!HD_Assets_Available()) {
 							Whom = HOUSE_GOOD;
 							ScenPlayer = SCEN_PLAYER_GDI;
+						} else {
+							int bridge_side = Bridge_Choose_Side();
+							if (bridge_side == BRIDGE_CHOOSE_SIDE_CANCEL) {
+								display = true;
+								selection = SEL_NONE;
+								break;
+							}
+							if (bridge_side == BRIDGE_CHOOSE_SIDE_NOD) {
+								Whom = HOUSE_BAD;
+								ScenPlayer = SCEN_PLAYER_NOD;
+							} else {
+								Whom = HOUSE_GOOD;
+								ScenPlayer = SCEN_PLAYER_GDI;
+							}
 						}
 					}
 #endif

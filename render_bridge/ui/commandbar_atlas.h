@@ -22,11 +22,11 @@ struct AtlasSpriteRect {
     uint8_t   flag;                // 0 = build icon, 1 = UI element
 };
 
-/// Initialize the command bar atlas from a MEG archive path.
-/// Loads MTD metadata + TGA pixel data, uploads GL texture.
-/// @param meg_path  Path to TEXTURES_SRGB.MEG
-/// @return true on success, false if files missing or GL_MAX_TEXTURE_SIZE too small
-bool Commandbar_Atlas_Init(const char* meg_path);
+/// Initialize the command bar atlas from the shared HD MEG cache.
+/// Pulls TEXTURES_SRGB.MEG via HD_Assets_Get_Meg, loads MTD + TGA,
+/// uploads GL texture.
+/// @return true on success, false if HD data unavailable or GL_MAX_TEXTURE_SIZE too small
+bool Commandbar_Atlas_Init();
 
 /// Release atlas resources (GL texture + metadata).
 void Commandbar_Atlas_Shutdown();

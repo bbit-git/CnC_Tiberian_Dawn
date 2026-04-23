@@ -8,6 +8,7 @@
 
 #include "commandbar_atlas.h"
 #include "dbg.h"
+#include "hd_assets.h"
 #include "meg_reader.h"
 #include "mtd_reader.h"
 
@@ -44,16 +45,16 @@ AtlasState g_atlas = {};
 
 } // namespace
 
-bool Commandbar_Atlas_Init(const char* meg_path)
+bool Commandbar_Atlas_Init()
 {
     if (g_atlas.ready) return true;
 
-    // Open MEG archive
-    MegReader meg;
-    if (!meg.Open(meg_path)) {
-        DBG("commandbar_atlas: failed to open MEG: %s", meg_path);
+    MegReader* meg_ptr = HD_Assets_Get_Meg("TEXTURES_SRGB.MEG");
+    if (!meg_ptr) {
+        DBG("commandbar_atlas: TEXTURES_SRGB.MEG not in HD cache");
         return false;
     }
+    MegReader& meg = *meg_ptr;
 
     // --- Load MTD ---
     const MegEntry* mtd_entry = meg.Find(MTD_MEG_PATH);

@@ -20,6 +20,7 @@
 #include "meg_reader.h"
 #include "dds_reader.h"
 #include "stb_image.h"
+#include "hd_assets.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -369,60 +370,32 @@ bool UI_Main_Menu_Load_HD_Title()
         }
     }
 
-    // 3. Try DDS from remastered MEG archive
+    // 3. Try DDS from the shared HD MEG cache.
     if (!pixels) {
-        // Build full paths to search
-        const char* home = getenv("HOME");
-        char meg_paths[4][512];
-        int meg_count = 0;
-
-        // Relative paths (if user copies MEG alongside the binary)
-        snprintf(meg_paths[meg_count++], 512, "DATA/TEXTURES_SRGB.MEG");
-        snprintf(meg_paths[meg_count++], 512, "data/TEXTURES_SRGB.MEG");
-        // Linux Steam install
-        if (home) {
-            snprintf(meg_paths[meg_count++], 512,
-                     "%s/.local/share/Steam/steamapps/common/CnCRemastered/Data/TEXTURES_SRGB.MEG", home);
-        }
-
-        // Entry names to try (backslash paths as stored in MEG)
-        static const char* entry_names[] = {
-            "DATA\\ART\\TEXTURES\\SRGB\\UI_MAINMENUBG_00.DDS",
-            "DATA\\ART\\TEXTURES\\SRGB\\UI_MAINMENUBG_01.DDS",
-            "DATA\\ART\\TEXTURES\\SRGB\\UI_C&C_LOGO.DDS",
-            nullptr,
-        };
-
-        for (int mi = 0; mi < meg_count && !pixels; mi++) {
-            MegReader meg;
-            fprintf(stderr, "[HD_TITLE] Trying MEG: %s\n", meg_paths[mi]);
-            if (!meg.Open(meg_paths[mi])) {
-                fprintf(stderr, "[HD_TITLE]   failed to open\n");
-                continue;
-            }
-            fprintf(stderr, "[HD_TITLE]   opened, %d entries\n", meg.Entry_Count());
+        MegReader* meg = HD_Assets_Get_Meg("TEXTURES_SRGB.MEG");
+        if (meg) {
+            static const char* entry_names[] = {
+                "DATA\\ART\\TEXTURES\\SRGB\\UI_MAINMENUBG_00.DDS",
+                "DATA\\ART\\TEXTURES\\SRGB\\UI_MAINMENUBG_01.DDS",
+                "DATA\\ART\\TEXTURES\\SRGB\\UI_C&C_LOGO.DDS",
+                nullptr,
+            };
             for (int ei = 0; entry_names[ei] && !pixels; ei++) {
-                const MegEntry* entry = meg.Find(entry_names[ei]);
-                if (!entry) {
-                    fprintf(stderr, "[HD_TITLE]   '%s' not found\n", entry_names[ei]);
-                    continue;
-                }
+                const MegEntry* entry = meg->Find(entry_names[ei]);
+                if (!entry) continue;
                 size_t sz = 0;
-                void* data = meg.Read_Alloc(entry, &sz);
+                void* data = meg->Read_Alloc(entry, &sz);
                 if (!data) continue;
-                fprintf(stderr, "[HD_TITLE]   found '%s' (%zu bytes)\n", entry_names[ei], sz);
                 pixels = DDS_Decode_RGBA(data, sz, w, h);
                 if (!pixels) {
-                    // Fallback: try stb_image in case it's TGA
                     pixels = stbi_load_from_memory(static_cast<const uint8_t*>(data),
                                                     static_cast<int>(sz),
                                                     &w, &h, &channels, 4);
                 }
                 free(data);
                 if (pixels) {
-                    fprintf(stderr, "[HD_TITLE]   decoded: %dx%d\n", w, h);
-                } else {
-                    fprintf(stderr, "[HD_TITLE]   decode failed\n");
+                    fprintf(stderr, "[HD_TITLE] decoded '%s': %dx%d\n",
+                            entry_names[ei], w, h);
                 }
             }
         }

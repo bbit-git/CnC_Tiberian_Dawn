@@ -234,7 +234,7 @@ void UI_Sidebar_Cameo_Shutdown()
 // HD command bar atlas — lazy initialization
 // ---------------------------------------------------------------------------
 
-/// Discover the TEXTURES_SRGB.MEG path and load the command bar atlas.
+/// Load the command bar atlas from the shared HD MEG cache.
 /// Called once on first HD sidebar frame. Returns true if atlas is usable.
 static bool ensure_commandbar_atlas()
 {
@@ -242,32 +242,11 @@ static bool ensure_commandbar_atlas()
     if (g_atlas_init_attempted) return false;
     g_atlas_init_attempted = true;
 
-    // Replicate the data directory discovery from gl_sprites.cpp
-    const char* env = std::getenv("CNC_REMASTERED_DATA");
-    char meg_path[1024];
-
-    auto try_open = [&](const char* dir) -> bool {
-        std::snprintf(meg_path, sizeof(meg_path), "%s/TEXTURES_SRGB.MEG", dir);
-        FILE* f = fopen(meg_path, "rb");
-        if (!f) return false;
-        fclose(f);
-        return Commandbar_Atlas_Init(meg_path);
-    };
-
-    if (env && env[0] && try_open(env)) return true;
-    if (try_open("data")) return true;
-    if (try_open("Data")) return true;
-
-    const char* home = std::getenv("HOME");
-    if (home && home[0]) {
-        char steam_dir[1024];
-        std::snprintf(steam_dir, sizeof(steam_dir),
-                      "%s/.local/share/Steam/steamapps/common/CnCRemastered/Data", home);
-        if (try_open(steam_dir)) return true;
+    if (!Commandbar_Atlas_Init()) {
+        DBG("[HD-SIDEBAR] command bar atlas unavailable — HD sidebar disabled");
+        return false;
     }
-
-    DBG("[HD-SIDEBAR] TEXTURES_SRGB.MEG not found — HD sidebar disabled");
-    return false;
+    return true;
 }
 
 /// Emit an atlas sprite into the UI draw list.

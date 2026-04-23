@@ -21,6 +21,8 @@
 #include "legacy_sprite_provider.h"
 #include "hd_sprite_provider.h"
 #include "hd_terrain_provider.h"
+#include "hd_assets.h"
+#include "meg_reader.h"
 #include "texture_atlas.h"
 #include "gl/gl_house_color.h"
 #include "gl/gl_sprite_batch.h"
@@ -79,7 +81,8 @@ static std::unordered_map<uint64_t, AtlasFrameID> g_terrain_atlas_cache;
 // GL textures for atlas pages
 static GLuint* g_page_textures = nullptr;
 static int     g_page_tex_count = 0;
-static char    g_config_meg_path[1024] = {};
+// Borrowed from the shared hd_assets cache once GL_Sprites_Init succeeds.
+static MegReader* g_cached_config_meg = nullptr;
 
 extern unsigned char const RemapBlue[256];
 extern unsigned char const RemapOrange[256];
@@ -528,44 +531,6 @@ static AtlasFrameID ensure_in_atlas(const ShapeCmd& cmd, const uint8_t* palette)
     return ensure_in_atlas(make_shape_draw_command(cmd), palette);
 }
 
-/// Discover the directory containing remastered MEG files.
-/// Tries CNC_REMASTERED_DATA env var first, then common Steam install paths.
-static const char* find_remastered_data_dir()
-{
-    static char resolved[1024];
-
-    // 1. Explicit env var
-    const char* env = std::getenv("CNC_REMASTERED_DATA");
-    if (env && env[0] != '\0') {
-        std::snprintf(resolved, sizeof(resolved), "%s", env);
-        return resolved;
-    }
-
-    // 2. Relative to working directory
-    {
-        char probe[1024];
-        std::snprintf(probe, sizeof(probe), "data/TEXTURES_TD_SRGB.MEG");
-        FILE* f = fopen(probe, "rb");
-        if (f) { fclose(f); std::snprintf(resolved, sizeof(resolved), "data"); return resolved; }
-        std::snprintf(probe, sizeof(probe), "Data/TEXTURES_TD_SRGB.MEG");
-        f = fopen(probe, "rb");
-        if (f) { fclose(f); std::snprintf(resolved, sizeof(resolved), "Data"); return resolved; }
-    }
-
-    // 3. Linux Steam install
-    const char* home = std::getenv("HOME");
-    if (home && home[0] != '\0') {
-        std::snprintf(resolved, sizeof(resolved),
-                      "%s/.local/share/Steam/steamapps/common/CnCRemastered/Data", home);
-        char probe[1024];
-        std::snprintf(probe, sizeof(probe), "%s/TEXTURES_TD_SRGB.MEG", resolved);
-        FILE* f = fopen(probe, "rb");
-        if (f) { fclose(f); return resolved; }
-    }
-
-    return nullptr;
-}
-
 static const char* initial_hd_sprite_theater()
 {
     if (LastTheater > THEATER_NONE && LastTheater < THEATER_COUNT) {
@@ -580,30 +545,27 @@ void GL_Sprites_Init()
     g_atlas.Init(2048);
     static HDSpriteProvider   g_hd_provider_storage;
     static HDTerrainProvider  g_terrain_provider_storage;
-    const char* data_dir = find_remastered_data_dir();
-    if (!data_dir) {
-        fprintf(stderr, "[HD] Remastered data not found — HD textures disabled\n");
+
+    MegReader* textures_meg = HD_Assets_Get_Meg("TEXTURES_TD_SRGB.MEG");
+    MegReader* config_meg = HD_Assets_Get_Meg("CONFIG.MEG");
+
+    if (!textures_meg || !config_meg) {
+        fprintf(stderr, "[HD] HD data set unavailable — HD textures disabled\n");
     } else {
-        fprintf(stderr, "[HD] Remastered data dir: %s\n", data_dir);
-        char textures_meg[1024];
-        char config_meg[1024];
-        std::snprintf(textures_meg, sizeof(textures_meg), "%s/TEXTURES_TD_SRGB.MEG", data_dir);
-        std::snprintf(config_meg, sizeof(config_meg), "%s/CONFIG.MEG", data_dir);
-        std::snprintf(g_config_meg_path, sizeof(g_config_meg_path), "%s", config_meg);
+        g_cached_config_meg = config_meg;
 
         // --- Sprite provider (units + buildings; terrain XML is theater-specific) ---
-        if (!g_hd_provider_storage.Open(textures_meg)) {
-            fprintf(stderr, "[HD] Failed to open %s\n", textures_meg);
+        if (!g_hd_provider_storage.Open_Cached(textures_meg)) {
+            fprintf(stderr, "[HD] Failed to attach sprite provider to TEXTURES_TD_SRGB.MEG\n");
         } else {
-            fprintf(stderr, "[HD] Opened %s\n", textures_meg);
             char terrain_xml[256];
             const char* theater_name = initial_hd_sprite_theater();
             std::snprintf(terrain_xml, sizeof(terrain_xml),
                           "DATA\\XML\\TILESETS\\TD_TERRAIN_%s.XML", theater_name);
 
-            bool units   = g_hd_provider_storage.Load_Tileset_From_Meg(config_meg, "DATA\\XML\\TILESETS\\TD_UNITS.XML");
-            bool structs = g_hd_provider_storage.Load_Tileset_From_Meg(config_meg, "DATA\\XML\\TILESETS\\TD_STRUCTURES.XML");
-            bool terrain = g_hd_provider_storage.Load_Tileset_From_Meg(config_meg, terrain_xml);
+            bool units   = g_hd_provider_storage.Load_Tileset_From_Cached(config_meg, "DATA\\XML\\TILESETS\\TD_UNITS.XML");
+            bool structs = g_hd_provider_storage.Load_Tileset_From_Cached(config_meg, "DATA\\XML\\TILESETS\\TD_STRUCTURES.XML");
+            bool terrain = g_hd_provider_storage.Load_Tileset_From_Cached(config_meg, terrain_xml);
             fprintf(stderr, "[HD] Tilesets: units=%s structures=%s terrain(%s)=%s\n",
                     units ? "ok" : "FAIL",
                     structs ? "ok" : "FAIL",
@@ -618,11 +580,11 @@ void GL_Sprites_Init()
         }
 
         // --- Terrain tile provider (ground terrain stamps) ---
-        if (g_terrain_provider_storage.Open(textures_meg)) {
+        if (g_terrain_provider_storage.Open_Cached(textures_meg)) {
             g_terrain_provider = &g_terrain_provider_storage;
             fprintf(stderr, "[HD] Terrain provider ready\n");
         } else {
-            fprintf(stderr, "[HD] Failed to open terrain provider from %s\n", textures_meg);
+            fprintf(stderr, "[HD] Failed to attach terrain provider to TEXTURES_TD_SRGB.MEG\n");
         }
     }
     if (!Options.HasHDGraphicsSetting) {
@@ -636,11 +598,11 @@ void GL_Sprites_Set_Theater(const char* theater_name)
     if (!g_terrain_provider || !theater_name || theater_name[0] == '\0') return;
     g_terrain_provider->Set_Theater(theater_name);
 
-    if (g_hd_provider && g_config_meg_path[0] != '\0') {
+    if (g_hd_provider && g_cached_config_meg) {
         char terrain_xml[256];
         std::snprintf(terrain_xml, sizeof(terrain_xml),
                       "DATA\\XML\\TILESETS\\TD_TERRAIN_%s.XML", theater_name);
-        bool terrain_ok = g_hd_provider->Load_Tileset_From_Meg(g_config_meg_path, terrain_xml);
+        bool terrain_ok = g_hd_provider->Load_Tileset_From_Cached(g_cached_config_meg, terrain_xml);
         fprintf(stderr, "[HD] Terrain sprite tileset %s: %s\n",
                 terrain_xml, terrain_ok ? "ok" : "FAIL");
     }
