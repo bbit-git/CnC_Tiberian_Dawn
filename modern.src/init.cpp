@@ -576,7 +576,16 @@ bool Init_Game(int , char *[])
 	*/
 	memset(CurrentPalette, 0x01, 768);
 
-	if (!Special.IsFromInstall) {
+#ifdef USE_RENDER_BRIDGE
+	// Probe for an HD title background first (loose TGA/DDS or remastered MEG).
+	// If available, skip the legacy PCX load+blit so the user never sees a
+	// low-res flash before the HD asset takes over.
+	bool const have_hd_title = UI_Main_Menu_Load_HD_Title();
+#else
+	bool const have_hd_title = false;
+#endif
+
+	if (!Special.IsFromInstall && !have_hd_title) {
 		Load_Title_Screen("HTITLE.PCX", &HidPage, Palette);
 		HidPage.Blit(SeenBuff);
 	}
@@ -585,7 +594,9 @@ bool Init_Game(int , char *[])
 	Wait_Vert_Blank();
 	if (!Special.IsFromInstall) {
 		Set_Palette(Palette);
-		HidPage.Blit(SeenBuff);
+		if (!have_hd_title) {
+			HidPage.Blit(SeenBuff);
+		}
 		Show_Mouse();
 	}
 	Call_Back();
