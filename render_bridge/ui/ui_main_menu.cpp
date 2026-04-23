@@ -165,7 +165,7 @@ void UI_Main_Menu_Emit()
 
         struct { const char* label; int result_code; } buttons[7];
         int bi = 0;
-        buttons[bi++] = { lbl.new_game,  -1 };  // navigate to campaign page
+        buttons[bi++] = { lbl.new_game,   8 };  // SEL_START_NEW_GAME (Bridge_Choose_Side picks side)
         buttons[bi++] = { lbl.load_game,  3 };
         buttons[bi++] = { lbl.skirmish,   4 };
         if (lbl.has_expansion)

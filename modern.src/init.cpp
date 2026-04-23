@@ -53,6 +53,7 @@
 #include  "ui/ui_main_menu.h"
 #include  "sounddlg.h"
 #include  "visudlg.h"
+#include  "bridge_choose_side.h"
 #endif
 
 static HANDLE			hCCLibrary;
@@ -1119,6 +1120,9 @@ bool Select_Game(bool fade)
 								Whom = HOUSE_BAD;
 								Theme.Fade_Out();
 								break;
+							case 8:  // New Game — Bridge_Choose_Side runs in SEL_START_NEW_GAME
+								selection = SEL_START_NEW_GAME;
+								break;
 							case 3: selection = SEL_LOAD_MISSION;   break;
 							case 4:
 								Keyboard::Clear();
@@ -1307,6 +1311,24 @@ bool Select_Game(bool fade)
 #ifndef USE_RENDER_BRIDGE
 					Theme.Fade_Out();
 					Choose_Side();
+#else
+					Theme.Fade_Out();
+					{
+						ScenDir = SCEN_DIR_EAST;
+						int bridge_side = Bridge_Choose_Side();
+						if (bridge_side == BRIDGE_CHOOSE_SIDE_CANCEL) {
+							display = true;
+							selection = SEL_NONE;
+							break;
+						}
+						if (bridge_side == BRIDGE_CHOOSE_SIDE_NOD) {
+							Whom = HOUSE_BAD;
+							ScenPlayer = SCEN_PLAYER_NOD;
+						} else {
+							Whom = HOUSE_GOOD;
+							ScenPlayer = SCEN_PLAYER_GDI;
+						}
+					}
 #endif
 #endif
 
