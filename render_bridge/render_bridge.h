@@ -533,6 +533,8 @@ struct UIMainMenuState {
     bool   has_expansion;          // true if expansion button should show
     char   lbl_version[32];       // version string for bottom-right
     char   lbl_copyright[64];     // copyright for below panel
+    char   lbl_disclaimer_1[128]; // derivative-work attribution (below copyright)
+    char   lbl_disclaimer_2[128]; // trademark / non-affiliation notice
 };
 
 void Render_Bridge_UI_Set_Main_Menu(const UIMainMenuState& state);

@@ -1154,6 +1154,8 @@ bool Render_Bridge_UI_Main_Menu_Get_Internal(int& screen_w, int& screen_h,
     lbl.has_expansion  = g_main_menu_state.has_expansion;
     lbl.version        = g_main_menu_state.lbl_version;
     lbl.copyright      = g_main_menu_state.lbl_copyright;
+    lbl.disclaimer_1   = g_main_menu_state.lbl_disclaimer_1;
+    lbl.disclaimer_2   = g_main_menu_state.lbl_disclaimer_2;
     return g_main_menu_state.active;
 }
 

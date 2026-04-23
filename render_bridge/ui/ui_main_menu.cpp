@@ -258,22 +258,44 @@ void UI_Main_Menu_Emit()
         }
     }
 
-    // --- Version text (bottom-right, small grey) ---
-    if (lbl.version && lbl.version[0]) {
-        int vw = UI_Text_Measure_Width(UI_FONT_6PT, lbl.version,
-                                        static_cast<int>(strlen(lbl.version)));
-        UI_Label(screen_w - vw - 4, screen_h - 10,
-                 lbl.version, UI_FONT_6PT,
-                 100, 100, 100, mod_alpha(180, fade));
+    // --- Bottom-of-screen footer: copyright + disclaimer (centered) and
+    //     version (bottom-right). Uses SDF at reduced scale so the legal
+    //     text is readable but unobtrusive.
+    const float foot_scale = 0.55f;
+    const int   foot_lh    = static_cast<int>(
+        UI_Text_Line_Height(UI_FONT_SDF_DEFAULT) * foot_scale + 0.5f);
+    const int   foot_gap   = 2;
+    const int   bottom_pad = 6;
+
+    auto foot_w = [&](const char* s) -> int {
+        if (!s || !s[0]) return 0;
+        int raw = UI_Text_Measure_Width(UI_FONT_SDF_DEFAULT, s,
+                                        static_cast<int>(strlen(s)));
+        return static_cast<int>(raw * foot_scale + 0.5f);
+    };
+
+    if (page == UI_MM_PAGE_ROOT && lbl.copyright && lbl.copyright[0]) {
+        // Westwood attribution (required by GPL §4/§5) + Blue Ops derivative-work
+        // disclaimer collapsed onto a single bottom-left line.
+        char footer[384];
+        snprintf(footer, sizeof(footer), "%s  |  %s  |  %s",
+                 lbl.copyright,
+                 (lbl.disclaimer_1 && lbl.disclaimer_1[0]) ? lbl.disclaimer_1 : "",
+                 (lbl.disclaimer_2 && lbl.disclaimer_2[0]) ? lbl.disclaimer_2 : "");
+        g_ui_draw_list.Draw_Text(8, screen_h - foot_lh - bottom_pad,
+                                 footer, UI_FONT_SDF_DEFAULT,
+                                 210, 210, 210, mod_alpha(230, fade),
+                                 foot_scale);
     }
 
-    // --- Copyright text (centered below panel) ---
-    if (page == UI_MM_PAGE_ROOT && lbl.copyright && lbl.copyright[0]) {
-        int panel_h = padding * 2 + btn_count * btn_h + (btn_count - 1) * gap;
-        int panel_y = screen_h * 25 / 100;
-        int cy = panel_y + panel_h + 8;
-        UI_Label((screen_w - panel_w) / 2, cy, lbl.copyright, UI_FONT_6PT,
-                 80, 80, 80, mod_alpha(140, fade), UI_ALIGN_CENTER, panel_w);
+    // Version (bottom-right, same baseline as the bottom footer line)
+    if (lbl.version && lbl.version[0]) {
+        int vw = foot_w(lbl.version);
+        int vy = screen_h - foot_lh - bottom_pad;
+        g_ui_draw_list.Draw_Text(screen_w - vw - 8, vy,
+                                 lbl.version, UI_FONT_SDF_DEFAULT,
+                                 210, 210, 210, mod_alpha(230, fade),
+                                 foot_scale);
     }
 }
 

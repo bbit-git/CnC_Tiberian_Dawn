@@ -20,6 +20,8 @@ struct UIMainMenuInternalLabels {
     bool        has_expansion;
     const char* version;
     const char* copyright;
+    const char* disclaimer_1;
+    const char* disclaimer_2;
 };
 
 bool Render_Bridge_UI_Main_Menu_Get_Internal(int& screen_w, int& screen_h,

@@ -1078,6 +1078,10 @@ bool Select_Game(bool fade)
 					snprintf(mm.lbl_version, sizeof(mm.lbl_version), "%s", VersionText);
 					snprintf(mm.lbl_copyright, sizeof(mm.lbl_copyright),
 					         "Copyright 1995, 1996, 1997 Westwood Studios Inc.");
+					snprintf(mm.lbl_disclaimer_1, sizeof(mm.lbl_disclaimer_1),
+					         "Blue Ops port (c) 2026 BigBangIT Forge - unofficial derivative work.");
+					snprintf(mm.lbl_disclaimer_2, sizeof(mm.lbl_disclaimer_2),
+					         "Not affiliated with EA. Command & Conquer is an EA trademark.");
 
 					UI_Main_Menu_Load_HD_Title();
 
