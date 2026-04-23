@@ -329,11 +329,74 @@ void Render_Bridge_Debug_Dump()
 }
 
 /// Render debug HUD as a GL overlay. Call from GL_Present_Frame before SwapWindow.
+static void render_compact_fps(int win_w, int win_h)
+{
+    if (!init_hud_gl()) return;
+
+    uint64_t now = SDL_GetTicks();
+    if (g_last_frame > 0) g_frame_ms = static_cast<float>(now - g_last_frame);
+    g_last_frame = now;
+    g_fps_counter++;
+    if (now - g_fps_timer >= 1000) { g_fps = g_fps_counter; g_fps_counter = 0; g_fps_timer = now; }
+
+    constexpr int W = 100;
+    constexpr int H = 10;
+    for (int yy = 0; yy < H; yy++) {
+        for (int xx = 0; xx < W; xx++) g_hud_pixels[yy * HUD_W + xx] = 0xCC000000;
+    }
+    char line[32];
+    snprintf(line, sizeof(line), "%s %dFPS %.0fMS", GL_Present_Is_Active()?"GL":"SW", g_fps, g_frame_ms);
+    hud_puts(2, 2, line, 0xFFFFFFFF);
+
+    glBindTexture(GL_TEXTURE_2D, g_hud_tex);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, HUD_W, H, GL_RGBA, GL_UNSIGNED_BYTE, g_hud_pixels);
+
+    glUseProgram(g_hud_prog);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_hud_tex);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glUniform1i(glGetUniformLocation(g_hud_prog, "u_tex"), 0);
+
+    constexpr int QW = 200;
+    constexpr int QH = 20;
+    int sx = 8;
+    int sy = win_h - QH - 8;
+    float x0 = static_cast<float>(sx) / win_w * 2.0f - 1.0f;
+    float y0 = 1.0f - static_cast<float>(sy) / win_h * 2.0f;
+    float x1 = static_cast<float>(sx + QW) / win_w * 2.0f - 1.0f;
+    float y1 = 1.0f - static_cast<float>(sy + QH) / win_h * 2.0f;
+    float u1 = static_cast<float>(W) / HUD_W;
+    float v1 = static_cast<float>(H) / HUD_H;
+    float verts[] = {
+        x0, y0, 0.0f, 0.0f,
+        x1, y0, u1,   0.0f,
+        x0, y1, 0.0f, v1,
+        x1, y1, u1,   v1,
+    };
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, &verts[0]);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, &verts[2]);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glDisableVertexAttribArray(0);
+    glDisableVertexAttribArray(1);
+    glDisable(GL_BLEND);
+}
+
 void Render_Bridge_Debug_HUD_GL(int win_w, int win_h)
 {
     extern bool InMainLoop;
-    if (!InMainLoop) return;
-    if (!g_debug_hud_visible) return;
+    // Compact FPS runs in --debug mode regardless of InMainLoop, so it
+    // stays visible during Bink2/VQA playback and menus. The full panel
+    // needs live engine state (Map, tactical rects) and is gated by
+    // InMainLoop.
+    if (!g_debug_hud_visible || !InMainLoop) {
+        if (Debug_Flag) render_compact_fps(win_w, win_h);
+        return;
+    }
     if (!init_hud_gl()) return;
     update_hud_drag(win_w, win_h);
 
