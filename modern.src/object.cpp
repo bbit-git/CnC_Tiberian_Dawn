@@ -1099,19 +1099,14 @@ bool ObjectClass::Limbo(void)
 bool ObjectClass::Unlimbo(COORDINATE coord, DirType )
 {
 	if (GameActive && IsInLimbo && !IsDown) {
+		// Pool-backed objects are expected to be active before placement, but
+		// release builds have shown the flag arriving cleared for some freshly
+		// constructed units/overlays. Reassert it at the point of activation.
+		IsActive = true;
 		if (ScenarioInit || Can_Enter_Cell(Coord_Cell(coord), FACING_NONE) == MOVE_OK) {
 			IsInLimbo = false;
 			IsToDisplay = false;
 			Coord = Class_Of().Coord_Fixup(coord);
-
-			{
-				static int _utrace = 0;
-				if (_utrace < 5) {
-					fprintf(stderr, "Unlimbo %s: input=0x%08X fixup=0x%08X Coord=0x%08X\n",
-						Class_Of().IniName, (unsigned)coord, (unsigned)Class_Of().Coord_Fixup(coord), (unsigned)Coord);
-					_utrace++;
-				}
-			}
 
 			if (Mark(MARK_DOWN)) {
 				if (IsActive) {
@@ -1125,13 +1120,6 @@ bool ObjectClass::Unlimbo(COORDINATE coord, DirType )
 					}
 
 					if (Class_Of().IsSentient) {
-						/* Check for duplicate submission */
-						for (int _li = 0; _li < Logic.Count(); _li++) {
-							if (Logic[_li] == this) {
-								fprintf(stderr, "Logic.Submit DUPLICATE %s %p (already at index %d)!\n",
-									Class_Of().IniName, (void*)this, _li);
-							}
-						}
 						Logic.Submit(this);
 					}
 				}

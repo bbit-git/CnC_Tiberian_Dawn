@@ -189,13 +189,7 @@ bool TurretClass::Ok_To_Move(DirType dir)
  *=============================================================================================*/
 void TurretClass::AI(void)
 {
-	void* _vt_pre = *(void**)this;
 	DriveClass::AI();
-	if (*(void**)this != _vt_pre) {
-		fprintf(stderr, "VTABLE CORRUPT in DriveClass::AI! this=%p before=%p after=%p\n",
-			(void*)this, _vt_pre, *(void**)this);
-		return;
-	}
 
 	/*
 	**	A unit with a constant rotating radar dish is handled here.

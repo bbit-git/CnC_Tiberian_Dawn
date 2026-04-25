@@ -3181,7 +3181,10 @@ void BuildingClass::Read_INI(char *buffer)
 
 			b = new BuildingClass(classid, bhouse);
 			if (b) {
-				if (b->Unlimbo(Cell_Coord(cell), facing)) {
+				bool _dbg_bunl = b->Unlimbo(Cell_Coord(cell), facing);
+				fprintf(stderr, "[BLDG_READ] class=%d house=%d cell=%d unlimbo=%d\n",
+					(int)classid, (int)bhouse, (int)cell, (int)_dbg_bunl);
+				if (_dbg_bunl) {
 					strength = MIN(strength, 0x100);
 					strength = Fixed_To_Cardinal(b->Class->MaxStrength, strength);
 					b->Strength = strength;

@@ -436,15 +436,6 @@ COORDINATE UnitClass::Sort_Y(void) const
 void UnitClass::AI(void)
 {
 	Validate();
-	/* Check vtable integrity — detect corruption before it crashes */
-	{
-		void* actual_vt = *(void**)this;
-		if (actual_vt != UnitClass::VTable) {
-			fprintf(stderr, "UNIT VTABLE BAD: this=%p vtable=%p expected=%p Class=%p\n",
-				(void*)this, actual_vt, UnitClass::VTable, (void*)Class);
-			return;
-		}
-	}
 	//DBG("UnitClass::AI %s Coord=%x Mission=%d", Class->IniName, Coord, (int)Mission);
 
 	/*
@@ -456,21 +447,19 @@ void UnitClass::AI(void)
 
 	TarComClass::AI();
 
-	/* Check vtable after TarComClass::AI — something during parent AI may corrupt us */
-	if (*(void**)this != UnitClass::VTable) {
-		fprintf(stderr, "VTABLE CORRUPT AFTER TarComClass::AI! this=%p vtable=%p\n",
-			(void*)this, *(void**)this);
-		return;
-	}
-
 	/*
 	**	Delete this unit if it finds itself off the edge of the map and it is in
 	**	guard or other static mission mode.
 	*/
 	if (!Team && Mission == MISSION_GUARD && MissionQueue == MISSION_NONE && !Map.In_Radar(Coord_Cell(Coord))) {
+		fprintf(stderr, "[UNIT_AI_OFFMAP] class=%d cell=%d mcX=%d mcY=%d mcW=%d mcH=%d -> Stun+Limbo\n",
+			(int)Class->Type, (int)Coord_Cell(Coord),
+			(int)Map.MapCellX, (int)Map.MapCellY, (int)Map.MapCellWidth, (int)Map.MapCellHeight);
 		Stun();
 		Limbo();
-		delete this;
+		// delete this; — disabled: destructor chain corrupts vtable of the
+		// pool slot (operator delete only clears IsActive). Pool slot leaks
+		// until scenario end. See commit fef72c4 / unit.cpp:1835.
 		return;
 	}
 
@@ -1002,7 +991,9 @@ ResultType UnitClass::Take_Damage(int & damage, int distance, WarheadType warhea
 		*/
 		Stun();
 		Limbo();
-		delete this;
+		// delete this; — disabled: destructor chain corrupts vtable of the
+		// pool slot (operator delete only clears IsActive). Pool slot leaks
+		// until scenario end. See commit fef72c4 / unit.cpp:1835.
 
 	} else {
 
@@ -1848,7 +1839,9 @@ void UnitClass::Per_Cell_Process(bool center)
 				Mark(MARK_DOWN);
 				Stun();
 				Limbo();
-				delete this;
+				// delete this;  — disabled: destructor chain corrupts vtable;
+				// pool slot leaks until scenario end (see commit fef72c4 for the
+				// same fix applied to the MCV deploy path).
 				return;
 			}
 		}
@@ -3599,7 +3592,10 @@ void UnitClass::Read_INI(char *buffer)
 						unit->Trigger->AttachCount++;
 					}
 
-					if (unit->Unlimbo(coord, dir)) {
+					bool _dbg_unl = unit->Unlimbo(coord, dir);
+					fprintf(stderr, "[UNIT_READ] class=%d house=%d cell=%d unlimbo=%d\n",
+						(int)classid, (int)inhouse, (int)Coord_Cell(coord), (int)_dbg_unl);
+					if (_dbg_unl) {
 						unit->Strength = Fixed_To_Cardinal(unit->Class->MaxStrength, strength);
 						if (GameToPlay == GAME_NORMAL || unit->House->IsHuman) {
 							unit->Assign_Mission(mission);

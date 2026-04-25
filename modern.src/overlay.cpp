@@ -374,7 +374,10 @@ void OverlayClass::Read_INI(char *buffer)
 			**	the map.
 			*/
 			if (cell >= MAP_CELL_W && cell <= MAP_CELL_TOTAL - MAP_CELL_W) {
-				new OverlayClass(classid, cell);
+				OverlayClass* _dbg_ov = new OverlayClass(classid, cell);
+				fprintf(stderr, "[OVER_READ] class=%d cell=%d ptr=%p active=%d\n",
+					(int)classid, (int)cell, (void*)_dbg_ov,
+					_dbg_ov ? (int)_dbg_ov->IsActive : -1);
 			}
 		}
 		tbuffer += strlen(tbuffer)+1;

@@ -58,6 +58,7 @@
 #endif
 
 static HANDLE			hCCLibrary;
+static char             ForcedScenarioRoot[_MAX_FNAME + _MAX_EXT];
 
 /****************************************
 **	Function prototypes for this module **
@@ -114,9 +115,25 @@ extern bool SpawnedFromWChat;
  * HISTORY:                                                                                    *
  *   10/07/1992 JLB : Created.                                                                 *
  *=============================================================================================*/
-bool Init_Game(int , char *[])
+bool Init_Game(int argc, char *argv[])
 {
 	void const *temp_mouse_shapes;
+
+	ForcedScenarioRoot[0] = '\0';
+	for (int index = 1; index < argc; index++) {
+		char const * arg = argv[index];
+		if (!arg) continue;
+		if (strnicmp(arg, "--scenario-root=", 16) == 0) {
+			strncpy(ForcedScenarioRoot, arg + 16, sizeof(ForcedScenarioRoot) - 1);
+			ForcedScenarioRoot[sizeof(ForcedScenarioRoot) - 1] = '\0';
+			char * ext = strrchr(ForcedScenarioRoot, '.');
+			if (ext && stricmp(ext, ".INI") == 0) {
+				*ext = '\0';
+			}
+			fprintf(stderr, "[FORCE_SCEN] argv root=%s\n", ForcedScenarioRoot);
+			break;
+		}
+	}
 
 	CCDebugString ("C&C95 - About to load reslib.dll\n");
 	hCCLibrary = LoadLibrary("reslib.dll");
@@ -567,7 +584,7 @@ bool Init_Game(int , char *[])
 	**	Play the introduction movies.
 	*/
 	CCDebugString ("C&C95 - About to play the intro movie\n");
-	if (!Special.IsFromInstall && !Special.IsFromWChat) Play_Intro(true);
+	if (!Special.IsFromInstall && !Special.IsFromWChat && !ForcedScenarioRoot[0]) Play_Intro(true);
 
 	/*
 	**	Wait for a VSync; during the vertical blank, set the game palette & blit
@@ -977,6 +994,13 @@ bool Select_Game(bool fade)
 			Set_Logic_Page(SeenBuff);
 		}
 
+		if (ForcedScenarioRoot[0]) {
+			fprintf(stderr, "[FORCE_SCEN] queue start-new-game root=%s\n", ForcedScenarioRoot);
+			selection = SEL_START_NEW_GAME;
+			Theme.Queue_Song(THEME_NONE);
+			display = false;
+		}
+
 
 		while (process) {
 
@@ -1302,6 +1326,33 @@ bool Select_Game(bool fade)
 					Scenario = 1;
 					BuildLevel = 1;
 #endif
+					if (ForcedScenarioRoot[0]) {
+						fprintf(stderr, "[FORCE_SCEN] start-new-game root=%s\n", ForcedScenarioRoot);
+						Scenario = atoi(ForcedScenarioRoot + 3);
+						ScenDir = (ForcedScenarioRoot[5] == 'W') ? SCEN_DIR_WEST : SCEN_DIR_EAST;
+
+						switch (ForcedScenarioRoot[2]) {
+							case 'B':
+								Whom = HOUSE_BAD;
+								ScenPlayer = SCEN_PLAYER_NOD;
+								break;
+
+							case 'J':
+								Whom = HOUSE_JP;
+								ScenPlayer = SCEN_PLAYER_JP;
+								break;
+
+							default:
+								Whom = HOUSE_GOOD;
+								ScenPlayer = SCEN_PLAYER_GDI;
+								break;
+						}
+
+						Theme.Fade_Out();
+						GameToPlay = GAME_NORMAL;
+						process = false;
+						break;
+					}
 #ifndef USE_RENDER_BRIDGE
 					ScenPlayer = SCEN_PLAYER_GDI;
 					ScenDir = SCEN_DIR_EAST;
@@ -1334,9 +1385,15 @@ bool Select_Game(bool fade)
 							if (bridge_side == BRIDGE_CHOOSE_SIDE_NOD) {
 								Whom = HOUSE_BAD;
 								ScenPlayer = SCEN_PLAYER_NOD;
+								Play_Movie("NOD1PRE", THEME_NONE, false);
 							} else {
 								Whom = HOUSE_GOOD;
 								ScenPlayer = SCEN_PLAYER_GDI;
+								// Legacy intro.cpp:307 sets PreserveVQAScreen
+								// for the GDI path so the last briefing frame
+								// stays on screen across the fade.
+								PreserveVQAScreen = 1;
+								Play_Movie("GDI1", THEME_NONE, false);
 							}
 						}
 					}
@@ -1872,12 +1929,15 @@ bool Select_Game(bool fade)
 	**	don't specify a variation, to make 'Set_Scenario_Name()' pick a random one.
 	**	Skip this if we've already loaded a save-game.
 	*/
-	if (!gameloaded) {
-		if (Debug_Map) {
-			Set_Scenario_Name(ScenarioName, Scenario, ScenPlayer, ScenDir, SCEN_VAR_A);
-		} else {
-			Set_Scenario_Name(ScenarioName, Scenario, ScenPlayer, ScenDir);
-		}
+		if (!gameloaded) {
+			if (ForcedScenarioRoot[0]) {
+				strncpy(ScenarioName, ForcedScenarioRoot, sizeof(ScenarioName) - 1);
+				ScenarioName[sizeof(ScenarioName) - 1] = '\0';
+			} else if (Debug_Map) {
+				Set_Scenario_Name(ScenarioName, Scenario, ScenPlayer, ScenDir, SCEN_VAR_A);
+			} else {
+				Set_Scenario_Name(ScenarioName, Scenario, ScenPlayer, ScenDir);
+			}
 
 		/*
 		** Start_Scenario() changes the palette; so, fade out & clear the screen
@@ -1893,10 +1953,19 @@ bool Select_Game(bool fade)
 		Show_Mouse();
 
 		Special.IsFromInstall = 0;
-		CCDebugString ("C&C95 - Starting scenario.\n");
-		if (!Start_Scenario(ScenarioName)) {
-			return(false);
-		}
+			CCDebugString ("C&C95 - Starting scenario.\n");
+			if (ForcedScenarioRoot[0]) {
+				fprintf(stderr, "[FORCE_SCEN] loading root=%s\n", ScenarioName);
+				DBG("INIT: forcing scenario root '%s' without movie playback", ScenarioName);
+				if (!Read_Scenario(ScenarioName)) {
+					return(false);
+				}
+				Options.Set();
+			} else {
+				if (!Start_Scenario(ScenarioName)) {
+					return(false);
+				}
+			}
 		CCDebugString ("C&C95 - Scenario started OK.\n");
 	}
 
@@ -2233,6 +2302,16 @@ bool Parse_Command_Line(int argc, char *argv[])
 		long code = 0;
 
 		string = strupr(argv[index]);
+
+		if (strncmp(string, "--SCENARIO-ROOT=", 16) == 0) {
+			strncpy(ForcedScenarioRoot, string + 16, sizeof(ForcedScenarioRoot) - 1);
+			ForcedScenarioRoot[sizeof(ForcedScenarioRoot) - 1] = '\0';
+			char * ext = strrchr(ForcedScenarioRoot, '.');
+			if (ext && stricmp(ext, ".INI") == 0) {
+				*ext = '\0';
+			}
+			continue;
+		}
 
 		/*
 		**	Print usage text only if requested.

@@ -1227,9 +1227,7 @@ bool DriveClass::Start_Of_Move(void)
  *=============================================================================================*/
 void DriveClass::AI(void)
 {
-	void* _vt0 = *(void**)this;
 	FootClass::AI();
-	if (*(void**)this != _vt0) { fprintf(stderr, "VT CORRUPT: FootClass::AI this=%p\n", (void*)this); return; }
 
 	/*
 	**	If the unit is following a track, then continue

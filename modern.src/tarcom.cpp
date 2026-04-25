@@ -98,13 +98,7 @@ void TarComClass::Debug_Dump(MonoClass *mono) const
  *=============================================================================================*/
 void TarComClass::AI(void)
 {
-	void* _vt_before = *(void**)this;
 	TurretClass::AI();
-	if (*(void**)this != _vt_before) {
-		fprintf(stderr, "VTABLE CORRUPT in TurretClass::AI! this=%p before=%p after=%p\n",
-			(void*)this, _vt_before, *(void**)this);
-		return;
-	}
 
 	if (Class->Primary != WEAPON_NONE) {
 
